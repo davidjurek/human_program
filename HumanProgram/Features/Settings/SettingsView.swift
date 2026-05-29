@@ -11,8 +11,8 @@ struct SettingsView: View {
                     SettingsRow(label: "Exercise",        icon: "figure.run",   destination: AnyView(ExerciseSettingsView()))
                 }
                 Section("Notifications & Calendar") {
-                    SettingsRow(label: "Notifications", icon: "bell",           destination: AnyView(PlaceholderSettingsView(title: "Notifications")))
-                    SettingsRow(label: "Calendar",      icon: "calendar",       destination: AnyView(PlaceholderSettingsView(title: "Calendar")))
+                    SettingsRow(label: "Reminders",     icon: "bell",           destination: AnyView(RemindersView()))
+                    SettingsRow(label: "Calendar",      icon: "calendar",       destination: AnyView(CalendarSourceSettingsView()))
                 }
                 Section("Data") {
                     SettingsRow(label: "Import / Export", icon: "square.and.arrow.up", destination: AnyView(PlaceholderSettingsView(title: "Import / Export")))

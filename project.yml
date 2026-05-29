@@ -32,6 +32,7 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         NSCalendarsUsageDescription: "Human Program uses your calendars to show events in Today."
+        NSUserNotificationUsageDescription: "Human Program uses notifications to fire your reminders."
         NSFaceIDUsageDescription: "Human Program uses Face ID to protect your planner."
         UIBackgroundModes: []
     settings:

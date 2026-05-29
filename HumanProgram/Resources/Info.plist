@@ -24,6 +24,8 @@
 	<string>Human Program uses your calendars to show events in Today.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Human Program uses Face ID to protect your planner.</string>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>Human Program uses notifications to fire your reminders.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

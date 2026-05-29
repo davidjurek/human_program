@@ -4,6 +4,11 @@ import SwiftData
 @MainActor
 public struct AppStartup {
     public static func run(context: ModelContext, appState: AppState) async throws {
+        // 0. Reschedule all notification reminders (rolling 20-occurrence window)
+        let notifRepo = NotificationReminderRepository(context: context)
+        let allReminders = (try? notifRepo.fetchAll()) ?? []
+        let scheduler = RollingReminderScheduler()
+        await scheduler.reschedule(reminders: allReminders)
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
 
