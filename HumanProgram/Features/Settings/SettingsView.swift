@@ -15,8 +15,8 @@ struct SettingsView: View {
                     SettingsRow(label: "Calendar",      icon: "calendar",       destination: AnyView(CalendarSourceSettingsView()))
                 }
                 Section("Data") {
-                    SettingsRow(label: "Import / Export", icon: "square.and.arrow.up", destination: AnyView(PlaceholderSettingsView(title: "Import / Export")))
-                    SettingsRow(label: "Security",        icon: "lock",          destination: AnyView(PlaceholderSettingsView(title: "Security")))
+                    SettingsRow(label: "Import / Export", icon: "square.and.arrow.up", destination: AnyView(ImportExportView()))
+                    SettingsRow(label: "Security",        icon: "lock",          destination: AnyView(SecuritySettingsView()))
                 }
                 Section {
                     SettingsRow(label: "About", icon: "info.circle",            destination: AnyView(AboutView()))

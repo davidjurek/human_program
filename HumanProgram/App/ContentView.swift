@@ -7,6 +7,7 @@ import SwiftData
 struct ContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var context
+    @State private var lockVM = AppLockViewModel()
 
     var body: some View {
         NavigationStack {
@@ -22,6 +23,19 @@ struct ContentView: View {
                         .accessibilityLabel("Open Program menu")
                     }
                 }
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { lockVM.isLocked },
+            set: { _ in }
+        )) {
+            LockScreenView(vm: lockVM)
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.willEnterForegroundNotification
+            )
+        ) { _ in
+            lockVM.checkLockOnForeground()
         }
         .task {
             do {
