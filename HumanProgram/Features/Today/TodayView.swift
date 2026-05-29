@@ -10,6 +10,7 @@ struct TodayView: View {
     }
 
     var body: some View {
+        @Bindable var vm = vm
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 // Date header

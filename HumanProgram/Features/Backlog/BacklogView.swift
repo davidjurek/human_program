@@ -3,9 +3,12 @@ import SwiftData
 
 struct BacklogView: View {
     @Environment(\.modelContext) private var context
-    @Query(filter: #Predicate<BacklogItem> { $0.status == BacklogStatus.backlog },
-           sort: \BacklogItem.createdAt, order: .reverse)
-    private var items: [BacklogItem]
+    // Fetch all items; filter to .backlog in memory.
+    // SwiftData #Predicate enum comparisons can be unreliable — filtering in
+    // memory is safe and correct for a list this size.
+    @Query(sort: \BacklogItem.createdAt, order: .reverse)
+    private var allItems: [BacklogItem]
+    private var items: [BacklogItem] { allItems.filter { $0.status == .backlog } }
 
     @State private var showAddAlert = false
     @State private var newTitle = ""

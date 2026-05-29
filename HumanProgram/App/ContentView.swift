@@ -14,7 +14,7 @@ struct ContentView: View {
 
         NavigationStack {
             TodayView(context: context)
-                .navigationTitle("Today")
+                .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {

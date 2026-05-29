@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // Full-screen hidden gate. Black background, no normal app chrome.
 // A 4×4 Latin-square puzzle. Auto-detects correct solution and fades to game.
