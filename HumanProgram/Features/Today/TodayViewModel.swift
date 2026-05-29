@@ -6,6 +6,7 @@ import SwiftData
 @MainActor
 public final class TodayViewModel {
     public private(set) var page: DailyPage?
+    public private(set) var exerciseRoutine: ExerciseRoutine? = nil
     public private(set) var isLoading: Bool = false
     public var showDatePicker: Bool = false
     public var showAddTask: Bool = false
@@ -62,6 +63,8 @@ public final class TodayViewModel {
                 backlogItems: backlogInputs,
                 scheduleTemplates: scheduleInputs
             )
+            let exerciseRepo = ExerciseRepository(context: context)
+            exerciseRoutine = try exerciseRepo.fetchRoutine(for: viewingDate)
         } catch {
             print("[TodayViewModel] loadPage error: \(error)")
         }

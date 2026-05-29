@@ -141,9 +141,7 @@ struct TodayView: View {
     private var exerciseSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionHeader("Exercise") { }
-            Text("No exercise routine")
-                .font(AppTypography.caption())
-                .foregroundStyle(AppColors.textTertiary)
+            ExerciseSectionView(routine: vm.exerciseRoutine)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
         }

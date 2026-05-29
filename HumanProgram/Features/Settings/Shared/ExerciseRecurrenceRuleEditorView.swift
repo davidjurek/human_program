@@ -239,7 +239,7 @@ struct ExerciseRecurrenceRuleEditorView: View {
                     .foregroundStyle(AppColors.textSecondary)
                 Spacer()
                 Image(systemName: showBounds ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(AppTypography.caption())
                     .foregroundStyle(AppColors.textTertiary)
             }
             .padding(.horizontal, 16)

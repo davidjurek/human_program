@@ -145,7 +145,7 @@ private struct RecurringTaskRow: View {
             // "Off" badge
             if !template.active {
                 Text("Off")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(AppTypography.sectionHeader())
                     .foregroundStyle(AppColors.accentOrange)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -156,7 +156,7 @@ private struct RecurringTaskRow: View {
             // Disclosure chevron (read mode only)
             if !isEditMode {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(AppTypography.caption())
                     .foregroundStyle(AppColors.textTertiary)
             }
         }
