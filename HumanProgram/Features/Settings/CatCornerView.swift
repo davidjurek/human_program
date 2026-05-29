@@ -57,6 +57,8 @@ struct CatCornerView: View {
                             viewerIndex = index
                             selectedIndex = index
                         }
+                        // Disable long-press context menu so system "Save Image" never appears
+                        .contextMenu {}
                 }
             }
         }
@@ -71,20 +73,16 @@ struct CatCornerView: View {
 
             TabView(selection: $viewerIndex) {
                 ForEach(photos.indices, id: \.self) { index in
-                    if let uiImage = UIImage(named: photos[index]) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .tag(index)
-                            .gesture(swipeDownGesture)
-                    }
+                    ZoomableImageView(imageName: photos[index])
+                        .tag(index)
+                        // No context menu — prevents save/share from appearing on long-press
+                        .contextMenu {}
                 }
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
             .ignoresSafeArea()
 
-            // Top bar: dismiss button
+            // Top bar: dismiss
             HStack {
                 Spacer()
                 Button {
@@ -112,19 +110,88 @@ struct CatCornerView: View {
         }
         .transition(.opacity)
         .animation(.easeInOut(duration: 0.2), value: selectedIndex)
-    }
-
-    // MARK: - Gestures
-
-    private var swipeDownGesture: some Gesture {
-        DragGesture(minimumDistance: 60, coordinateSpace: .global)
-            .onEnded { value in
-                let verticalAmount = value.translation.height
-                let horizontalAmount = abs(value.translation.width)
-                if verticalAmount > 80 && verticalAmount > horizontalAmount {
-                    selectedIndex = nil
+        .gesture(
+            DragGesture(minimumDistance: 60, coordinateSpace: .global)
+                .onEnded { value in
+                    if value.translation.height > 80,
+                       value.translation.height > abs(value.translation.width) {
+                        selectedIndex = nil
+                    }
                 }
+        )
+    }
+}
+
+// MARK: - Zoomable image view
+
+// Supports pinch-to-zoom (up to 4x) and double-tap to toggle zoom.
+// Does NOT expose any save/share controls.
+private struct ZoomableImageView: View {
+    let imageName: String
+
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    private let minScale: CGFloat = 1.0
+    private let maxScale: CGFloat = 4.0
+
+    var body: some View {
+        GeometryReader { geo in
+            if let uiImage = UIImage(named: imageName) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+                    .scaleEffect(scale)
+                    .offset(offset)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    // Pinch to zoom
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                let delta = value / lastScale
+                                lastScale = value
+                                scale = min(maxScale, max(minScale, scale * delta))
+                            }
+                            .onEnded { _ in
+                                lastScale = 1.0
+                                if scale < minScale {
+                                    withAnimation(.spring()) { scale = minScale; offset = .zero }
+                                }
+                            }
+                    )
+                    // Double-tap to toggle zoom
+                    .onTapGesture(count: 2) {
+                        withAnimation(.spring(response: 0.35)) {
+                            if scale > 1.1 {
+                                scale = 1.0
+                                offset = .zero
+                            } else {
+                                scale = 2.5
+                            }
+                        }
+                    }
+                    // Pan when zoomed
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                guard scale > 1.05 else { return }
+                                offset = CGSize(
+                                    width: lastOffset.width + value.translation.width,
+                                    height: lastOffset.height + value.translation.height
+                                )
+                            }
+                            .onEnded { _ in
+                                lastOffset = offset
+                                // Snap back if dragged too far
+                                if scale <= 1.05 {
+                                    withAnimation(.spring()) { offset = .zero; lastOffset = .zero }
+                                }
+                            }
+                    )
             }
+        }
     }
 }
 
