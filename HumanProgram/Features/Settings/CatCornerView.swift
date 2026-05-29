@@ -105,7 +105,7 @@ struct CatCornerView: View {
             VStack {
                 Spacer()
                 Text("\(viewerIndex + 1) / \(photos.count)")
-                    .font(AppTypography.caption)
+                    .font(AppTypography.caption())
                     .foregroundColor(Color.white.opacity(0.5))
                     .padding(.bottom, 36)
             }

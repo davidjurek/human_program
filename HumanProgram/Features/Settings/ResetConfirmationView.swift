@@ -41,7 +41,7 @@ struct ResetConfirmationView: View {
             Spacer().frame(height: 28)
 
             Text("Reset App")
-                .font(AppTypography.title)
+                .font(AppTypography.pageTitle())
                 .foregroundStyle(AppColors.textPrimary)
 
             Spacer().frame(height: 16)
@@ -59,7 +59,7 @@ struct ResetConfirmationView: View {
                     step = .confirm
                 } label: {
                     Text("Continue")
-                        .font(AppTypography.bodyBold)
+                        .font(AppTypography.bodyText())
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
@@ -70,7 +70,7 @@ struct ResetConfirmationView: View {
                     dismiss()
                 } label: {
                     Text("Cancel")
-                        .font(AppTypography.body)
+                        .font(AppTypography.bodyText())
                         .foregroundStyle(AppColors.textSecondary)
                         .padding(.vertical, 12)
                 }
@@ -78,7 +78,7 @@ struct ResetConfirmationView: View {
             .padding(.horizontal, 32)
             .padding(.bottom, 40)
         }
-        .background(AppColors.backgroundPrimary.ignoresSafeArea())
+        .background(AppColors.background.ignoresSafeArea())
         .navigationBarHidden(true)
     }
 
@@ -93,7 +93,7 @@ struct ResetConfirmationView: View {
             Spacer().frame(height: 28)
 
             Text("Type RESET to confirm")
-                .font(AppTypography.bodyBold)
+                .font(AppTypography.bodyText())
                 .foregroundStyle(AppColors.textPrimary)
 
             Spacer().frame(height: 16)
@@ -101,12 +101,12 @@ struct ResetConfirmationView: View {
             TextField("", text: $confirmationInput, prompt: Text("RESET").foregroundStyle(AppColors.textTertiary))
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.characters)
-                .font(AppTypography.body)
+                .font(AppTypography.bodyText())
                 .foregroundStyle(AppColors.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(.vertical, 14)
                 .padding(.horizontal, 20)
-                .background(AppColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: 12))
+                .background(AppColors.surfaceSunken, in: RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 40)
 
             Spacer()
@@ -121,7 +121,7 @@ struct ResetConfirmationView: View {
                                 .tint(.white)
                         } else {
                             Text("Reset Everything")
-                                .font(AppTypography.bodyBold)
+                                .font(AppTypography.bodyText())
                                 .foregroundStyle(.white)
                         }
                     }
@@ -141,7 +141,7 @@ struct ResetConfirmationView: View {
                     step = .warning
                 } label: {
                     Text("Cancel")
-                        .font(AppTypography.body)
+                        .font(AppTypography.bodyText())
                         .foregroundStyle(AppColors.textSecondary)
                         .padding(.vertical, 12)
                 }
@@ -150,7 +150,7 @@ struct ResetConfirmationView: View {
             .padding(.horizontal, 32)
             .padding(.bottom, 40)
         }
-        .background(AppColors.backgroundPrimary.ignoresSafeArea())
+        .background(AppColors.background.ignoresSafeArea())
         .navigationBarHidden(true)
     }
 

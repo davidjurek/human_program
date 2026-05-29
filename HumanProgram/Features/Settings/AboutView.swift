@@ -100,24 +100,7 @@ struct AboutView: View {
     }
 }
 
-// ── Cat Corner (placeholder until user provides photos) ───────────
-struct CatCornerView: View {
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 12) {
-                Image(systemName: "pawprint.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.white.opacity(0.4))
-                Text("Photos coming soon")
-                    .font(AppTypography.caption())
-                    .foregroundStyle(.white.opacity(0.3))
-            }
-        }
-        .navigationTitle("Cat Corner")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
+// CatCornerView is defined in Features/Settings/CatCornerView.swift
 
 // ── Hidden document view ──────────────────────────────────────────
 struct HiddenDocumentView: View {
