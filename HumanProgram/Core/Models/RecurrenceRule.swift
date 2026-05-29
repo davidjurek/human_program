@@ -1,6 +1,6 @@
 import Foundation
 
-public enum RecurrenceFrequency: String, Codable, Hashable, CaseIterable {
+public enum RecurrenceFrequency: String, Codable, Hashable, CaseIterable, Sendable {
     case everyDay
     case weekdays        // Mon–Fri (weekday 2–6)
     case weekends        // Sat–Sun (weekday 1, 7)

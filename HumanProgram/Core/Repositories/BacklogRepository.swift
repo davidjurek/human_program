@@ -63,12 +63,10 @@ public final class BacklogRepository {
     // MARK: - Fetch
 
     /// Fetch active items (status == .backlog).
+    /// SwiftData #Predicate enum comparisons are unreliable — fetch all and filter in memory.
     public func fetchActive() throws -> [BacklogItem] {
-        let descriptor = FetchDescriptor<BacklogItem>(
-            predicate: #Predicate { $0.status == BacklogStatus.backlog },
-            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
-        )
-        return try context.fetch(descriptor)
+        let all = try fetchAll()
+        return all.filter { $0.status == .backlog }
     }
 
     /// Fetch all items including done.

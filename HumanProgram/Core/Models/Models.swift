@@ -3,17 +3,17 @@ import SwiftData
 
 // ── Enums (plain Codable types, NOT @Model) ───────────────────────
 
-public enum BacklogStatus: String, Codable {
+public enum BacklogStatus: String, Codable, Sendable {
     case backlog, done
 }
 
-public enum DailyTaskSourceType: String, Codable {
+public enum DailyTaskSourceType: String, Codable, Sendable {
     case recurring, backlog, manual, calendar
 }
 
 // ── ScheduleBlock ─────────────────────────────────────────────────
 // Stored as a Codable struct inside ScheduleTemplate (not a @Model)
-public struct ScheduleBlock: Codable, Identifiable, Hashable {
+public struct ScheduleBlock: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var title: String
     public var startMinuteOfDay: Int   // minutes from midnight (0–1439)
@@ -45,7 +45,7 @@ public struct ScheduleBlock: Codable, Identifiable, Hashable {
 }
 
 // ── DailyPageScheduleBlock (snapshot of a ScheduleBlock on a page) ─
-public struct DailyPageScheduleBlock: Codable, Identifiable, Hashable {
+public struct DailyPageScheduleBlock: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var title: String
     public var startMinuteOfDay: Int
