@@ -6,20 +6,20 @@ struct SettingsView: View {
             AppColors.background.ignoresSafeArea()
             List {
                 Section("Planning") {
-                    SettingsRow(label: "Recurring Tasks", icon: "repeat", destination: AnyView(PlaceholderSettingsView(title: "Recurring Tasks")))
-                    SettingsRow(label: "Schedule",        icon: "clock",  destination: AnyView(PlaceholderSettingsView(title: "Schedule")))
-                    SettingsRow(label: "Exercise",        icon: "figure.run", destination: AnyView(PlaceholderSettingsView(title: "Exercise")))
+                    SettingsRow(label: "Recurring Tasks", icon: "repeat",      destination: AnyView(RecurringTasksView()))
+                    SettingsRow(label: "Schedule",        icon: "clock",        destination: AnyView(ScheduleListView()))
+                    SettingsRow(label: "Exercise",        icon: "figure.run",   destination: AnyView(ExerciseSettingsView()))
                 }
                 Section("Notifications & Calendar") {
-                    SettingsRow(label: "Notifications", icon: "bell",     destination: AnyView(PlaceholderSettingsView(title: "Notifications")))
-                    SettingsRow(label: "Calendar",      icon: "calendar", destination: AnyView(PlaceholderSettingsView(title: "Calendar")))
+                    SettingsRow(label: "Notifications", icon: "bell",           destination: AnyView(PlaceholderSettingsView(title: "Notifications")))
+                    SettingsRow(label: "Calendar",      icon: "calendar",       destination: AnyView(PlaceholderSettingsView(title: "Calendar")))
                 }
                 Section("Data") {
                     SettingsRow(label: "Import / Export", icon: "square.and.arrow.up", destination: AnyView(PlaceholderSettingsView(title: "Import / Export")))
-                    SettingsRow(label: "Security",        icon: "lock",   destination: AnyView(PlaceholderSettingsView(title: "Security")))
+                    SettingsRow(label: "Security",        icon: "lock",          destination: AnyView(PlaceholderSettingsView(title: "Security")))
                 }
                 Section {
-                    SettingsRow(label: "About", icon: "info.circle", destination: AnyView(AboutView()))
+                    SettingsRow(label: "About", icon: "info.circle",            destination: AnyView(AboutView()))
                 }
             }
             .listStyle(.insetGrouped)

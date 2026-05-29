@@ -8,18 +8,22 @@ public struct AppStartup {
         let today = calendar.startOfDay(for: Date())
 
         let backlogRepo = BacklogRepository(context: context)
+        let exerciseRepo = ExerciseRepository(context: context)
         let pageRepo = DailyPageRepository(context: context)
         let streakCalc = StreakCalculator()
 
         // 1. Clear overdue backlog assignments
         try backlogRepo.clearOverdueAssignments(today: today)
 
-        // 2. Fetch template inputs
-        let recurringInputs = try fetchRecurringInputs(context: context, calendar: calendar)
-        let backlogInputs = try fetchBacklogInputs(context: context)
-        let scheduleInputs = try fetchScheduleInputs(context: context)
+        // 2. Ensure every weekday has an exercise routine (creates missing ones)
+        try exerciseRepo.ensureSevenWeekdayRoutines()
 
-        // 3. Ensure today's page exists
+        // 3. Fetch template inputs
+        let recurringInputs = try fetchRecurringInputs(context: context, calendar: calendar)
+        let backlogInputs   = try fetchBacklogInputs(context: context)
+        let scheduleInputs  = try fetchScheduleInputs(context: context)
+
+        // 4. Ensure today's page exists
         let todayPage = try pageRepo.getOrCreate(
             date: today,
             today: today,
@@ -29,7 +33,7 @@ public struct AppStartup {
         )
         appState.viewingDate = today
 
-        // 4. Refresh today and future pages
+        // 5. Refresh today and future pages
         try pageRepo.refreshTodayAndFuture(
             today: today,
             recurringTemplates: recurringInputs,
@@ -37,7 +41,7 @@ public struct AppStartup {
             scheduleTemplates: scheduleInputs
         )
 
-        // 5. Recalculate streaks
+        // 6. Recalculate streaks
         let allPages = try pageRepo.fetchAll()
         let snapshots = allPages.map {
             DailyCompletionSnapshot(date: $0.date, dayComplete: $0.dayComplete)

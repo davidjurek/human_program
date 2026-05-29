@@ -1,35 +1,27 @@
 import SwiftUI
 import SwiftData
 
-// ── Root view ─────────────────────────────────────────────────────
-// Today is always the home screen. A hamburger button in the top-left
-// opens the Program drawer (bottom sheet) that provides navigation to
-// all other destinations. This is NOT a TabView.
+// ── Root view ─────────────────────────────────────────────────────────────────
+// Today is the root. A hamburger button in the top-left toolbar pushes to
+// ProgramView inside the same NavigationStack — no sheet, no TabView.
 struct ContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var context
 
     var body: some View {
-        @Bindable var appState = appState
-
         NavigationStack {
             TodayView(context: context)
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
-                        Button {
-                            appState.showProgramDrawer = true
-                        } label: {
+                        NavigationLink(destination: ProgramView()) {
                             Image(systemName: "square.grid.2x2")
                                 .foregroundStyle(AppColors.textPrimary)
                         }
                         .accessibilityLabel("Open Program menu")
                     }
                 }
-        }
-        .sheet(isPresented: $appState.showProgramDrawer) {
-            ProgramDrawerView()
         }
         .task {
             do {
@@ -41,12 +33,9 @@ struct ContentView: View {
     }
 }
 
-// ── Program drawer ────────────────────────────────────────────────
-// Shown as a bottom sheet from the hamburger button.
-// 2-column grid of large tap-target tiles. NOT a TabView.
-struct ProgramDrawerView: View {
-    @Environment(\.dismiss) private var dismiss
-
+// ── Program view ──────────────────────────────────────────────────────────────
+// Full-screen push page. 2-column grid of tiles navigating to each section.
+struct ProgramView: View {
     private struct Destination: Identifiable {
         let id: String
         let label: String
@@ -63,38 +52,27 @@ struct ProgramDrawerView: View {
     ]
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVGrid(
-                    columns: [GridItem(.flexible()), GridItem(.flexible())],
-                    spacing: 16
-                ) {
-                    ForEach(destinations) { dest in
-                        NavigationLink(destination: dest.view) {
-                            ProgramTileView(label: dest.label, icon: dest.icon)
-                        }
-                        .buttonStyle(.plain)
+        ScrollView {
+            LazyVGrid(
+                columns: [GridItem(.flexible()), GridItem(.flexible())],
+                spacing: 16
+            ) {
+                ForEach(destinations) { dest in
+                    NavigationLink(destination: dest.view) {
+                        ProgramTileView(label: dest.label, icon: dest.icon)
                     }
-                }
-                .padding(24)
-            }
-            .background(AppColors.background)
-            .navigationTitle("Program")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .font(AppTypography.buttonLabel())
-                        .foregroundStyle(AppColors.accent)
+                    .buttonStyle(.plain)
                 }
             }
+            .padding(24)
         }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
+        .background(AppColors.background)
+        .navigationTitle("Program")
+        .navigationBarTitleDisplayMode(.large)
     }
 }
 
-// ── Program tile ──────────────────────────────────────────────────
+// ── Program tile ──────────────────────────────────────────────────────────────
 struct ProgramTileView: View {
     let label: String
     let icon: String
@@ -102,15 +80,14 @@ struct ProgramTileView: View {
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 28, weight: .light))
+                .font(.system(size: 32, weight: .light))
                 .foregroundStyle(AppColors.accent)
             Text(label)
-                .font(AppTypography.sectionHeader())
+                .font(AppTypography.bodyText())
                 .foregroundStyle(AppColors.textPrimary)
-                .tracking(0.3)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 100)
+        .frame(height: 120)
         .background(AppColors.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
@@ -120,8 +97,7 @@ struct ProgramTileView: View {
     }
 }
 
-// ── Calendar placeholder ──────────────────────────────────────────
-// Calendar is a stub — a simple placeholder screen.
+// ── Calendar placeholder ──────────────────────────────────────────────────────
 struct CalendarPlaceholderView: View {
     var body: some View {
         ZStack {
