@@ -1,0 +1,38 @@
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+*.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xcarchive
+
+# Build output
+build/
+HumanProgram.xcodeproj/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# CocoaPods (not used, but just in case)
+Pods/
+Podfile.lock
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# VS Code / editors
+.vscode/
+*.swp
+*.swo
+
+# Claude Code session data (already in .claude/ which is separate)
