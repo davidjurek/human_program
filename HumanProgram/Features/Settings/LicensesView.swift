@@ -5,7 +5,7 @@ import DSKit
 /// ships and their licenses. Reached from About → Licenses.
 struct LicensesView: View {
     var body: some View {
-        SettingsScreen {
+        SettingsScreen(centered: true) {
             SettingsSectionLabel(title: "Open Source Licenses")
 
             LicensesIntroText()

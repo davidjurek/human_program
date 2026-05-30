@@ -1,207 +1,195 @@
 import SwiftUI
 import SwiftData
+import DSKit
 
-// MARK: - RecurringTaskEditorView
+// Recurring-task editor, built on the same pattern as the Reminder editor:
+// SettingsScreen container, upper-right Save (disabled until valid), swipe-back,
+// and a discard-changes guard that stays quiet when nothing was entered.
+//
+// Layout: Title · Repeat (Weekly | Custom range) · 7-day circles (always) ·
+// From/To calendar popups (custom range only) · Note.
 
 struct RecurringTaskEditorView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
-    /// nil = creating a new template; non-nil = editing an existing one
+    /// nil = creating a new template; non-nil = editing an existing one.
     let template: RecurringTaskTemplate?
 
-    // Form state
-    @State private var title: String = ""
-    @State private var notes: String = ""
-    @State private var active: Bool = true
-    @State private var rule: RecurrenceRule = .daily()
+    @State private var title = ""
+    @State private var notes = ""
+    @State private var repeatMode = "weekly"          // "weekly" | "custom"
+    @State private var weekdays: Set<Int> = []
+    @State private var fromDate = Calendar.current.startOfDay(for: Date())
+    @State private var toDate = Calendar.current.startOfDay(for: Date())
+    @State private var openSection: String?
+    @State private var showDeleteConfirm = false
+    @State private var showDiscardConfirm = false
+    @State private var original = RecurringTaskSnapshot()
+    @State private var didLoad = false
 
-    // UX state
-    @State private var showUnsavedAlert = false
-    @State private var saveError: String?
-    @FocusState private var titleFocused: Bool
+    private var canSave: Bool {
+        // Needs a title AND at least one weekday selected (both modes use weekdays).
+        !title.trimmingCharacters(in: .whitespaces).isEmpty && !weekdays.isEmpty
+    }
 
-    private var isNew: Bool { template == nil }
-    private var isTitleValid: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var currentSnapshot: RecurringTaskSnapshot {
+        RecurringTaskSnapshot(title: title, notes: notes, repeatMode: repeatMode,
+                              weekdays: weekdays, fromDate: fromDate, toDate: toDate)
+    }
 
-    // Dirty check — compare against original values
-    private var isDirty: Bool {
-        guard let t = template else {
-            // New item: dirty if any non-default value has been entered
-            return !title.isEmpty || !notes.isEmpty || !active == false || rule != .daily()
-        }
-        return title != t.title
-            || notes != t.notes
-            || active != t.active
-            || rule != t.recurrenceRule
+    private var hasUnsavedChanges: Bool {
+        // New item: only if it has enough to save. Existing: if anything changed.
+        template == nil ? canSave : (currentSnapshot != original)
+    }
+
+    private func attemptBack() {
+        if hasUnsavedChanges { showDiscardConfirm = true } else { dismiss() }
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                AppColors.background.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        titleField
-                        Divider().padding(.horizontal, 16)
-                        notesField
-                        Divider().padding(.horizontal, 16)
-                        activeToggle
-                        Divider().padding(.horizontal, 16)
-                        recurrenceSection
-                    }
-                    .padding(.top, 8)
-                }
+        SettingsScreen(centered: true, onBack: attemptBack, trailing: { editorButtons }) {
+            // Title
+            AppTextField(text: $title, placeholder: "Title", fontSize: 20)
+
+            // Repeat
+            AppDropdown(
+                label: "Repeat",
+                options: [("weekly", "Weekly"), ("custom", "Custom range")],
+                selection: $repeatMode,
+                openSection: $openSection,
+                id: "repeat"
+            )
+
+            // Days (always shown)
+            WeekdayCircleSelector(selected: $weekdays)
+
+            // Custom range: From/To calendar popups
+            if repeatMode == "custom" {
+                DateFieldRow(label: "From", date: $fromDate)
+                DateFieldRow(label: "To", date: $toDate, notBefore: fromDate)
             }
-            .navigationTitle(isNew ? "New Task" : "Edit Task")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        if isDirty {
-                            showUnsavedAlert = true
-                        } else {
-                            dismiss()
-                        }
-                    }
-                    .foregroundStyle(AppColors.accent)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        save()
-                    }
-                    .font(AppTypography.bodyMediumText())
-                    .foregroundStyle(isTitleValid ? AppColors.accent : AppColors.textTertiary)
-                    .disabled(!isTitleValid)
-                }
+
+            // Note — at the bottom so it can grow without moving the controls above.
+            AppTextField(text: $notes, placeholder: "Note", fontSize: 20, multiline: true)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .overlay {
+            if showDeleteConfirm {
+                ConfirmPopup(
+                    message: "Delete task?",
+                    confirmTitle: "Delete",
+                    onConfirm: { deleteTask() },
+                    onCancel: { showDeleteConfirm = false }
+                )
             }
-            .alert("Discard Changes?", isPresented: $showUnsavedAlert) {
-                Button("Discard", role: .destructive) { dismiss() }
-                Button("Keep Editing", role: .cancel) { }
-            } message: {
-                Text("You have unsaved changes. Discard them?")
-            }
-            .alert("Save Error", isPresented: Binding(
-                get: { saveError != nil },
-                set: { if !$0 { saveError = nil } }
-            )) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(saveError ?? "An unknown error occurred.")
+            if showDiscardConfirm {
+                ConfirmPopup(
+                    message: "Discard Changes?",
+                    confirmTitle: "Discard",
+                    onConfirm: { dismiss() },
+                    onCancel: { showDiscardConfirm = false }
+                )
             }
         }
-        .onAppear {
-            if let t = template {
-                title = t.title
-                notes = t.notes
-                active = t.active
-                rule = t.recurrenceRule
+        .onAppear(perform: loadIfNeeded)
+    }
+
+    @ViewBuilder
+    private var editorButtons: some View {
+        if template != nil {
+            Button { showDeleteConfirm = true } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.red)
+                    .frame(width: 44, height: 44)
             }
-            titleFocused = isNew
+        }
+        Button { save() } label: {
+            Text("Save").font(appFont(18))
+                .foregroundStyle(canSave ? .primary : .secondary)
+                .frame(height: 44)
+                .padding(.horizontal, 6)
+        }
+        .disabled(!canSave)
+    }
+
+    // MARK: - Load / Save
+
+    private func loadIfNeeded() {
+        guard !didLoad else { return }
+        didLoad = true
+        defer { original = currentSnapshot }
+        guard let t = template else { return }
+        title = t.title
+        notes = t.notes
+        weekdays = Self.weekdays(from: t.recurrenceRule)
+        if t.recurrenceRule.startDate != nil || t.recurrenceRule.endDate != nil {
+            repeatMode = "custom"
+            fromDate = t.recurrenceRule.startDate ?? Calendar.current.startOfDay(for: Date())
+            toDate = t.recurrenceRule.endDate ?? fromDate
+        } else {
+            repeatMode = "weekly"
         }
     }
 
-    // MARK: - Title field
-
-    private var titleField: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("TITLE")
-                .font(AppTypography.sectionHeader())
-                .foregroundStyle(AppColors.textTertiary)
-                .kerning(0.4)
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-            TextField("Task name", text: $title)
-                .font(AppTypography.bodyText())
-                .foregroundStyle(AppColors.textPrimary)
-                .focused($titleFocused)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
-                .submitLabel(.next)
+    private func makeRule() -> RecurrenceRule {
+        let days = weekdays.sorted()
+        if repeatMode == "custom" {
+            return RecurrenceRule(frequency: .selectedWeekdays, weekdays: days,
+                                  startDate: Calendar.current.startOfDay(for: fromDate),
+                                  endDate: Calendar.current.startOfDay(for: toDate))
         }
+        return RecurrenceRule(frequency: .selectedWeekdays, weekdays: days)
     }
-
-    // MARK: - Notes field
-
-    private var notesField: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("NOTES")
-                .font(AppTypography.sectionHeader())
-                .foregroundStyle(AppColors.textTertiary)
-                .kerning(0.4)
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-            TextField("Optional notes", text: $notes, axis: .vertical)
-                .font(AppTypography.bodyText())
-                .foregroundStyle(AppColors.textPrimary)
-                .lineLimit(3...6)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
-        }
-    }
-
-    // MARK: - Active toggle
-
-    private var activeToggle: some View {
-        Toggle(isOn: $active) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Active")
-                    .font(AppTypography.bodyText())
-                    .foregroundStyle(AppColors.textPrimary)
-                Text(active ? "Appears on scheduled days" : "Won't appear on any day")
-                    .font(AppTypography.taskMeta())
-                    .foregroundStyle(AppColors.textTertiary)
-            }
-        }
-        .toggleStyle(SwitchToggleStyle(tint: AppColors.accentGreen))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    // MARK: - Recurrence section
-
-    private var recurrenceSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("RECURRENCE")
-                .font(AppTypography.sectionHeader())
-                .foregroundStyle(AppColors.textTertiary)
-                .kerning(0.4)
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 4)
-
-            RecurrenceRuleEditorView(rule: $rule)
-        }
-    }
-
-    // MARK: - Save
 
     private func save() {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
-        guard !trimmedTitle.isEmpty else { return }
-
+        let trimmed = title.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !weekdays.isEmpty else { return }
+        let repo = RecurringTaskRepository(context: context)
         do {
-            let repo = RecurringTaskRepository(context: context)
             if let existing = template {
-                try repo.update(
-                    existing,
-                    title: trimmedTitle,
-                    notes: notes,
-                    rule: rule,
-                    active: active
-                )
+                // Leave `active` unchanged (controlled from the list toggle).
+                try repo.update(existing, title: trimmed, notes: notes, rule: makeRule())
             } else {
-                try repo.create(
-                    title: trimmedTitle,
-                    rule: rule,
-                    notes: notes,
-                    active: active
-                )
+                try repo.create(title: trimmed, rule: makeRule(), notes: notes, active: true)
             }
             try PageRefreshService.refresh(context: context)
-            dismiss()
         } catch {
-            saveError = error.localizedDescription
+            print("[RecurringTaskEditor] save error: \(error)")
+        }
+        dismiss()
+    }
+
+    private func deleteTask() {
+        showDeleteConfirm = false
+        guard let template else { return }
+        do {
+            try RecurringTaskRepository(context: context).delete(template)
+            try PageRefreshService.refresh(context: context)
+        } catch {
+            print("[RecurringTaskEditor] delete error: \(error)")
+        }
+        dismiss()
+    }
+
+    /// Best-effort weekday set from any stored rule (handles legacy frequencies).
+    private static func weekdays(from rule: RecurrenceRule) -> Set<Int> {
+        switch rule.frequency {
+        case .everyDay: return [1, 2, 3, 4, 5, 6, 7]
+        case .weekdays: return [2, 3, 4, 5, 6]
+        case .weekends: return [1, 7]
+        default: return Set(rule.weekdays)
         }
     }
+}
+
+/// Snapshot of the editable fields, to detect unsaved changes.
+private struct RecurringTaskSnapshot: Equatable {
+    var title = ""
+    var notes = ""
+    var repeatMode = "weekly"
+    var weekdays: Set<Int> = []
+    var fromDate = Calendar.current.startOfDay(for: Date())
+    var toDate = Calendar.current.startOfDay(for: Date())
 }

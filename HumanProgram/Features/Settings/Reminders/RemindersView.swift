@@ -73,6 +73,7 @@ private struct ReminderRow: View {
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     DSText(reminder.title).dsTextStyle(.title3)
+                        .lineLimit(3)
                     DSText(recurrenceSummary(for: reminder)).dsTextStyle(.subheadline)
                     WeekdayStrip(days: Set(reminder.weekdays))
                 }
@@ -86,25 +87,6 @@ private struct ReminderRow: View {
                 .tint(appToggleTint)
         }
         .frame(minHeight: 52)
-    }
-}
-
-/// Compact S M T W T F S strip: enabled days black, the rest grey.
-private struct WeekdayStrip: View {
-    let days: Set<Int>
-    private let letters: [(day: Int, letter: String)] = [
-        (1, "S"), (2, "M"), (3, "T"), (4, "W"), (5, "T"), (6, "F"), (7, "S")
-    ]
-    var body: some View {
-        HStack(spacing: 7) {
-            ForEach(letters, id: \.day) { item in
-                let on = days.contains(item.day)
-                Text(item.letter)
-                    .font(appFont(13, bold: on))
-                    .foregroundStyle(on ? Color.primary : Color.secondary)
-            }
-        }
-        .padding(.top, 2)
     }
 }
 

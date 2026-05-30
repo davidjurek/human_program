@@ -40,6 +40,62 @@ struct WeekdayCircleSelector: View {
     }
 }
 
+// MARK: - Day toggle button (single circular S/M/T… toggle)
+
+/// Circular single-day toggle used by the Exercise recurrence editor.
+/// (Relocated here when the old RecurrenceRuleEditorView was removed.)
+struct DayToggleButton: View {
+    let label: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isSelected ? .white : AppColors.textSecondary)
+                .frame(width: 36, height: 36)
+                .background(
+                    isSelected
+                        ? AppColors.accent
+                        : AppColors.surfaceSunken
+                )
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            isSelected ? Color.clear : AppColors.border,
+                            lineWidth: 1
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+}
+
+// MARK: - Weekday strip (read-only S M T W T F S summary for list rows)
+
+/// Compact S M T W T F S strip: enabled days bold/primary, the rest grey.
+/// Used by the planning LIST rows (reminders, recurring tasks, schedule).
+struct WeekdayStrip: View {
+    let days: Set<Int>
+    private let letters: [(day: Int, letter: String)] = [
+        (1, "S"), (2, "M"), (3, "T"), (4, "W"), (5, "T"), (6, "F"), (7, "S")
+    ]
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(letters, id: \.day) { item in
+                let on = days.contains(item.day)
+                Text(item.letter)
+                    .font(appFont(13, bold: on))
+                    .foregroundStyle(on ? Color.primary : Color.secondary)
+            }
+        }
+        .padding(.top, 2)
+    }
+}
+
 // MARK: - App dropdown (translucent floating panel, no tail, on top)
 
 struct AppDropdown: View {
@@ -279,6 +335,127 @@ struct WheelHourMinute: View {
         hh = Int(String(s.prefix(2))) ?? 0
         if s.count >= 3 { mm = Int(String(s.dropFirst(2))) ?? 0 }
         minutesOfDay = min(23, hh) * 60 + min(59, mm)
+        if s.count >= 4 { keypadFocused = false }
+    }
+}
+
+// MARK: - Date field — label + native calendar popup (for custom date ranges)
+
+/// A row with a label and a compact date control that opens the system calendar
+/// popup on tap. Shared by the Recurring Task and Schedule editors.
+struct DateFieldRow: View {
+    let label: String
+    @Binding var date: Date
+    /// When set, the picker won't allow a date earlier than this (used for "To").
+    var notBefore: Date? = nil
+
+    var body: some View {
+        HStack {
+            DSText(label).dsTextStyle(.title3)
+            Spacer(minLength: 8)
+            Group {
+                if let notBefore {
+                    DatePicker("", selection: $date, in: notBefore..., displayedComponents: .date)
+                } else {
+                    DatePicker("", selection: $date, displayedComponents: .date)
+                }
+            }
+            .labelsHidden()
+            .tint(weekdaySelectedColor)
+        }
+        .frame(height: 34)
+    }
+}
+
+// MARK: - Duration field — wheel (hours:minutes) with tap-to-numpad
+
+/// Hours:minutes duration wheel, value-only tap to expand. Scrolls normally;
+/// a tap on the wheel opens a numpad to type the duration (HHMM). Mirrors
+/// `WheelHourMinute` but for a duration (0–23 h, 0–59 m).
+struct DurationFieldRow: View {
+    let id: String
+    let label: String
+    @Binding var minutes: Int
+    @Binding var openSection: String?
+
+    private var isOpen: Bool { openSection == id }
+    private var h: Int { minutes / 60 }
+    private var m: Int { minutes % 60 }
+    private var valueString: String {
+        if h > 0 && m > 0 { return "\(h)h \(m)m" }
+        if h > 0 { return "\(h)h" }
+        return "\(m)m"
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack {
+                DSText(label).dsTextStyle(.title3)
+                Spacer()
+                Button { withAnimation { openSection = isOpen ? nil : id } } label: {
+                    Text(valueString).font(appFont(18)).foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(height: 34)
+
+            if isOpen {
+                WheelDuration(minutes: $minutes)
+                    .transition(.opacity)
+            }
+        }
+    }
+}
+
+/// Hours:minutes wheel. Drags scroll; a tap opens a single numpad (HHMM).
+struct WheelDuration: View {
+    @Binding var minutes: Int
+
+    @State private var typed = ""
+    @FocusState private var keypadFocused: Bool
+
+    private var hourBinding: Binding<Int> {
+        Binding(get: { minutes / 60 }, set: { minutes = $0 * 60 + (minutes % 60) })
+    }
+    private var minuteBinding: Binding<Int> {
+        Binding(get: { minutes % 60 }, set: { minutes = (minutes / 60) * 60 + $0 })
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Picker("", selection: hourBinding) {
+                ForEach(0..<24, id: \.self) { Text("\($0)h").tag($0) }
+            }
+            .pickerStyle(.wheel)
+
+            Picker("", selection: minuteBinding) {
+                ForEach(0..<60, id: \.self) { Text("\($0)m").tag($0) }
+            }
+            .pickerStyle(.wheel)
+        }
+        .frame(width: 210, height: 140)
+        .frame(maxWidth: .infinity)
+        .simultaneousGesture(TapGesture().onEnded {
+            typed = ""
+            keypadFocused = true
+        })
+        .overlay(
+            TextField("", text: $typed)
+                .keyboardType(.numberPad)
+                .focused($keypadFocused)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .onChange(of: typed) { _, _ in applyTyped() }
+        )
+    }
+
+    private func applyTyped() {
+        let s = String(typed.filter(\.isNumber).prefix(4))
+        guard !s.isEmpty else { return }
+        var hh = 0, mm = 0
+        hh = Int(String(s.prefix(2))) ?? 0
+        if s.count >= 3 { mm = Int(String(s.dropFirst(2))) ?? 0 }
+        minutes = min(23, hh) * 60 + min(59, mm)
         if s.count >= 4 { keypadFocused = false }
     }
 }

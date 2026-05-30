@@ -1,511 +1,369 @@
 import SwiftUI
 import SwiftData
+import DSKit
 
-// MARK: - ScheduleEditorView
+// Schedule editor, built on the Reminder-editor pattern: SettingsScreen
+// container, upper-right Save (disabled until valid), swipe-back, and a
+// discard-changes guard that stays quiet when nothing was entered.
+//
+// Layout: Name · Repeat (Weekly | Custom range) · 7-day circles (always) ·
+// From/To (custom range only) · Sleep from/to · block list (Sleep first,
+// hold-drag to reorder) · inline add-block row with a time-remaining readout
+// and a "+" that disables when the block won't fit in 24h.
+//
+// Block durations are the source of truth; start/end times are computed by
+// chaining from the sleep wake time. Persistence reuses ScheduleRepository,
+// whose normalizeBlocks recomputes the same chain.
 
 struct ScheduleEditorView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
-    @Bindable var template: ScheduleTemplate
+    /// nil = creating a new schedule; non-nil = editing an existing one.
+    let template: ScheduleTemplate?
 
-    // Local edit state — seeded from template on appear, committed on Save
-    @State private var name: String = ""
-    @State private var isEnabled: Bool = true
-    @State private var assignmentMode: AssignmentMode = .weekdays
-    @State private var selectedWeekdays: [Int] = []
-    @State private var customDateStart: Date = Calendar.current.startOfDay(for: Date())
-    @State private var customDateEnd: Date = Calendar.current.startOfDay(for: Date())
+    @State private var name = ""
+    @State private var repeatMode = "weekly"          // "weekly" | "custom"
+    @State private var weekdays: Set<Int> = []
+    @State private var fromDate = Calendar.current.startOfDay(for: Date())
+    @State private var toDate = Calendar.current.startOfDay(for: Date())
+    @State private var sleepStart = 21 * 60 + 30       // 21:30
+    @State private var sleepEnd = 5 * 60 + 30          // 05:30
+    @State private var blocks: [DraftBlock] = []       // non-sleep, in order
 
-    // Block editing sheets
-    @State private var showSleepEditor = false
-    @State private var blockToEdit: ScheduleBlock? = nil
-    @State private var showAddBlock = false
+    // Inline add-block row
+    @State private var newTitle = ""
+    @State private var newDuration = 60
 
-    // Edit mode for block deletion / reorder
-    @State private var isEditMode = false
+    @State private var openSection: String?
+    @State private var showDeleteConfirm = false
+    @State private var showDiscardConfirm = false
+    @State private var conflictMessage: String?
+    @State private var original = ScheduleSnapshot()
+    @State private var didLoad = false
 
-    // Error and conflict state
-    @State private var conflictMessage: String? = nil
-    @State private var saveError: String? = nil
+    // Drag-to-reorder
+    @State private var draggingId: UUID?
+    @State private var dragOffset: CGFloat = 0
+    private let rowHeight: CGFloat = 60
 
-    @FocusState private var nameFocused: Bool
+    // MARK: - Derived values
 
-    private enum AssignmentMode: String, CaseIterable {
-        case weekdays = "Weekdays"
-        case dateRange = "Date Range"
+    private var sleepDuration: Int {
+        sleepEnd > sleepStart ? sleepEnd - sleepStart : (1440 - sleepStart) + sleepEnd
+    }
+    private var usedMinutes: Int { sleepDuration + blocks.reduce(0) { $0 + $1.duration } }
+    private var remaining: Int { max(0, 1440 - usedMinutes) }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && !weekdays.isEmpty
+    }
+    private var canAddBlock: Bool {
+        !newTitle.trimmingCharacters(in: .whitespaces).isEmpty
+            && newDuration > 0 && newDuration <= remaining
     }
 
-    private var sortedBlocks: [ScheduleBlock] {
-        template.blocks.sorted { $0.sortOrder < $1.sortOrder }
+    /// Start/end minute for each non-sleep block, chained from the wake time.
+    private var blockTimes: [(start: Int, end: Int)] {
+        var cursor = sleepEnd
+        return blocks.map { b in
+            let start = cursor
+            let end = (cursor + b.duration) % 1440
+            cursor = end
+            return (start, end)
+        }
     }
 
-    private var nonSleepBlocks: [ScheduleBlock] {
-        sortedBlocks.filter { $0.title != "Sleep" }
+    private var currentSnapshot: ScheduleSnapshot {
+        ScheduleSnapshot(name: name, repeatMode: repeatMode, weekdays: weekdays,
+                         fromDate: fromDate, toDate: toDate,
+                         sleepStart: sleepStart, sleepEnd: sleepEnd, blocks: blocks)
+    }
+    private var hasUnsavedChanges: Bool {
+        template == nil ? (canSave || !blocks.isEmpty) : (currentSnapshot != original)
+    }
+    private func attemptBack() {
+        if hasUnsavedChanges { showDiscardConfirm = true } else { dismiss() }
     }
 
-    private var sleepBlock: ScheduleBlock? {
-        template.blocks.first { $0.title == "Sleep" }
-    }
+    // MARK: - Body
 
     var body: some View {
-        ZStack {
-            AppColors.background.ignoresSafeArea()
+        SettingsScreen(centered: true, onBack: attemptBack, trailing: { editorButtons }) {
+            AppTextField(text: $name, placeholder: "Schedule name", fontSize: 20)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    nameSection
-                    divider()
-                    enabledSection
-                    divider()
-                    assignmentSection
-                    divider()
-                    blocksSection
-                }
-                .padding(.top, 8)
-                .padding(.bottom, 32)
+            if let conflictMessage {
+                Text(conflictMessage)
+                    .font(appFont(15)).foregroundStyle(.red)
             }
-        }
-        .navigationTitle(name.isEmpty ? "New Schedule" : name)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Save") {
-                    save()
-                }
-                .font(AppTypography.bodyMediumText())
-                .foregroundStyle(name.trimmingCharacters(in: .whitespaces).isEmpty ? AppColors.textTertiary : AppColors.accent)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-            ToolbarItem(placement: .cancellationAction) {
-                if !sortedBlocks.isEmpty {
-                    Button(isEditMode ? "Done" : "Edit") {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isEditMode.toggle()
-                        }
-                    }
-                    .foregroundStyle(AppColors.accent)
-                }
-            }
-        }
-        .sheet(isPresented: $showSleepEditor) {
-            if let sleep = sleepBlock {
-                SleepBlockEditorSheet(
-                    template: template,
-                    initialBedtime: sleep.startMinuteOfDay,
-                    initialWake: sleep.endMinuteOfDay
-                )
-            }
-        }
-        .sheet(item: $blockToEdit) { block in
-            ScheduleBlockEditorSheet(
-                template: template,
-                existingBlock: block,
-                startMinuteOfDay: block.startMinuteOfDay
+
+            AppDropdown(
+                label: "Repeat",
+                options: [("weekly", "Weekly"), ("custom", "Custom range")],
+                selection: $repeatMode, openSection: $openSection, id: "repeat"
             )
-        }
-        .sheet(isPresented: $showAddBlock) {
-            let startMinute = sortedBlocks.last?.endMinuteOfDay ?? (5 * 60 + 30)
-            ScheduleBlockEditorSheet(
-                template: template,
-                existingBlock: nil,
-                startMinuteOfDay: startMinute
-            )
-        }
-        .alert("Schedule Conflict", isPresented: Binding(
-            get: { conflictMessage != nil },
-            set: { if !$0 { conflictMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(conflictMessage ?? "")
-        }
-        .alert("Save Error", isPresented: Binding(
-            get: { saveError != nil },
-            set: { if !$0 { saveError = nil } }
-        )) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(saveError ?? "An unknown error occurred.")
-        }
-        .onAppear {
-            syncFromTemplate()
-        }
-    }
 
-    // MARK: - Name section
+            WeekdayCircleSelector(selected: $weekdays)
 
-    private var nameSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionLabel("NAME")
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-            TextField("Schedule name", text: $name)
-                .font(AppTypography.bodyText())
-                .foregroundStyle(AppColors.textPrimary)
-                .focused($nameFocused)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
-                .submitLabel(.done)
+            if repeatMode == "custom" {
+                DateFieldRow(label: "From", date: $fromDate)
+                DateFieldRow(label: "To", date: $toDate, notBefore: fromDate)
+            }
+
+            // Sleep
+            SettingsSectionLabel(title: "Sleep")
+            TimeFieldRow(id: "sleepFrom", label: "Sleep from", minutesOfDay: $sleepStart, openSection: $openSection)
+            TimeFieldRow(id: "sleepTo", label: "Sleep to", minutesOfDay: $sleepEnd, openSection: $openSection)
+
+            // Blocks
+            SettingsSectionLabel(title: "Blocks")
+            blockList
+            addBlockRow
         }
-    }
-
-    // MARK: - Enabled section
-
-    private var enabledSection: some View {
-        Toggle(isOn: $isEnabled) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Enabled")
-                    .font(AppTypography.bodyText())
-                    .foregroundStyle(AppColors.textPrimary)
-                Text(isEnabled ? "Applied on assigned days" : "Not applied to any day")
-                    .font(AppTypography.taskMeta())
-                    .foregroundStyle(AppColors.textTertiary)
+        .overlay {
+            if showDeleteConfirm {
+                ConfirmPopup(message: "Delete schedule?", confirmTitle: "Delete",
+                             onConfirm: { deleteSchedule() }, onCancel: { showDeleteConfirm = false })
+            }
+            if showDiscardConfirm {
+                ConfirmPopup(message: "Discard Changes?", confirmTitle: "Discard",
+                             onConfirm: { dismiss() }, onCancel: { showDiscardConfirm = false })
             }
         }
-        .toggleStyle(SwitchToggleStyle(tint: AppColors.accentGreen))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .onAppear(perform: loadIfNeeded)
     }
 
-    // MARK: - Assignment section
-
-    private var assignmentSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionLabel("ASSIGNMENT")
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
-
-            // Segmented control
-            Picker("Assignment mode", selection: $assignmentMode) {
-                ForEach(AssignmentMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
+    @ViewBuilder
+    private var editorButtons: some View {
+        if template != nil {
+            Button { showDeleteConfirm = true } label: {
+                Image(systemName: "trash").font(.system(size: 18))
+                    .foregroundStyle(.red).frame(width: 44, height: 44)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 14)
+        }
+        Button { save() } label: {
+            Text("Save").font(appFont(18))
+                .foregroundStyle(canSave ? .primary : .secondary)
+                .frame(height: 44).padding(.horizontal, 6)
+        }
+        .disabled(!canSave)
+    }
 
-            if assignmentMode == .weekdays {
-                weekdayToggleRow
-                    .padding(.bottom, 14)
-            } else {
-                dateRangeRows
-                    .padding(.bottom, 14)
+    // MARK: - Block list (Sleep first, then draggable non-sleep blocks)
+
+    private var blockList: some View {
+        VStack(spacing: 0) {
+            // Sleep row — fixed first, not draggable.
+            blockRowContent(title: "Sleep", start: sleepStart, end: sleepEnd,
+                            duration: sleepDuration, draggable: false, draftIndex: nil)
+
+            ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
+                let times = blockTimes[index]
+                blockRowContent(title: block.title, start: times.start, end: times.end,
+                                duration: block.duration, draggable: true, draftIndex: index)
+                    .offset(y: draggingId == block.id ? dragOffset : 0)
+                    .zIndex(draggingId == block.id ? 1 : 0)
+                    .gesture(dragGesture(for: index, id: block.id))
             }
         }
     }
 
-    private var weekdayToggleRow: some View {
-        HStack(spacing: 6) {
-            ForEach(1...7, id: \.self) { wd in
-                DayToggleButton(
-                    label: singleDayLetter(wd),
-                    isSelected: selectedWeekdays.contains(wd),
-                    action: { toggleWeekday(wd) }
-                )
-            }
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private var dateRangeRows: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    sectionLabel("FROM")
-                }
-                Spacer()
-                DatePicker("", selection: $customDateStart, displayedComponents: .date)
-                    .labelsHidden()
-                    .accentColor(AppColors.accent)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-
-            divider()
-
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    sectionLabel("TO")
-                }
-                Spacer()
-                DatePicker("", selection: $customDateEnd, in: customDateStart..., displayedComponents: .date)
-                    .labelsHidden()
-                    .accentColor(AppColors.accent)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-        }
-    }
-
-    // MARK: - Blocks section
-
-    private var blocksSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                sectionLabel("BLOCKS")
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 4)
-
-            if sortedBlocks.isEmpty {
-                Text("No blocks yet.")
-                    .font(AppTypography.bodySmallText())
-                    .foregroundStyle(AppColors.textTertiary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-            } else {
-                // Sleep block (always first, not deletable)
-                if let sleep = sleepBlock {
-                    sleepBlockRow(sleep)
-                    divider()
-                }
-
-                // Non-sleep blocks
-                ForEach(nonSleepBlocks) { block in
-                    blockRow(block)
-                    divider()
-                }
-            }
-
-            // Add block button
-            Button {
-                showAddBlock = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(AppColors.accent)
-                    Text("Add Block")
-                        .font(AppTypography.bodySmallText())
-                        .foregroundStyle(AppColors.accent)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    // MARK: - Sleep block row
-
-    private func sleepBlockRow(_ block: ScheduleBlock) -> some View {
+    private func blockRowContent(title: String, start: Int, end: Int, duration: Int,
+                                 draggable: Bool, draftIndex: Int?) -> some View {
         HStack(spacing: 12) {
-            // Time label
-            Text(minutesToTimeString(block.startMinuteOfDay))
-                .font(AppTypography.timeLabel())
-                .foregroundStyle(AppColors.textTertiary)
-                .monospacedDigit()
-                .frame(width: 40, alignment: .leading)
-
-            // Title
             VStack(alignment: .leading, spacing: 2) {
-                Text(block.title)
-                    .font(AppTypography.taskTitle())
-                    .foregroundStyle(AppColors.textPrimary)
-                Text("\(minutesToTimeString(block.startMinuteOfDay)) – \(minutesToTimeString(block.endMinuteOfDay))")
-                    .font(AppTypography.taskMeta())
-                    .foregroundStyle(AppColors.textTertiary)
+                DSText(title.isEmpty ? "Untitled" : title).dsTextStyle(.body)
+                    .lineLimit(1)
+                Text("\(hhmm(start))–\(hhmm(end))")
+                    .font(appFont(14)).foregroundStyle(.secondary)
             }
-
             Spacer()
+            Text(durationText(duration))
+                .font(appFont(15)).foregroundStyle(.secondary)
 
-            // Duration
-            Text(formatDuration(block.durationMinutes))
-                .font(AppTypography.caption())
-                .foregroundStyle(AppColors.textTertiary)
-
-            // Chevron
-            Image(systemName: "chevron.right")
-                .font(AppTypography.caption())
-                .foregroundStyle(AppColors.textTertiary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            showSleepEditor = true
-        }
-    }
-
-    // MARK: - Regular block row
-
-    private func blockRow(_ block: ScheduleBlock) -> some View {
-        HStack(spacing: 12) {
-            // Delete button (edit mode only)
-            if isEditMode {
-                Button {
-                    deleteBlock(block)
-                } label: {
+            if let draftIndex {
+                Button { removeBlock(at: draftIndex) } label: {
                     Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(AppColors.destructive)
+                        .font(.system(size: 20)).foregroundStyle(.red)
                 }
-                .transition(.move(edge: .leading).combined(with: .opacity))
-            }
-
-            // Time label
-            Text(minutesToTimeString(block.startMinuteOfDay))
-                .font(AppTypography.timeLabel())
-                .foregroundStyle(AppColors.textTertiary)
-                .monospacedDigit()
-                .frame(width: 40, alignment: .leading)
-
-            // Title + time range
-            VStack(alignment: .leading, spacing: 2) {
-                Text(block.title)
-                    .font(AppTypography.taskTitle())
-                    .foregroundStyle(AppColors.textPrimary)
-                Text("\(minutesToTimeString(block.startMinuteOfDay)) – \(minutesToTimeString(block.endMinuteOfDay))")
-                    .font(AppTypography.taskMeta())
-                    .foregroundStyle(AppColors.textTertiary)
-            }
-
-            Spacer()
-
-            // Duration
-            Text(formatDuration(block.durationMinutes))
-                .font(AppTypography.caption())
-                .foregroundStyle(AppColors.textTertiary)
-
-            if isEditMode {
-                // Drag handle
+                .buttonStyle(.plain)
                 Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(AppColors.textTertiary)
-            } else {
-                // Chevron
-                Image(systemName: "chevron.right")
-                    .font(AppTypography.caption())
-                    .foregroundStyle(AppColors.textTertiary)
+                    .font(.system(size: 16)).foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
+        .frame(height: rowHeight)
         .contentShape(Rectangle())
-        .onTapGesture {
-            if !isEditMode {
-                blockToEdit = block
+        .opacity(draggable ? 1 : 1)
+    }
+
+    private func dragGesture(for index: Int, id: UUID) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.25)
+            .sequenced(before: DragGesture())
+            .onChanged { value in
+                if case .second(true, let drag?) = value {
+                    draggingId = id
+                    dragOffset = drag.translation.height
+                }
+            }
+            .onEnded { _ in
+                let shift = Int((dragOffset / rowHeight).rounded())
+                let target = max(0, min(blocks.count - 1, index + shift))
+                if target != index {
+                    let moved = blocks.remove(at: index)
+                    blocks.insert(moved, at: target)
+                }
+                draggingId = nil
+                dragOffset = 0
+            }
+    }
+
+    // MARK: - Add-block row
+
+    private var addBlockRow: some View {
+        VStack(spacing: 10) {
+            AppTextField(text: $newTitle, placeholder: "Block title", fontSize: 18)
+            DurationFieldRow(id: "newDuration", label: "Duration", minutes: $newDuration, openSection: $openSection)
+            HStack {
+                DSText(remaining == 0 ? "Day full" : "\(durationText(remaining)) left")
+                    .dsTextStyle(.subheadline)
+                Spacer()
+                Button { addBlock() } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 26))
+                        .foregroundStyle(canAddBlock ? Color.primary : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canAddBlock)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isEditMode)
     }
 
-    // MARK: - Helpers
-
-    private func divider() -> some View {
-        Divider()
-            .padding(.leading, 16)
-            .foregroundStyle(AppColors.separator)
+    private func addBlock() {
+        guard canAddBlock else { return }
+        blocks.append(DraftBlock(title: newTitle.trimmingCharacters(in: .whitespaces), duration: newDuration))
+        newTitle = ""
     }
 
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text)
-            .font(AppTypography.sectionHeader())
-            .foregroundStyle(AppColors.textTertiary)
-            .kerning(0.4)
+    private func removeBlock(at index: Int) {
+        guard blocks.indices.contains(index) else { return }
+        blocks.remove(at: index)
     }
 
-    private func singleDayLetter(_ weekday: Int) -> String {
-        let letters = ["S", "M", "T", "W", "T", "F", "S"]
-        let idx = weekday - 1
-        guard idx >= 0, idx < letters.count else { return "?" }
-        return letters[idx]
-    }
+    // MARK: - Load / Save
 
-    private func toggleWeekday(_ weekday: Int) {
-        if selectedWeekdays.contains(weekday) {
-            selectedWeekdays.removeAll { $0 == weekday }
+    private func loadIfNeeded() {
+        guard !didLoad else { return }
+        didLoad = true
+        defer { original = currentSnapshot }
+        guard let t = template else { return }
+        name = t.name
+        if t.customDateStart != nil || t.customDateEnd != nil {
+            repeatMode = "custom"
+            fromDate = t.customDateStart ?? Calendar.current.startOfDay(for: Date())
+            toDate = t.customDateEnd ?? fromDate
+            weekdays = Set(t.assignedWeekdays)
         } else {
-            selectedWeekdays.append(weekday)
+            repeatMode = "weekly"
+            weekdays = Set(t.assignedWeekdays)
         }
+        let sorted = t.blocks.sorted { $0.sortOrder < $1.sortOrder }
+        if let sleep = sorted.first(where: { $0.title == "Sleep" }) {
+            sleepStart = sleep.startMinuteOfDay
+            sleepEnd = sleep.endMinuteOfDay
+        }
+        blocks = sorted.filter { $0.title != "Sleep" }
+            .map { DraftBlock(title: $0.title, duration: $0.durationMinutes) }
     }
 
-    // MARK: - Sync
-
-    private func syncFromTemplate() {
-        name = template.name
-        isEnabled = template.isEnabled
-
-        if template.customDateStart != nil || template.customDateEnd != nil {
-            assignmentMode = .dateRange
-            customDateStart = template.customDateStart ?? Calendar.current.startOfDay(for: Date())
-            customDateEnd = template.customDateEnd ?? Calendar.current.startOfDay(for: Date())
-        } else {
-            assignmentMode = .weekdays
-            selectedWeekdays = template.assignedWeekdays
+    private func buildBlocks() -> [ScheduleBlock] {
+        var result: [ScheduleBlock] = [
+            ScheduleBlock(title: "Sleep", startMinuteOfDay: sleepStart, endMinuteOfDay: sleepEnd, sortOrder: 0)
+        ]
+        for (i, b) in blocks.enumerated() {
+            // Times are placeholders; ScheduleRepository.normalizeBlocks recomputes
+            // them from each block's duration when saving.
+            result.append(ScheduleBlock(title: b.title, startMinuteOfDay: 0,
+                                        endMinuteOfDay: b.duration % 1440, sortOrder: i + 1))
         }
+        return result
     }
-
-    private func commitToTemplate() {
-        template.name = name.trimmingCharacters(in: .whitespaces)
-        template.isEnabled = isEnabled
-
-        if assignmentMode == .weekdays {
-            template.assignedWeekdays = selectedWeekdays
-            template.customDateStart = nil
-            template.customDateEnd = nil
-        } else {
-            template.assignedWeekdays = []
-            template.customDateStart = customDateStart
-            template.customDateEnd = customDateEnd
-        }
-    }
-
-    // MARK: - Save
 
     private func save() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty, !weekdays.isEmpty else { return }
 
-        commitToTemplate()
+        let repo = ScheduleRepository(context: context)
+        let isNew = template == nil
+        let t = template ?? ScheduleTemplate(name: trimmed)
+        if isNew { context.insert(t) }
+
+        t.name = trimmed
+        if repeatMode == "custom" {
+            t.assignedWeekdays = weekdays.sorted()
+            t.customDateStart = Calendar.current.startOfDay(for: fromDate)
+            t.customDateEnd = Calendar.current.startOfDay(for: toDate)
+        } else {
+            t.assignedWeekdays = weekdays.sorted()
+            t.customDateStart = nil
+            t.customDateEnd = nil
+        }
+        t.blocks = buildBlocks()
 
         do {
-            let repo = ScheduleRepository(context: context)
-            if let conflict = try repo.save(template) {
+            if let conflict = try repo.save(t) {
                 conflictMessage = conflict.reason
+                if isNew { context.delete(t); try? context.save() }
                 return
             }
             try PageRefreshService.refresh(context: context)
         } catch {
-            saveError = error.localizedDescription
+            print("[ScheduleEditor] save error: \(error)")
         }
+        dismiss()
     }
 
-    // MARK: - Delete block
-
-    private func deleteBlock(_ block: ScheduleBlock) {
+    private func deleteSchedule() {
+        showDeleteConfirm = false
+        guard let template else { return }
         do {
-            let repo = ScheduleRepository(context: context)
-            try repo.deleteBlock(block, from: template)
+            try ScheduleRepository(context: context).delete(template)
             try PageRefreshService.refresh(context: context)
         } catch {
-            saveError = error.localizedDescription
+            print("[ScheduleEditor] delete error: \(error)")
         }
+        dismiss()
     }
-}
 
-// MARK: - Formatting helpers (file-private)
+    // MARK: - Formatting
 
-func minutesToTimeString(_ minutes: Int) -> String {
-    let totalMinutes = ((minutes % 1440) + 1440) % 1440
-    let hours = totalMinutes / 60
-    let mins = totalMinutes % 60
-    return String(format: "%02d:%02d", hours, mins)
-}
-
-func formatDuration(_ minutes: Int) -> String {
-    let h = minutes / 60
-    let m = minutes % 60
-    if h > 0 && m > 0 {
-        return "\(h)h \(m)m"
-    } else if h > 0 {
-        return "\(h)h"
-    } else {
+    private func hhmm(_ minutes: Int) -> String {
+        let m = ((minutes % 1440) + 1440) % 1440
+        return String(format: "%02d:%02d", m / 60, m % 60)
+    }
+    private func durationText(_ minutes: Int) -> String {
+        let h = minutes / 60, m = minutes % 60
+        if h > 0 && m > 0 { return "\(h)h \(m)m" }
+        if h > 0 { return "\(h)h" }
         return "\(m)m"
     }
+}
+
+/// A non-sleep block while editing: title + duration (times are derived).
+struct DraftBlock: Identifiable, Equatable {
+    var id = UUID()
+    var title: String
+    var duration: Int   // minutes
+}
+
+/// Snapshot of the editable fields, to detect unsaved changes.
+private struct ScheduleSnapshot: Equatable {
+    var name = ""
+    var repeatMode = "weekly"
+    var weekdays: Set<Int> = []
+    var fromDate = Calendar.current.startOfDay(for: Date())
+    var toDate = Calendar.current.startOfDay(for: Date())
+    var sleepStart = 21 * 60 + 30
+    var sleepEnd = 5 * 60 + 30
+    var blocks: [DraftBlock] = []
 }

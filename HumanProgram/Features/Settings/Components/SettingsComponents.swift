@@ -51,6 +51,11 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top) { topBar }
+        // Hiding the system back button also turns off iOS's leading-edge
+        // swipe-back gesture. Re-enable it here — but only on screens that use
+        // the default back (onBack == nil). Screens with a custom back guard
+        // (e.g. discard-changes) keep swipe off so a swipe can't bypass it.
+        .background(SwipeBackEnabler(enabled: onBack == nil))
     }
 
     // Bare buttons (no glass card). High-priority back tap so the leading-edge
@@ -71,6 +76,43 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
+    }
+}
+
+/// Restores the iOS leading-edge swipe-back gesture on screens that hide the
+/// system nav-bar back button (which normally disables the gesture). It does
+/// this by re-pointing the navigation controller's interactive-pop gesture at
+/// our own delegate, which allows the swipe whenever there's a screen to pop
+/// back to. When `enabled` is false the gesture is suppressed (used by screens
+/// with a custom back guard so a swipe can't skip the guard).
+private struct SwipeBackEnabler: UIViewControllerRepresentable {
+    var enabled: Bool
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        context.coordinator.enabled = enabled
+        return UIViewController()
+    }
+
+    func updateUIViewController(_ vc: UIViewController, context: Context) {
+        context.coordinator.enabled = enabled
+        // Re-assert on every update so popping back to this screen restores it.
+        DispatchQueue.main.async {
+            guard let nav = vc.navigationController else { return }
+            context.coordinator.navController = nav
+            nav.interactivePopGestureRecognizer?.delegate = context.coordinator
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        weak var navController: UINavigationController?
+        var enabled = true
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard enabled else { return false }
+            return (navController?.viewControllers.count ?? 0) > 1
+        }
     }
 }
 

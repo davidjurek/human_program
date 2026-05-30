@@ -6,7 +6,11 @@ struct CatCornerView: View {
         return UIImage(named: name) != nil ? name : nil
     }
 
-    @State private var viewerIndex: Int = 0
+    /// Inter-photo gutter, like the gap Apple Photos shows mid-swipe. Tunable.
+    private let photoGap: CGFloat = 20
+
+    @State private var scrollID: Int?
+    @State private var isZoomed = false
 
     var body: some View {
         ZStack {
@@ -15,18 +19,40 @@ struct CatCornerView: View {
             if photos.isEmpty {
                 emptyState
             } else {
-                // Full-screen photo viewer — swipe horizontally to move between photos.
-                TabView(selection: $viewerIndex) {
-                    ForEach(photos.indices, id: \.self) { index in
-                        ZoomableImageView(imageName: photos[index])
-                            .tag(index)
-                            // No context menu — prevents save/share on long-press
-                            .contextMenu {}
+                // Full-screen photo viewer. A paging ScrollView with a gap
+                // between photos: each photo sits full-bleed at rest and the
+                // gutter only appears while swiping — Apple Photos behavior.
+                // (A TabView page style can't do this; its pages are edge-to-edge.)
+                GeometryReader { geo in
+                    ScrollView(.horizontal) {
+                        LazyHStack(spacing: photoGap) {
+                            ForEach(photos.indices, id: \.self) { index in
+                                ZoomableImageView(imageName: photos[index], isZoomed: $isZoomed)
+                                    .frame(width: geo.size.width, height: geo.size.height)
+                                    .id(index)
+                                    // No context menu — prevents save/share on long-press
+                                    .contextMenu {}
+                            }
+                        }
+                        .scrollTargetLayout()
                     }
+                    .scrollTargetBehavior(.viewAligned)
+                    .scrollPosition(id: $scrollID)
+                    .scrollIndicators(.hidden)
+                    // While a photo is zoomed, freeze paging so the drag pans
+                    // the photo instead of swiping to the next one.
+                    .scrollDisabled(isZoomed)
                 }
-                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
-                .indexViewStyle(.page(backgroundDisplayMode: .interactive))
                 .ignoresSafeArea()
+
+                // Page dots (the ScrollView doesn't provide them). Hidden while
+                // zoomed, matching the way Apple Photos hides chrome on zoom.
+                if photos.count > 1 && !isZoomed {
+                    PageDots(count: photos.count, current: scrollID ?? 0)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 24)
+                        .allowsHitTesting(false)
+                }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -47,6 +73,24 @@ struct CatCornerView: View {
     }
 }
 
+// MARK: - Page dots
+
+/// Apple-style paging dots: the current photo's dot is bright, the rest dimmed.
+private struct PageDots: View {
+    let count: Int
+    let current: Int
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<count, id: \.self) { index in
+                Circle()
+                    .fill(Color.white.opacity(index == current ? 0.95 : 0.35))
+                    .frame(width: 7, height: 7)
+            }
+        }
+    }
+}
+
 // MARK: - Zoomable image view
 
 // Supports pinch-to-zoom (up to 4x) and double-tap to toggle zoom.
@@ -54,6 +98,9 @@ struct CatCornerView: View {
 // (portrait photos stay portrait). Does NOT expose any save/share controls.
 private struct ZoomableImageView: View {
     let imageName: String
+    /// Reports up to the pager whether this photo is zoomed, so paging can be
+    /// frozen while zoomed (otherwise a pan would swipe to the next photo).
+    @Binding var isZoomed: Bool
 
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0
@@ -100,7 +147,7 @@ private struct ZoomableImageView: View {
                     }
                     // Pan when zoomed. The gesture is only active while zoomed in
                     // (mask = .subviews disables it at 1x) so horizontal swipes pass
-                    // through to the TabView and paging works on the image itself.
+                    // through to the paging ScrollView and move between photos.
                     .gesture(
                         DragGesture()
                             .onChanged { value in
@@ -118,6 +165,10 @@ private struct ZoomableImageView: View {
                             },
                         including: scale > 1.05 ? .all : .subviews
                     )
+                    // Keep the pager in sync so it can freeze paging while zoomed.
+                    .onChange(of: scale) { _, newValue in
+                        isZoomed = newValue > 1.05
+                    }
             }
         }
     }
