@@ -26,6 +26,17 @@
 	<string>Human Program uses Face ID to protect your planner.</string>
 	<key>NSUserNotificationUsageDescription</key>
 	<string>Human Program uses notifications to fire your reminders.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Cardo-Regular.ttf</string>
+		<string>Cardo-Bold.ttf</string>
+		<string>LibertinusSerif-Regular.ttf</string>
+		<string>LibertinusSerif-Bold.ttf</string>
+		<string>MartelSans-Regular.ttf</string>
+		<string>MartelSans-Bold.ttf</string>
+		<string>Lilex.ttf</string>
+		<string>BitcountGridSingle.ttf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

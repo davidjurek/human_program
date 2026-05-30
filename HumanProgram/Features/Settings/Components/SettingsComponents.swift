@@ -6,26 +6,31 @@ import DSKit
 // Every Settings screen is composed from these so the look stays consistent
 // and a visual change is made in exactly one place (per the reuse rule).
 
-/// Soft lavender → peach gradient used behind the Settings-area screens only.
+/// The app background behind the Settings-area screens. Reacts to the system
+/// color scheme: light mode uses the chosen light background, dark mode the
+/// chosen dark background.
 struct SettingsBackground: View {
+    @Environment(\.colorScheme) private var scheme
+    @AppStorage("settings.bgLight") private var lightIndex: Int = 0
+    @AppStorage("settings.bgDark") private var darkIndex: Int = 0
+
     var body: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.80, green: 0.79, blue: 0.96),  // lavender
-                Color(red: 0.86, green: 0.90, blue: 0.99),  // soft blue
-                Color(red: 0.99, green: 0.85, blue: 0.78)   // peach
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
+        AppBackground.resolved(light: lightIndex, dark: darkIndex, scheme: scheme).view
+            .ignoresSafeArea()
     }
 }
 
 /// Themed scrolling container for a settings screen.
 /// Soft gradient background, no navigation title (header titles are hidden
 /// app-wide; the back button stays).
-struct SettingsScreen<Content: View>: View {
+struct SettingsScreen<Content: View, Trailing: View>: View {
+    @Environment(\.dismiss) private var dismiss
+
+    /// Menus use an asymmetric (right-shifted) inset; editor screens centered.
+    var centered: Bool = false
+    /// Custom back action (e.g. a discard-changes guard). Defaults to dismiss().
+    var onBack: (() -> Void)?
+    @ViewBuilder var trailing: () -> Trailing
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -35,16 +40,45 @@ struct SettingsScreen<Content: View>: View {
                 VStack(alignment: .leading, spacing: 28) {
                     content()
                 }
-                .padding(.leading, 44)
+                .padding(.leading, centered ? 20 : 44)
                 .padding(.trailing, 20)
                 .padding(.top, 28)
                 .padding(.bottom, 32)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top) { topBar }
+    }
+
+    // Bare buttons (no glass card). High-priority back tap so the leading-edge
+    // swipe-back gesture can't swallow it.
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .highPriorityGesture(TapGesture().onEnded {
+                    if let onBack { onBack() } else { dismiss() }
+                })
+            Spacer()
+            trailing()
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+    }
+}
+
+extension SettingsScreen where Trailing == EmptyView {
+    init(centered: Bool = false,
+         onBack: (() -> Void)? = nil,
+         @ViewBuilder content: @escaping () -> Content) {
+        self.init(centered: centered, onBack: onBack, trailing: { EmptyView() }, content: content)
     }
 }
 
@@ -54,6 +88,9 @@ struct SettingsSectionLabel: View {
     var body: some View {
         DSText(title.uppercased())
             .dsTextStyle(.caption1)
+            .lineLimit(1)
+            .frame(height: 20, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -103,6 +140,7 @@ struct SettingsRowContent<Trailing: View>: View {
             }
             trailing()
         }
+        .frame(height: 34)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -161,6 +199,7 @@ struct SettingsSelectRow: View {
                     DSImageView(systemName: "checkmark", size: .font(.body), tint: .color(.primary))
                 }
             }
+            .frame(height: 34)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }

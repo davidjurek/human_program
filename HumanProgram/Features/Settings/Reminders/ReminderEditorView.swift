@@ -1,417 +1,312 @@
 import SwiftUI
 import SwiftData
-
-// MARK: - ReminderEditorView
+import PhotosUI
+import DSKit
 
 struct ReminderEditorView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
-    /// nil = creating new; non-nil = editing existing
-    let reminder: NotificationReminder?
+    let reminder: NotificationReminder?   // nil = new
 
-    // Form state
-    @State private var title: String = ""
-    @State private var message: String = ""
-    @State private var isEnabled: Bool = true
-    @State private var recurrenceMode: NotificationRecurrenceMode = .daily
-    @State private var selectedWeekdays: Set<Int> = []    // 1=Sun…7=Sat
-    @State private var intervalMinutes: Int = 30
-    @State private var windowStart: Date = defaultWindowStart()
-    @State private var windowEnd: Date = defaultWindowEnd()
-    @State private var fireTime: Date = defaultFireTime()
+    @State private var title = ""
+    @State private var message = ""
+    @State private var repeatMode = "once"          // "once" | "multiple"
+    @State private var weekdays: Set<Int> = []
+    @State private var onceMinutes = 8 * 60
+    @State private var startMinutes = 8 * 60
+    @State private var endMinutes = 17 * 60
+    @State private var everyAmount = 1
+    @State private var everyUnitHours = true
     @State private var soundMode: NotificationSoundMode = .defaultSound
-
-    // UX
-    @State private var showUnsavedAlert = false
-    @State private var saveError: String?
-    @FocusState private var titleFocused: Bool
+    @State private var imageFilename: String?
+    @State private var photoItem: PhotosPickerItem?
+    @State private var openSection: String?
+    @State private var showDeleteConfirm = false
+    @State private var showDiscardConfirm = false
+    @State private var original = ReminderSnapshot()
+    @State private var didLoad = false
 
     private let scheduler = RollingReminderScheduler()
 
-    private var isNew: Bool { reminder == nil }
-    private var isTitleValid: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
-
-    // MARK: - Defaults
-
-    private static func defaultFireTime() -> Date {
-        var c = DateComponents(); c.hour = 8; c.minute = 0
-        return Calendar.current.date(from: c) ?? Date()
-    }
-    private static func defaultWindowStart() -> Date {
-        var c = DateComponents(); c.hour = 9; c.minute = 0
-        return Calendar.current.date(from: c) ?? Date()
-    }
-    private static func defaultWindowEnd() -> Date {
-        var c = DateComponents(); c.hour = 17; c.minute = 0
-        return Calendar.current.date(from: c) ?? Date()
+    private var canSave: Bool {
+        // Needs a title AND scheduling info (at least one weekday selected).
+        !title.trimmingCharacters(in: .whitespaces).isEmpty && !weekdays.isEmpty
     }
 
-    // MARK: - Body
+    private var currentSnapshot: ReminderSnapshot {
+        ReminderSnapshot(title: title, message: message, repeatMode: repeatMode, weekdays: weekdays,
+                         onceMinutes: onceMinutes, startMinutes: startMinutes, endMinutes: endMinutes,
+                         everyAmount: everyAmount, everyUnitHours: everyUnitHours,
+                         soundMode: soundMode, imageFilename: imageFilename)
+    }
+
+    private var hasUnsavedChanges: Bool {
+        // New item: only if it has enough to save. Existing: if anything changed.
+        reminder == nil ? canSave : (currentSnapshot != original)
+    }
+
+    private func attemptBack() {
+        if hasUnsavedChanges { showDiscardConfirm = true } else { dismiss() }
+    }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                AppColors.background.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        titleField
-                        Divider().padding(.horizontal, 16)
-                        messageField
-                        Divider().padding(.horizontal, 16)
-                        enabledToggle
-                        Divider().padding(.horizontal, 16)
-                        recurrencePicker
-                        conditionalFields
-                        Divider().padding(.horizontal, 16)
-                        soundPicker
+        SettingsScreen(centered: true, onBack: attemptBack, trailing: { editorButtons }) {
+            // Title (header-less: grey placeholder is the label)
+            AppTextField(text: $title, placeholder: "Title", fontSize: 20)
+
+            // Repeat
+            AppDropdown(
+                label: "Repeat",
+                options: [("once", "Once"), ("multiple", "Multiple")],
+                selection: $repeatMode,
+                openSection: $openSection,
+                id: "repeat"
+            )
+
+            // Days
+            WeekdayCircleSelector(selected: $weekdays)
+
+            // Time
+            if repeatMode == "once" {
+                TimeFieldRow(id: "time", label: "Time", minutesOfDay: $onceMinutes, openSection: $openSection)
+            } else {
+                TimeFieldRow(id: "start", label: "Start", minutesOfDay: $startMinutes, openSection: $openSection)
+                IntervalFieldRow(id: "every", label: "Every", amount: $everyAmount, unitIsHours: $everyUnitHours, openSection: $openSection)
+                TimeFieldRow(id: "end", label: "End", minutesOfDay: $endMinutes, openSection: $openSection)
+            }
+
+            // Sound (only the value is tappable)
+            HStack {
+                DSText("Sound").dsTextStyle(.title3)
+                Spacer()
+                NavigationLink {
+                    SoundListView(selection: $soundMode)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Default").font(appFont(18)).foregroundStyle(.primary)
+                        DSChevronView()
                     }
-                    .padding(.top, 8)
                 }
+                .buttonStyle(.plain)
             }
-            .navigationTitle(isNew ? "New Reminder" : "Edit Reminder")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .foregroundStyle(AppColors.accent)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        save()
-                    }
-                    .font(AppTypography.bodyMediumText())
-                    .foregroundStyle(isTitleValid ? AppColors.accent : AppColors.textTertiary)
-                    .disabled(!isTitleValid)
-                }
+            .frame(height: 34)
+
+            // Optional image
+            imageSection
+
+            // Message / note — at the bottom so it can grow without moving
+            // the controls above it. Multiline, expands to fit.
+            AppTextField(text: $message, placeholder: "Message", fontSize: 20, multiline: true)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .overlay {
+            if showDeleteConfirm {
+                ConfirmPopup(
+                    message: "Delete reminder?",
+                    confirmTitle: "Delete",
+                    onConfirm: { deleteReminder() },
+                    onCancel: { showDeleteConfirm = false }
+                )
             }
-            .alert("Save Error", isPresented: Binding(
-                get: { saveError != nil },
-                set: { if !$0 { saveError = nil } }
-            )) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(saveError ?? "An unknown error occurred.")
+            if showDiscardConfirm {
+                ConfirmPopup(
+                    message: "Discard Changes?",
+                    confirmTitle: "Discard",
+                    onConfirm: { dismiss() },
+                    onCancel: { showDiscardConfirm = false }
+                )
             }
         }
-        .onAppear { populateFields() }
+        .onAppear(perform: loadIfNeeded)
     }
 
-    // MARK: - Title
-
-    private var titleField: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionLabel("TITLE")
-            TextField("Reminder name", text: $title)
-                .font(AppTypography.bodyText())
-                .foregroundStyle(AppColors.textPrimary)
-                .focused($titleFocused)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
-                .submitLabel(.next)
-        }
-    }
-
-    // MARK: - Message
-
-    private var messageField: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionLabel("MESSAGE")
-            TextField("Notification body (optional)", text: $message, axis: .vertical)
-                .font(AppTypography.bodyText())
-                .foregroundStyle(AppColors.textPrimary)
-                .lineLimit(2...4)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
-        }
-    }
-
-    // MARK: - Enabled toggle
-
-    private var enabledToggle: some View {
-        Toggle(isOn: $isEnabled) {
-            Text("Enabled")
-                .font(AppTypography.bodyText())
-                .foregroundStyle(AppColors.textPrimary)
-        }
-        .toggleStyle(SwitchToggleStyle(tint: AppColors.accentGreen))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    // MARK: - Recurrence mode picker
-
-    private var recurrencePicker: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionLabel("REPEAT")
-            Picker("Repeat", selection: $recurrenceMode) {
-                Text("Daily").tag(NotificationRecurrenceMode.daily)
-                Text("Weekdays").tag(NotificationRecurrenceMode.weekdays)
-                Text("Selected Days").tag(NotificationRecurrenceMode.selectedWeekdays)
-                Text("Every N Minutes").tag(NotificationRecurrenceMode.everyNMinutes)
-                Text("Hourly Window").tag(NotificationRecurrenceMode.hourlyWindow)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 14)
-        }
-    }
-
-    // MARK: - Conditional fields
+    // MARK: - Custom top bar (bare icons, no glass card)
 
     @ViewBuilder
-    private var conditionalFields: some View {
-        Divider().padding(.horizontal, 16)
-        switch recurrenceMode {
-        case .daily:
-            fireTimePicker(label: "TIME")
-        case .weekdays:
-            fireTimePicker(label: "TIME")
-        case .selectedWeekdays:
-            weekdaySelector
-            Divider().padding(.horizontal, 16)
-            fireTimePicker(label: "TIME")
-        case .everyNMinutes:
-            intervalStepper
-            Divider().padding(.horizontal, 16)
-            windowTimePickers(label: "ACTIVE WINDOW")
-        case .hourlyWindow:
-            windowTimePickers(label: "WINDOW")
-            Divider().padding(.horizontal, 16)
-            weekdaySelector
+    private var editorButtons: some View {
+        if reminder != nil {
+            Button { showDeleteConfirm = true } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.red)
+                    .frame(width: 44, height: 44)
+            }
         }
+        Button { save() } label: {
+            Text("Save").font(appFont(18))
+                .foregroundStyle(canSave ? .primary : .secondary)
+                .frame(height: 44)
+                .padding(.horizontal, 6)
+        }
+        .disabled(!canSave)
     }
 
-    // MARK: - Fire time picker
+    // MARK: - Image
 
-    private func fireTimePicker(label: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionLabel(label)
-            DatePicker(
-                "Fire time",
-                selection: $fireTime,
-                displayedComponents: .hourAndMinute
-            )
-            .datePickerStyle(.wheel)
-            .labelsHidden()
-            .padding(.horizontal, 16)
-            .padding(.bottom, 14)
-        }
-    }
-
-    // MARK: - Weekday selector (S M T W T F S)
-
-    private var weekdaySelector: some View {
+    @ViewBuilder
+    private var imageSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("DAYS")
-            HStack(spacing: 6) {
-                ForEach(1...7, id: \.self) { weekday in
-                    let selected = selectedWeekdays.contains(weekday)
-                    Button {
-                        if selected {
-                            selectedWeekdays.remove(weekday)
-                        } else {
-                            selectedWeekdays.insert(weekday)
-                        }
-                    } label: {
-                        Text(shortWeekdayLetter(weekday))
-                            .font(AppTypography.buttonLabel())
-                            .foregroundStyle(selected ? .white : AppColors.textPrimary)
-                            .frame(width: 36, height: 36)
-                            .background(
-                                Circle()
-                                    .fill(selected ? AppColors.accent : AppColors.surfaceElevated)
-                            )
-                            .overlay(
-                                Circle()
-                                    .strokeBorder(
-                                        selected ? AppColors.accent : AppColors.border,
-                                        lineWidth: 1
-                                    )
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 14)
-        }
-    }
-
-    // MARK: - Interval stepper
-
-    private var intervalStepper: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionLabel("INTERVAL")
             HStack {
-                Text("Every \(intervalMinutes) min")
-                    .font(AppTypography.bodyText())
-                    .foregroundStyle(AppColors.textPrimary)
-                Spacer()
-                Stepper("", value: $intervalMinutes, in: 5...120, step: 5)
-                    .labelsHidden()
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 14)
-        }
-    }
-
-    // MARK: - Window time pickers (start + end)
-
-    private func windowTimePickers(label: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionLabel(label)
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Start")
-                        .font(AppTypography.taskMeta())
-                        .foregroundStyle(AppColors.textTertiary)
-                    DatePicker(
-                        "Start",
-                        selection: $windowStart,
-                        displayedComponents: .hourAndMinute
-                    )
-                    .datePickerStyle(.wheel)
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("End")
-                        .font(AppTypography.taskMeta())
-                        .foregroundStyle(AppColors.textTertiary)
-                    DatePicker(
-                        "End",
-                        selection: $windowEnd,
-                        displayedComponents: .hourAndMinute
-                    )
-                    .datePickerStyle(.wheel)
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
+                DSText("Image").dsTextStyle(.title3)
+                Spacer(minLength: 8)
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    Text(imageFilename == nil ? "Add" : "Change").font(appFont(18))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 14)
-        }
-    }
+            .frame(height: 34)
 
-    // MARK: - Sound picker
-
-    private var soundPicker: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionLabel("SOUND")
-            Picker("Sound", selection: $soundMode) {
-                Text("Default").tag(NotificationSoundMode.defaultSound)
-                Text("Silent").tag(NotificationSoundMode.silent)
+            if let filename = imageFilename, let image = ReminderImageStore.load(filename) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: 150)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            ReminderImageStore.delete(filename)
+                            imageFilename = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 22))
+                                .foregroundStyle(.white, .black.opacity(0.4))
+                                .padding(8)
+                        }
+                    }
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 14)
+        }
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let name = ReminderImageStore.save(data) {
+                    imageFilename = name
+                }
+            }
         }
     }
 
-    // MARK: - Section label helper
+    // MARK: - Load / Save
 
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text)
-            .font(AppTypography.sectionHeader())
-            .foregroundStyle(AppColors.textTertiary)
-            .kerning(0.4)
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-    }
-
-    // MARK: - Populate fields from existing reminder
-
-    private func populateFields() {
-        if let r = reminder {
-            title = r.title
-            message = r.message
-            isEnabled = r.isEnabled
-            recurrenceMode = r.recurrenceMode
-            selectedWeekdays = Set(r.weekdays)
-            intervalMinutes = max(5, r.intervalMinutes)
-            fireTime = timeDate(hour: r.fireHour, minute: r.fireMinute)
-            windowStart = minuteOfDayToDate(r.windowStartMinute)
-            windowEnd = minuteOfDayToDate(r.windowEndMinute)
-            soundMode = r.soundMode
+    private func loadIfNeeded() {
+        guard !didLoad else { return }
+        didLoad = true
+        defer { original = currentSnapshot }
+        guard let r = reminder else { return }
+        title = r.title
+        message = r.message
+        weekdays = Set(r.weekdays)
+        soundMode = r.soundMode
+        imageFilename = r.imageFilename
+        if r.recurrenceMode == .everyNMinutes {
+            repeatMode = "multiple"
+            startMinutes = r.windowStartMinute
+            endMinutes = r.windowEndMinute
+            if r.intervalMinutes >= 60, r.intervalMinutes % 60 == 0 {
+                everyUnitHours = true
+                everyAmount = min(10, r.intervalMinutes / 60)
+            } else {
+                everyUnitHours = false
+                everyAmount = max(1, min(59, r.intervalMinutes))
+            }
+        } else {
+            repeatMode = "once"
+            onceMinutes = r.fireHour * 60 + r.fireMinute
         }
-        titleFocused = isNew
     }
 
-    // MARK: - Save
+    private func deleteReminder() {
+        showDeleteConfirm = false
+        guard let reminder else { return }
+        let id = reminder.id
+        do {
+            try NotificationReminderRepository(context: context).delete(reminder)
+            scheduler.cancel(reminderId: id)
+        } catch {
+            print("[ReminderEditor] delete error: \(error)")
+        }
+        dismiss()
+    }
 
     private func save() {
-        let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
-        guard !trimmedTitle.isEmpty else { return }
-
-        let cal = Calendar.current
-        let fHour = cal.component(.hour, from: fireTime)
-        let fMinute = cal.component(.minute, from: fireTime)
-        let wsMinute = cal.component(.hour, from: windowStart) * 60 + cal.component(.minute, from: windowStart)
-        let weMinute = cal.component(.hour, from: windowEnd) * 60 + cal.component(.minute, from: windowEnd)
-        let weekdaysArray = selectedWeekdays.sorted()
+        let repo = NotificationReminderRepository(context: context)
+        let mode: NotificationRecurrenceMode = repeatMode == "multiple" ? .everyNMinutes : .selectedWeekdays
+        let fh = (repeatMode == "multiple" ? startMinutes : onceMinutes) / 60
+        let fm = (repeatMode == "multiple" ? startMinutes : onceMinutes) % 60
 
         do {
-            let repo = NotificationReminderRepository(context: context)
-
+            let target: NotificationReminder
             if let existing = reminder {
-                existing.title = trimmedTitle
-                existing.message = message
-                existing.isEnabled = isEnabled
-                existing.recurrenceMode = recurrenceMode
-                existing.weekdays = weekdaysArray
-                existing.fireHour = fHour
-                existing.fireMinute = fMinute
-                existing.intervalMinutes = intervalMinutes
-                existing.windowStartMinute = wsMinute
-                existing.windowEndMinute = weMinute
-                existing.soundMode = soundMode
-                try repo.update(existing)
+                target = existing
             } else {
-                let newReminder = try repo.create(
-                    title: trimmedTitle,
-                    message: message,
-                    fireHour: fHour,
-                    fireMinute: fMinute,
-                    recurrenceMode: recurrenceMode,
-                    weekdays: weekdaysArray,
+                target = try repo.create(
+                    title: title, message: message,
+                    fireHour: fh, fireMinute: fm,
+                    recurrenceMode: mode,
+                    weekdays: weekdays.sorted(),
                     soundMode: soundMode
                 )
-                newReminder.isEnabled = isEnabled
-                newReminder.intervalMinutes = intervalMinutes
-                newReminder.windowStartMinute = wsMinute
-                newReminder.windowEndMinute = weMinute
-                try repo.update(newReminder)
             }
+            target.title = title
+            target.message = message
+            target.recurrenceMode = mode
+            target.weekdays = weekdays.sorted()
+            target.fireHour = fh
+            target.fireMinute = fm
+            if repeatMode == "multiple" {
+                target.windowStartMinute = startMinutes
+                target.windowEndMinute = endMinutes
+                target.intervalMinutes = everyUnitHours ? everyAmount * 60 : everyAmount
+            }
+            target.soundMode = soundMode
+            target.imageFilename = imageFilename
+            try repo.update(target)
 
             let all = (try? repo.fetchAll()) ?? []
-            Task {
-                await scheduler.reschedule(reminders: all)
-            }
-            dismiss()
+            Task { await scheduler.reschedule(reminders: all) }
         } catch {
-            saveError = error.localizedDescription
+            print("[ReminderEditor] save error: \(error)")
         }
+        dismiss()
+    }
+}
+
+/// Snapshot of the editable fields, to detect unsaved changes.
+private struct ReminderSnapshot: Equatable {
+    var title = ""
+    var message = ""
+    var repeatMode = "once"
+    var weekdays: Set<Int> = []
+    var onceMinutes = 8 * 60
+    var startMinutes = 8 * 60
+    var endMinutes = 17 * 60
+    var everyAmount = 1
+    var everyUnitHours = true
+    var soundMode: NotificationSoundMode = .defaultSound
+    var imageFilename: String?
+}
+
+/// Stores reminder images on disk (app support), returns the filename.
+enum ReminderImageStore {
+    private static var dir: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ReminderImages", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
     }
 
-    // MARK: - Conversion helpers
-
-    private func timeDate(hour: Int, minute: Int) -> Date {
-        var c = DateComponents(); c.hour = hour; c.minute = minute
-        return Calendar.current.date(from: c) ?? Date()
+    static func save(_ data: Data) -> String? {
+        guard let image = UIImage(data: data), let jpeg = image.jpegData(compressionQuality: 0.85) else { return nil }
+        let name = UUID().uuidString + ".jpg"
+        do { try jpeg.write(to: dir.appendingPathComponent(name)); return name } catch { return nil }
     }
 
-    private func minuteOfDayToDate(_ minutes: Int) -> Date {
-        timeDate(hour: minutes / 60, minute: minutes % 60)
+    static func load(_ filename: String) -> UIImage? {
+        UIImage(contentsOfFile: dir.appendingPathComponent(filename).path)
     }
 
-    private func shortWeekdayLetter(_ weekday: Int) -> String {
-        // 1=Sun 2=Mon 3=Tue 4=Wed 5=Thu 6=Fri 7=Sat
-        let letters = ["S", "M", "T", "W", "T", "F", "S"]
-        let index = weekday - 1
-        guard index >= 0, index < letters.count else { return "?" }
-        return letters[index]
+    static func delete(_ filename: String) {
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent(filename))
     }
 }

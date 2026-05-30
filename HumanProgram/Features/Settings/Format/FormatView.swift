@@ -21,13 +21,13 @@ struct FormatView: View {
 struct DateFormatView: View {
     @AppStorage("settings.dateFormat") private var format: String = "MMM d, yyyy"
 
-    // (sample label, format string)
+    // (sample label using 01/23/2045, format string)
     private let options: [(String, String)] = [
-        ("Sep 7, 2026", "MMM d, yyyy"),
-        ("September 7, 2026", "MMMM d, yyyy"),
-        ("09/07/2026", "MM/dd/yyyy"),
-        ("07/09/2026", "dd/MM/yyyy"),
-        ("2026-09-07", "yyyy-MM-dd")
+        ("Jan 23, 2045", "MMM d, yyyy"),
+        ("January 23, 2045", "MMMM d, yyyy"),
+        ("01/23/2045", "MM/dd/yyyy"),
+        ("23/01/2045", "dd/MM/yyyy"),
+        ("2045-01-23", "yyyy-MM-dd")
     ]
 
     var body: some View {
@@ -51,10 +51,10 @@ struct TimeFormatView: View {
     var body: some View {
         SettingsScreen {
             SettingsGroup(title: "Time Format") {
-                SettingsSelectRow(label: "12-hour (3:30 PM)", isSelected: format == "12h") {
+                SettingsSelectRow(label: "12-hour (12:34 PM)", isSelected: format == "12h") {
                     format = "12h"
                 }
-                SettingsSelectRow(label: "24-hour (15:30)", isSelected: format == "24h") {
+                SettingsSelectRow(label: "24-hour (12:34)", isSelected: format == "24h") {
                     format = "24h"
                 }
             }

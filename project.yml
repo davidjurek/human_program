@@ -43,6 +43,15 @@ targets:
         NSUserNotificationUsageDescription: "Human Program uses notifications to fire your reminders."
         NSFaceIDUsageDescription: "Human Program uses Face ID to protect your planner."
         UIBackgroundModes: []
+        UIAppFonts:
+          - Cardo-Regular.ttf
+          - Cardo-Bold.ttf
+          - LibertinusSerif-Regular.ttf
+          - LibertinusSerif-Bold.ttf
+          - MartelSans-Regular.ttf
+          - MartelSans-Bold.ttf
+          - Lilex.ttf
+          - BitcountGridSingle.ttf
     settings:
       INFOPLIST_FILE: HumanProgram/Resources/Info.plist
       PRODUCT_NAME: HumanProgram

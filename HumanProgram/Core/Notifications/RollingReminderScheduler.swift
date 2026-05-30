@@ -95,6 +95,19 @@ public struct RollingReminderScheduler: Sendable {
         case .silent:
             content.sound = nil
         }
+
+        // Attach the optional image (saved by ReminderImageStore).
+        if let filename = reminder.imageFilename {
+            let dir = FileManager.default
+                .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("ReminderImages", isDirectory: true)
+            let url = dir.appendingPathComponent(filename)
+            if FileManager.default.fileExists(atPath: url.path),
+               let attachment = try? UNNotificationAttachment(identifier: filename, url: url) {
+                content.attachments = [attachment]
+            }
+        }
+
         return content
     }
 
