@@ -13,9 +13,9 @@ These are locked-in decisions. Do not second-guess or work around them without e
 
 | Decision | Rule |
 |---|---|
-| Minimum OS | iOS 17+ |
+| Minimum OS | iOS 17.6+ (raised from 17.0 on 2026-05-29 for DSKit) |
 | Persistence | SwiftData only |
-| Third-party dependencies in binary | None. Zero. XcodeGen is a dev tool only. |
+| UI framework | DSKit (MIT) — owner-approved 2026-05-29. Ships DSKit + SDWebImage + SDWebImageSwiftUI (all MIT), credited in the in-app Licenses screen. Reverses the former "zero third-party deps" rule. Any OTHER package still needs owner approval. XcodeGen remains a dev tool only. |
 | Cloud, analytics, Firebase, trackers, ads | Not present, not planned |
 | App lock | Face ID + PIN (4–20 digits). Forget PIN = reset app. No recovery phrase. |
 | Backup encryption | .hprgm backups are NOT encrypted. App lock protects on-device data. iOS encrypts at rest when device is locked. |

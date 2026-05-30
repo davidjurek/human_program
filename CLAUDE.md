@@ -99,16 +99,42 @@ That's it. An empty task list is NOT complete. Exercise is not in the task list 
 
 ## Design rules — ALWAYS follow these
 
+- **Reuse UI, never duplicate it.** When the same visual element appears in more than one place — a row, a section header, a banner, a button style, a card, a sheet layout, a spacing value — it must come from ONE shared component, modifier, or token. Do not copy-paste a chunk of view code and tweak it. Before building any UI, search the codebase for an existing component that already does it (or nearly does it) and extend that instead. If a change to one screen needs the same change on another, that is a sign the markup should have been shared — extract it into a reusable view rather than editing two copies. This is the single most important UI rule: many small UI edits are coming, and duplicated view code means each fix has to be made in several places and they will drift apart.
 - **No swipe-to-delete** anywhere in the app. Not on tasks, not on backlog items, not anywhere.
 - **No stock `List {}` with default iOS styling** for the main task list or backlog list. Use `VStack` with custom row views.
 - **Read mode is the default.** Edit controls are hidden until the user enters edit mode.
+- **Read and edit modes must share identical layout — no reflow.** Hiding an edit-only control (delete button, reorder handle, inline field) must NOT move other content. Reserve the same spacing, row heights, columns, padding, and alignment in both modes. Build one shared layout and make edit-only controls invisible/disabled in read mode — don't build two separate layouts that "look close."
+- **Never eyeball or guess UI positions.** When two screens or states must line up, the shared position must come from one shared layout path, wrapper, or component — not from hand-tuned spacers or trial-and-error offsets. Account for every offsetting element (titles, wrappers, hidden controls, padding, insets, different parent layouts). Never claim a position is precise when any part of it was estimated.
 - **No confirmation dialogs for delete.** The plan is undo/redo (not yet built). Don't add "Are you sure?" dialogs as a workaround — just skip the confirmation for now.
-- **Color tokens only.** Use `AppColors` enum. No hardcoded `Color(.red)` or `Color(hex:...)` values in views.
-- **Font tokens only.** Use `AppTypography` enum. No hardcoded `.font(.system(size: 14))` or similar in views.
+- **UI is built on DSKit.** The whole app's UI is migrating to the DSKit design system (`import DSKit`). Use DSKit components (`DSText`, `DSImageView`, `DSButton`, etc.) and the appearance/theme set in `AppTheme.appearance`, applied once at the app root via `.dsAppearance(...)`. `AppColors` / `AppTypography` are LEGACY — they still exist for not-yet-migrated screens, but new or migrated UI must use DSKit, not them. No hardcoded `Color(hex:)` / `.font(.system(size:))` in views.
+- **See the "DSKit" section below** for the Settings UI convention and the API gotchas (the tokens are tricky — read it before writing DSKit code).
 - **The game is completely hidden.** No button, no hint, no card, no label anywhere in the normal UI.
 - **Easter egg path:** About page → double-tap the developer name → Sudoku gate screen → game. If the day is not complete, the double-tap produces a subtle haptic and nothing else. No error message, no explanation.
 
 ---
+
+## DSKit — UI framework
+
+The app's UI runs on [DSKit](https://github.com/imodeveloper/dskit-swiftui) (MIT). Migration is phased, screen by screen, with a green build at each checkpoint. Add new files to the project then run `xcodegen generate` BEFORE building, or DSKit-using files won't be found.
+
+### Settings UI convention (the standard for ALL settings screens)
+
+Every Settings-area screen is composed from the shared components in `Features/Settings/Components/SettingsComponents.swift`. Do NOT hand-roll settings rows — reuse these so one change updates every screen:
+
+- `SettingsScreen { ... }` — themed scroll container. Soft lavender→blue→peach **gradient** background (`SettingsBackground`, Settings screens only), **no nav title** (titles are hidden app-wide; back button stays). Content insets: leading 44, trailing 20, top 28.
+- `SettingsGroup(title:) { rows }` — a section. Optional uppercase label, then rows. Spacing: **18pt** label→first row, **38pt** between rows. Top-level groups are spaced **28pt** apart. Every section that should read as its own block needs a `title` (an untitled group collapses to the smaller 28pt gap and looks inconsistent — give it a header).
+- `SettingsRowContent` / `SettingsNavRow` — **open, card-less rows**: icon + `.title3` label, **no chevron**, full-width tap target. `SettingsNavRow` pushes a destination.
+- Row look: leading SF Symbol icon (`DSImageView(systemName:size:.font(.title3),tint:.color(.primary))`) + `DSText(label).dsTextStyle(.title3)`, optional trailing value.
+
+### DSKit API gotchas (learned the hard way — read before writing DSKit code)
+
+- **Color/typography tokens are ambiguously overloaded.** `.text(...)` exists on multiple DSKit enums, so the two-arg `dsTextStyle(_, .text(.secondary))` does NOT compile. Rules that work:
+  - Default color: use single-arg `.dsTextStyle(.caption1)` (DSKit applies a sensible semantic color).
+  - Explicit color: `.dsTextStyle(.headline, Color.white)` or DSImageView `tint: .color(.primary)`.
+  - Tint from a typography token: `tint: .text(.subheadline)` (the arg is a `DSTypographyToken`, not a color name).
+- **`.label` typography token is ambiguous bare** — use `.body` or `.headline` instead, or it won't type-check.
+- DSKit has **no native Toggle / Segmented / Stepper** — use SwiftUI's native controls inside DSKit containers.
+- `DSText(_:)` takes just a string (no `lineSpacing:` arg here).
 
 ## What's built and what isn't
 
@@ -143,8 +169,8 @@ That's it. An empty task list is NOT complete. Exercise is not in the task list 
 
 These are not up for debate. If a task seems to require changing one of these, stop and ask the owner first.
 
-- **iOS 17+ minimum.** SwiftData only, no Core Data fallback.
-- **No third-party dependencies in the app binary.** XcodeGen is a dev tool only — it never ships. If you want to add a Swift package, ask first.
+- **iOS 17.6+ minimum.** Raised from 17.0 (2026-05-29) because DSKit requires 17.6. SwiftData only, no Core Data fallback.
+- **DSKit is the app's UI framework (owner-approved 2026-05-29).** This REVERSES the former "zero third-party dependencies" rule. The app binary now ships three Swift packages: `DSKit` (MIT), and its transitive deps `SDWebImage` + `SDWebImageSwiftUI` (both MIT). Their licenses are credited in the in-app Licenses screen (Settings → About → Licenses). Any OTHER new third-party package still needs explicit owner approval first. XcodeGen remains a dev tool only (never ships).
 - **No cloud, no analytics, no Firebase, no trackers.** Everything stays on device.
 - **App lock = Face ID + PIN (4–20 digits).** Forgotten PIN = reset app. No recovery phrase, no iCloud backup of the PIN.
 - **Backup files (`.hprgm`) are not encrypted.** App lock protects the data on device. Backup files are plain.
@@ -173,3 +199,14 @@ The owner is a beginner iOS developer. When you finish a task or explain a chang
 - Say exactly what you changed and what to test to verify it works.
 - Keep explanations short. Go deeper only if asked.
 - Ask questions only when you genuinely cannot proceed without an answer. Don't ask for things you can figure out from context or this file.
+
+### Don't overpromise
+
+- **Never claim "done," "complete," "production-ready," or "100%"** unless every core feature, flow, persistence path, and QA item for that work has actually been verified. The owner is frustrated by overpromising and partial-completion claims. If something is partially done, say exactly what works and what doesn't.
+- **No decorative-only work.** Every page, function, and tool must have a real working purpose. A screen is not finished just because it opens — remove or replace placeholder-only routes and stubs rather than leaving them to look complete.
+
+### Work in tested checkpoints
+
+- Make changes in chunks small enough to test. Keep the app buildable and usable after each significant chunk — don't pile up large unverified edits.
+- Commit only after the behavior actually works and the owner approves or asks.
+- Fold durable lessons into the maintained docs (`CLAUDE.md`, `ADD.md`). Don't create separate long-lived handoff/notes files as a parallel source of truth.

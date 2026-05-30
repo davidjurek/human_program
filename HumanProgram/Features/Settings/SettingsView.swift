@@ -1,44 +1,28 @@
 import SwiftUI
+import DSKit
 
 struct SettingsView: View {
     var body: some View {
-        ZStack {
-            AppColors.background.ignoresSafeArea()
-            List {
-                Section("Planning") {
-                    SettingsRow(label: "Recurring Tasks", icon: "repeat",      destination: AnyView(RecurringTasksView()))
-                    SettingsRow(label: "Schedule",        icon: "clock",        destination: AnyView(ScheduleListView()))
-                    SettingsRow(label: "Exercise",        icon: "figure.run",   destination: AnyView(ExerciseSettingsView()))
-                }
-                Section("Notifications & Calendar") {
-                    SettingsRow(label: "Reminders",     icon: "bell",           destination: AnyView(RemindersView()))
-                    SettingsRow(label: "Calendar",      icon: "calendar",       destination: AnyView(CalendarSourceSettingsView()))
-                }
-                Section("Data") {
-                    SettingsRow(label: "Import / Export", icon: "square.and.arrow.up", destination: AnyView(ImportExportView()))
-                    SettingsRow(label: "Security",        icon: "lock",          destination: AnyView(SecuritySettingsView()))
-                }
-                Section {
-                    SettingsRow(label: "About", icon: "info.circle",            destination: AnyView(AboutView()))
-                }
+        SettingsScreen {
+            SettingsGroup(title: "Planning") {
+                SettingsNavRow(label: "Recurring Tasks", systemImage: "repeat") { RecurringTasksView() }
+                SettingsNavRow(label: "Schedule", systemImage: "clock") { ScheduleListView() }
+                SettingsNavRow(label: "Exercise", systemImage: "figure.run") { ExerciseSettingsView() }
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-        }
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
 
-struct SettingsRow: View {
-    let label: String
-    let icon: String
-    let destination: AnyView
+            SettingsGroup(title: "Notifications & Calendar") {
+                SettingsNavRow(label: "Reminders", systemImage: "bell") { RemindersView() }
+                SettingsNavRow(label: "Calendar", systemImage: "calendar") { CalendarSourceSettingsView() }
+            }
 
-    var body: some View {
-        NavigationLink(destination: destination) {
-            Label(label, systemImage: icon)
-                .foregroundStyle(AppColors.textPrimary)
+            SettingsGroup(title: "Data") {
+                SettingsNavRow(label: "Import / Export", systemImage: "square.and.arrow.up") { ImportExportView() }
+                SettingsNavRow(label: "Security", systemImage: "lock") { SecuritySettingsView() }
+            }
+
+            SettingsGroup(title: "Info") {
+                SettingsNavRow(label: "About", systemImage: "info.circle") { AboutView() }
+            }
         }
     }
 }
@@ -46,12 +30,11 @@ struct SettingsRow: View {
 struct PlaceholderSettingsView: View {
     let title: String
     var body: some View {
-        ZStack {
-            AppColors.background.ignoresSafeArea()
-            Text("\(title) settings coming soon")
-                .foregroundStyle(AppColors.textTertiary)
+        SettingsScreen {
+            DSText("\(title) settings coming soon")
+                .dsTextStyle(.subheadline)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 40)
         }
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
     }
 }

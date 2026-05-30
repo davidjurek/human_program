@@ -6,14 +6,7 @@ struct CatCornerView: View {
         return UIImage(named: name) != nil ? name : nil
     }
 
-    @State private var selectedIndex: Int? = nil
     @State private var viewerIndex: Int = 0
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2),
-        GridItem(.flexible(), spacing: 2)
-    ]
 
     var body: some View {
         ZStack {
@@ -22,11 +15,18 @@ struct CatCornerView: View {
             if photos.isEmpty {
                 emptyState
             } else {
-                gridView
-            }
-
-            if selectedIndex != nil {
-                viewerOverlay
+                // Full-screen photo viewer — swipe horizontally to move between photos.
+                TabView(selection: $viewerIndex) {
+                    ForEach(photos.indices, id: \.self) { index in
+                        ZoomableImageView(imageName: photos[index])
+                            .tag(index)
+                            // No context menu — prevents save/share on long-press
+                            .contextMenu {}
+                    }
+                }
+                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
+                .indexViewStyle(.page(backgroundDisplayMode: .interactive))
+                .ignoresSafeArea()
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -42,90 +42,16 @@ struct CatCornerView: View {
                 .foregroundColor(Color.white.opacity(0.25))
             Text("Photos coming soon")
                 .foregroundColor(Color.white.opacity(0.35))
-                .font(AppTypography.body)
+                .font(.body)
         }
-    }
-
-    // MARK: - Grid
-
-    private var gridView: some View {
-        ScrollView {
-            LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(photos.indices, id: \.self) { index in
-                    GridCell(imageName: photos[index])
-                        .onTapGesture {
-                            viewerIndex = index
-                            selectedIndex = index
-                        }
-                        // Disable long-press context menu so system "Save Image" never appears
-                        .contextMenu {}
-                }
-            }
-        }
-    }
-
-    // MARK: - Viewer
-
-    @ViewBuilder
-    private var viewerOverlay: some View {
-        ZStack(alignment: .top) {
-            Color.black.ignoresSafeArea()
-
-            TabView(selection: $viewerIndex) {
-                ForEach(photos.indices, id: \.self) { index in
-                    ZoomableImageView(imageName: photos[index])
-                        .tag(index)
-                        // No context menu — prevents save/share from appearing on long-press
-                        .contextMenu {}
-                }
-            }
-            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-            .ignoresSafeArea()
-
-            // Top bar: dismiss
-            HStack {
-                Spacer()
-                Button {
-                    selectedIndex = nil
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(12)
-                        .background(Color.white.opacity(0.15))
-                        .clipShape(Circle())
-                }
-                .padding(.top, 56)
-                .padding(.trailing, 20)
-            }
-
-            // Bottom page indicator
-            VStack {
-                Spacer()
-                Text("\(viewerIndex + 1) / \(photos.count)")
-                    .font(AppTypography.caption())
-                    .foregroundColor(Color.white.opacity(0.5))
-                    .padding(.bottom, 36)
-            }
-        }
-        .transition(.opacity)
-        .animation(.easeInOut(duration: 0.2), value: selectedIndex)
-        .gesture(
-            DragGesture(minimumDistance: 60, coordinateSpace: .global)
-                .onEnded { value in
-                    if value.translation.height > 80,
-                       value.translation.height > abs(value.translation.width) {
-                        selectedIndex = nil
-                    }
-                }
-        )
     }
 }
 
 // MARK: - Zoomable image view
 
 // Supports pinch-to-zoom (up to 4x) and double-tap to toggle zoom.
-// Does NOT expose any save/share controls.
+// Uses scaledToFit so each photo keeps its original orientation/aspect ratio
+// (portrait photos stay portrait). Does NOT expose any save/share controls.
 private struct ZoomableImageView: View {
     let imageName: String
 
@@ -172,7 +98,9 @@ private struct ZoomableImageView: View {
                             }
                         }
                     }
-                    // Pan when zoomed
+                    // Pan when zoomed. The gesture is only active while zoomed in
+                    // (mask = .subviews disables it at 1x) so horizontal swipes pass
+                    // through to the TabView and paging works on the image itself.
                     .gesture(
                         DragGesture()
                             .onChanged { value in
@@ -184,38 +112,14 @@ private struct ZoomableImageView: View {
                             }
                             .onEnded { _ in
                                 lastOffset = offset
-                                // Snap back if dragged too far
                                 if scale <= 1.05 {
                                     withAnimation(.spring()) { offset = .zero; lastOffset = .zero }
                                 }
-                            }
+                            },
+                        including: scale > 1.05 ? .all : .subviews
                     )
             }
         }
-    }
-}
-
-// MARK: - Grid Cell
-
-private struct GridCell: View {
-    let imageName: String
-
-    var body: some View {
-        GeometryReader { geo in
-            if let uiImage = UIImage(named: imageName) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: geo.size.width, height: geo.size.width)
-                    .clipped()
-                    .cornerRadius(4)
-            } else {
-                Color.gray.opacity(0.2)
-                    .frame(width: geo.size.width, height: geo.size.width)
-                    .cornerRadius(4)
-            }
-        }
-        .aspectRatio(1, contentMode: .fit)
     }
 }
 
@@ -223,7 +127,6 @@ struct CatCornerView_Previews: PreviewProvider {
     static var previews: some View {
         NavigationStack {
             CatCornerView()
-                .navigationTitle("Cat Corner")
         }
     }
 }

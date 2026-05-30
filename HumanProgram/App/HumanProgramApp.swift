@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import DSKit
 
 @main
 struct HumanProgramApp: App {
@@ -18,6 +19,7 @@ struct HumanProgramApp: App {
         WindowGroup {
             ContentView()
                 .environment(appState)
+                .dsAppearance(AppTheme.appearance)
         }
         .modelContainer(container)
     }

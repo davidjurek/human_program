@@ -1,90 +1,54 @@
 import SwiftUI
+import DSKit
 import UIKit
 
 struct AboutView: View {
     @State private var showSudokuGate = false
     @State private var showDocument = false
     private let gateService = EasterEggGateService()
-    // In a real flow, todayPage is injected. For now read from environment.
     @Environment(AppState.self) private var appState
 
-    private var versionString: String {
+    private var versionValue: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-        return "Version \(v) (\(b))"
+        return "\(v) (\(b))"
+    }
+
+    private var buildNumber: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
     }
 
     var body: some View {
-        ZStack {
-            AppColors.background.ignoresSafeArea()
-            List {
-                Section {
-                    VStack(alignment: .center, spacing: 6) {
-                        Text("Human Program")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(AppColors.textPrimary)
-                        Text(versionString)
-                            .font(AppTypography.caption())
-                            .foregroundStyle(AppColors.textTertiary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                }
+        SettingsScreen {
+            // App name header
+            DSText("Human Program")
+                .dsTextStyle(.title2)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 8)
 
-                Section {
-                    // Version row — double tap opens hidden document
-                    HStack {
-                        Text("Build")
-                            .foregroundStyle(AppColors.textPrimary)
-                        Spacer()
-                        Text(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1")
-                            .foregroundStyle(AppColors.textTertiary)
-                    }
+            // Version — its own section
+            SettingsGroup(title: "Version") {
+                SettingsRowContent(label: "Version", value: versionValue) { EmptyView() }
+            }
+
+            // Info rows (Build + Developer carry hidden double-tap gestures)
+            SettingsGroup {
+                SettingsRowContent(label: "Build", value: buildNumber) { EmptyView() }
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { showDocument = true }
 
-                    // Developer name — double tap triggers easter egg (no visual affordance)
-                    HStack {
-                        Text("Developer")
-                            .foregroundStyle(AppColors.textPrimary)
-                        Spacer()
-                        Text("David Jurek")
-                            .foregroundStyle(AppColors.textTertiary)
-                    }
+                SettingsRowContent(label: "Developer", value: "David Jurek") { EmptyView() }
                     .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        // Attempt gate reveal. If locked: silent haptic only.
-                        // We pass nil for todayPage if not loaded — gate returns false safely.
-                        let today = Calendar.current.startOfDay(for: Date())
-                        // We don't have a live DailyPage reference here without a repo call,
-                        // so the gate check is done via AppState completion:
-                        // Build a synthetic page state from AppState for the check.
-                        let tempPage = DailyPage(date: today)
-                        tempPage.dayComplete = appState.streakStats.currentStreak > 0 || isCurrentDayComplete()
-                        if gateService.shouldRevealGate(todayPage: tempPage, today: today) {
-                            showSudokuGate = true
-                        } else {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
-                    }
+                    .onTapGesture(count: 2) { handleDeveloperTap() }
 
-                    NavigationLink(destination: CatCornerView()) {
-                        Text("Cat Corner")
-                            .foregroundStyle(AppColors.textPrimary)
-                    }
-                }
-
-                Section("Licenses") {
-                    Text("This app uses only Apple frameworks and contains no third-party libraries. XcodeGen (MIT) is used only as a development tool and is not included in the app binary.")
-                        .font(AppTypography.caption())
-                        .foregroundStyle(AppColors.textTertiary)
-                }
+                SettingsNavRow(label: "Cat Corner", systemImage: "cat") { CatCornerView() }
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
+
+            // Licenses
+            SettingsGroup {
+                SettingsNavRow(label: "Licenses", systemImage: "doc.text") { LicensesView() }
+            }
         }
-        .navigationTitle("About")
-        .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(isPresented: $showSudokuGate) {
             SudokuGateView()
         }
@@ -93,9 +57,20 @@ struct AboutView: View {
         }
     }
 
+    /// Double-tap the developer name: reveal the gate if today is complete,
+    /// otherwise a subtle haptic and nothing else (no visual affordance).
+    private func handleDeveloperTap() {
+        let today = Calendar.current.startOfDay(for: Date())
+        let tempPage = DailyPage(date: today)
+        tempPage.dayComplete = appState.streakStats.currentStreak > 0 || isCurrentDayComplete()
+        if gateService.shouldRevealGate(todayPage: tempPage, today: today) {
+            showSudokuGate = true
+        } else {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+    }
+
     private func isCurrentDayComplete() -> Bool {
-        // Lightweight check: currentStreak > 0 means today (the latest) is complete.
-        // More accurate check requires a repo call; this is sufficient for the gate.
         appState.streakStats.currentStreak > 0
     }
 }
@@ -110,21 +85,18 @@ struct HiddenDocumentView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Universal Declaration of Human Rights")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(AppColors.textPrimary)
+                    DSText("Universal Declaration of Human Rights")
+                        .dsTextStyle(.title3)
                         .padding(.bottom, 4)
-                    Text("Adopted by the UN General Assembly on 10 December 1948.")
-                        .font(AppTypography.taskMeta())
-                        .foregroundStyle(AppColors.textSecondary)
-                    Text(humanRightsExcerpt)
-                        .font(AppTypography.taskTitle())
-                        .foregroundStyle(AppColors.textPrimary)
-                        .lineSpacing(5)
+                    DSText("Adopted by the UN General Assembly on 10 December 1948.")
+                        .dsTextStyle(.subheadline)
+                    DSText(humanRightsExcerpt)
+                        .dsTextStyle(.body)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(24)
             }
-            .background(AppColors.background)
+            .dsScreen()
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
