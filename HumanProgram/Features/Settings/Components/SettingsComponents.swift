@@ -44,6 +44,7 @@ struct SettingsScreen<Content: View>: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
 
@@ -81,14 +82,21 @@ struct SettingsRowContent<Trailing: View>: View {
     let label: String
     var systemImage: String? = nil
     var value: String? = nil
+    /// Renders the icon + label in red (e.g. Factory Reset).
+    var destructive: Bool = false
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         HStack(spacing: 16) {
             if let systemImage {
-                DSImageView(systemName: systemImage, size: .font(.title3), tint: .color(.primary))
+                DSImageView(systemName: systemImage, size: .font(.title3),
+                            tint: destructive ? .color(.red) : .color(.primary))
             }
-            DSText(label).dsTextStyle(.title3)
+            if destructive {
+                DSText(label).dsTextStyle(.title3, Color.red)
+            } else {
+                DSText(label).dsTextStyle(.title3)
+            }
             Spacer(minLength: 8)
             if let value {
                 DSText(value).dsTextStyle(.subheadline)
@@ -117,6 +125,44 @@ struct SettingsNavRow<Destination: View>: View {
             destination()
         } label: {
             SettingsRowContent(label: label, systemImage: systemImage) { EmptyView() }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A settings row that runs an action when tapped (no navigation). Optionally destructive.
+struct SettingsButtonRow: View {
+    let label: String
+    var systemImage: String? = nil
+    var destructive: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            SettingsRowContent(label: label, systemImage: systemImage, destructive: destructive) { EmptyView() }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A selectable option row (label + checkmark when selected). Used in option lists
+/// such as Appearance, Date Format, Time Format.
+struct SettingsSelectRow: View {
+    let label: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                DSText(label).dsTextStyle(.title3)
+                Spacer(minLength: 8)
+                if isSelected {
+                    DSImageView(systemName: "checkmark", size: .font(.body), tint: .color(.primary))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

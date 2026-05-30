@@ -14,10 +14,6 @@ struct AboutView: View {
         return "\(v) (\(b))"
     }
 
-    private var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-    }
-
     var body: some View {
         SettingsScreen {
             // App name header
@@ -26,27 +22,20 @@ struct AboutView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 8)
 
-            // Version — its own section
-            SettingsGroup(title: "Version") {
-                SettingsRowContent(label: "Version", value: versionValue) { EmptyView() }
-            }
-
-            // Info rows (Build + Developer carry hidden double-tap gestures)
             SettingsGroup {
-                SettingsRowContent(label: "Build", value: buildNumber) { EmptyView() }
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) { showDocument = true }
-
-                SettingsRowContent(label: "Developer", value: "David Jurek") { EmptyView() }
+                // Developer — double-tap triggers the hidden game gate (no affordance)
+                SettingsRowContent(label: "Developer", systemImage: "person", value: "David Jurek") { EmptyView() }
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { handleDeveloperTap() }
 
-                SettingsNavRow(label: "Cat Corner", systemImage: "cat") { CatCornerView() }
-            }
+                // Version — double-tap opens the hidden document
+                SettingsRowContent(label: "Version", systemImage: "number", value: versionValue) { EmptyView() }
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) { showDocument = true }
 
-            // Licenses
-            SettingsGroup {
                 SettingsNavRow(label: "Licenses", systemImage: "doc.text") { LicensesView() }
+
+                SettingsNavRow(label: "Cat Corner", systemImage: "cat") { CatCornerView() }
             }
         }
         .fullScreenCover(isPresented: $showSudokuGate) {

@@ -2,27 +2,41 @@ import SwiftUI
 import DSKit
 
 struct SettingsView: View {
+    @State private var showReset = false
+
     var body: some View {
         SettingsScreen {
+            SettingsGroup(title: "General") {
+                SettingsNavRow(label: "Customization", systemImage: "paintbrush") { CustomizationView() }
+                SettingsNavRow(label: "Format", systemImage: "textformat.123") { FormatView() }
+                SettingsNavRow(label: "Reminders", systemImage: "bell") { RemindersView() }
+                SettingsNavRow(label: "Security", systemImage: "lock") { SecuritySettingsView() }
+            }
+
             SettingsGroup(title: "Planning") {
                 SettingsNavRow(label: "Recurring Tasks", systemImage: "repeat") { RecurringTasksView() }
                 SettingsNavRow(label: "Schedule", systemImage: "clock") { ScheduleListView() }
                 SettingsNavRow(label: "Exercise", systemImage: "figure.run") { ExerciseSettingsView() }
-            }
-
-            SettingsGroup(title: "Notifications & Calendar") {
-                SettingsNavRow(label: "Reminders", systemImage: "bell") { RemindersView() }
                 SettingsNavRow(label: "Calendar", systemImage: "calendar") { CalendarSourceSettingsView() }
             }
 
             SettingsGroup(title: "Data") {
-                SettingsNavRow(label: "Import / Export", systemImage: "square.and.arrow.up") { ImportExportView() }
-                SettingsNavRow(label: "Security", systemImage: "lock") { SecuritySettingsView() }
+                SettingsNavRow(label: "Import", systemImage: "square.and.arrow.down") { ImportExportView() }
+                SettingsNavRow(label: "Export", systemImage: "square.and.arrow.up") { ImportExportView() }
             }
 
             SettingsGroup(title: "Info") {
-                SettingsNavRow(label: "About", systemImage: "info.circle") { AboutView() }
+                SettingsNavRow(label: "About Human Program", systemImage: "info.circle") { AboutView() }
             }
+
+            SettingsGroup(title: "Danger Zone") {
+                SettingsButtonRow(label: "Factory Reset", systemImage: "trash", destructive: true) {
+                    showReset = true
+                }
+            }
+        }
+        .sheet(isPresented: $showReset) {
+            ResetConfirmationView()
         }
     }
 }
