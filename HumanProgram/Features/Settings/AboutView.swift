@@ -15,7 +15,7 @@ struct AboutView: View {
     }
 
     var body: some View {
-        SettingsScreen {
+        SettingsScreen(centered: true) {
             // App name header
             DSText("Human Program")
                 .dsTextStyle(.title2)
@@ -24,7 +24,7 @@ struct AboutView: View {
 
             SettingsGroup {
                 // Developer — double-tap triggers the hidden game gate (no affordance)
-                SettingsRowContent(label: "Developer", systemImage: "person", value: "David Jurek") { EmptyView() }
+                SettingsRowContent(label: "Developer", systemImage: "person", value: "David Ko") { EmptyView() }
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { handleDeveloperTap() }
 
