@@ -17,6 +17,9 @@ settings:
   MARKETING_VERSION: "1.0.0"
   CURRENT_PROJECT_VERSION: "1"
   PRODUCT_BUNDLE_IDENTIFIER: app.humanprogram.ios
+  # Code signing for running on a real device (David Ko's free Personal Team).
+  DEVELOPMENT_TEAM: 8WW85L69P3
+  CODE_SIGN_STYLE: Automatic
 
 targets:
   HumanProgram:
@@ -55,6 +58,12 @@ targets:
     settings:
       INFOPLIST_FILE: HumanProgram/Resources/Info.plist
       PRODUCT_NAME: HumanProgram
+      # App icon + selectable alternates (penguin is the default/primary).
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES:
+        - AppIconDuck
+        - AppIconFennec
+      ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
 
   HumanProgramTests:
     type: bundle.unit-test

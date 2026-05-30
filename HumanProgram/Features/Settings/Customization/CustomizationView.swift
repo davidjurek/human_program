@@ -12,6 +12,7 @@ struct CustomizationView: View {
                 SettingsNavRow(label: "Background", systemImage: "paintpalette") { BackgroundSettingsView() }
                 SettingsNavRow(label: "Font", systemImage: "textformat.size") { FontSettingsView() }
                 SettingsNavRow(label: "Appearance", systemImage: "circle.lefthalf.filled") { AppearanceSettingsView() }
+                SettingsNavRow(label: "App Icon", systemImage: "app.badge") { AppIconSettingsView() }
             }
         }
     }
@@ -24,7 +25,7 @@ struct BackgroundSettingsView: View {
     @AppStorage("settings.bgDark") private var darkIndex: Int = 0
 
     var body: some View {
-        SettingsScreen {
+        SettingsScreen(centered: true) {
             SettingsGroup(title: "Light Mode") {
                 BackgroundSwatchGrid(options: AppBackground.lightOptions, selected: $lightIndex)
             }
@@ -219,5 +220,90 @@ struct AppearanceSettingsView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - App Icon
+
+/// One selectable app-icon choice.
+/// `alternateName` is the iOS alternate-icon key (nil = the primary/default icon).
+/// `previewAsset` is the in-app preview image; nil shows a placeholder slot until
+/// the real art is added.
+struct AppIconOption: Identifiable {
+    let id: String
+    let alternateName: String?
+    let previewAsset: String?
+}
+
+enum AppIconCatalog {
+    static let defaultId = "penguin"
+
+    static let options: [AppIconOption] = [
+        AppIconOption(id: "penguin", alternateName: nil,             previewAsset: "PenguinIcon"),
+        AppIconOption(id: "duck",    alternateName: "AppIconDuck",   previewAsset: "DuckIcon"),
+        AppIconOption(id: "fennec",  alternateName: "AppIconFennec", previewAsset: "FennecIcon")
+    ]
+}
+
+struct AppIconSettingsView: View {
+    @AppStorage("settings.appIcon") private var selectedId: String = AppIconCatalog.defaultId
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+
+    var body: some View {
+        SettingsScreen(centered: true) {
+            SettingsGroup(title: "App Icon") {
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(AppIconCatalog.options) { option in
+                        AppIconSwatch(option: option, isSelected: selectedId == option.id) {
+                            select(option)
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear {
+            // Keep the ring in sync with the icon that's actually set.
+            let current = UIApplication.shared.alternateIconName
+            if let match = AppIconCatalog.options.first(where: { $0.alternateName == current }) {
+                selectedId = match.id
+            }
+        }
+    }
+
+    private func select(_ option: AppIconOption) {
+        selectedId = option.id
+        guard UIApplication.shared.supportsAlternateIcons else { return }
+        guard UIApplication.shared.alternateIconName != option.alternateName else { return }
+        UIApplication.shared.setAlternateIconName(option.alternateName) { error in
+            if let error { print("[AppIcon] setAlternateIconName error: \(error)") }
+        }
+    }
+}
+
+/// A square app-icon preview swatch, matching the Background swatch concept.
+/// Shows the icon art when present, otherwise a neutral placeholder slot.
+private struct AppIconSwatch: View {
+    let option: AppIconOption
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                if let asset = option.previewAsset, let image = UIImage(named: asset) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Color.primary.opacity(0.08)   // placeholder until art arrives
+                }
+            }
+            .aspectRatio(1, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.gray.opacity(isSelected ? 0.9 : 0.0), lineWidth: 3)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
