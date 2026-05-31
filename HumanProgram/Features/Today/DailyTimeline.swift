@@ -27,13 +27,16 @@ struct DailyTimeline: View {
     private let laneGap: CGFloat = 4
 
     var body: some View {
-        GeometryReader { geo in
-            let S = geo.size.width        // square: height == width
-            content(S: S)
-                .frame(width: S, height: S)
-        }
-        .aspectRatio(1, contentMode: .fit)
-        .frame(maxWidth: .infinity)
+        // A clear square (height == width) reserves the layout height; the
+        // GeometryReader overlay then lays the timeline out inside it.
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .overlay {
+                GeometryReader { geo in
+                    content(S: geo.size.width)
+                }
+            }
     }
 
     @ViewBuilder
