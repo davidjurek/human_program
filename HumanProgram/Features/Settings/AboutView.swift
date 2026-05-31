@@ -71,6 +71,13 @@ struct AboutView: View {
 // A pushed page on the shared SettingsScreen container (themed gradient
 // background, back button, swipe-back) — not a modal sheet.
 struct HiddenDocumentView: View {
+    // Full text loaded from the bundled UDHR.txt resource (sourced from the UN). [#52]
+    private var udhrText: String {
+        guard let url = Bundle.main.url(forResource: "UDHR", withExtension: "txt"),
+              let s = try? String(contentsOf: url, encoding: .utf8) else { return "" }
+        return s
+    }
+
     var body: some View {
         SettingsScreen(centered: true) {
             VStack(alignment: .leading, spacing: 16) {
@@ -79,34 +86,15 @@ struct HiddenDocumentView: View {
                     .padding(.bottom, 4)
                 DSText("Adopted by the UN General Assembly on 10 December 1948.")
                     .dsTextStyle(.subheadline)
-                DSText(humanRightsExcerpt)
+                DSText(udhrText)
                     .dsTextStyle(.body)
+                Link("Source: United Nations (un.org)",
+                     destination: URL(string: "https://www.un.org/en/about-us/universal-declaration-of-human-rights")!)
+                    .font(appFont(15))
+                    .padding(.top, 8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
 
-private let humanRightsExcerpt = """
-Article 1. All human beings are born free and equal in dignity and rights. They are endowed with reason and conscience and should act towards one another in a spirit of brotherhood.
-
-Article 2. Everyone is entitled to all the rights and freedoms set forth in this Declaration, without distinction of any kind, such as race, colour, sex, language, religion, political or other opinion, national or social origin, property, birth or other status.
-
-Article 3. Everyone has the right to life, liberty and security of person.
-
-Article 4. No one shall be held in slavery or servitude; slavery and the slave trade shall be prohibited in all their forms.
-
-Article 5. No one shall be subjected to torture or to cruel, inhuman or degrading treatment or punishment.
-
-Article 6. Everyone has the right to recognition everywhere as a person before the law.
-
-Article 7. All are equal before the law and are entitled without any discrimination to equal protection of the law.
-
-Article 8. Everyone has the right to an effective remedy by the competent national tribunals for acts violating the fundamental rights granted him by the constitution or by law.
-
-Article 9. No one shall be subjected to arbitrary arrest, detention or exile.
-
-Article 10. Everyone is entitled in full equality to a fair and public hearing by an independent and impartial tribunal, in the determination of his rights and obligations and of any criminal charge against him.
-
-(Full text available at un.org/en/about-us/universal-declaration-of-human-rights)
-"""
