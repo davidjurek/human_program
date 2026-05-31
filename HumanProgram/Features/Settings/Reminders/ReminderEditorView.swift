@@ -2,6 +2,13 @@ import SwiftUI
 import SwiftData
 import PhotosUI
 import DSKit
+import UIKit
+
+// Reminder editor — built on the Schedule editor's interaction pattern:
+// SettingsScreen container, upper-right Save (disabled until valid), swipe-back,
+// a discard-changes guard, and the shared AnchoredPopup + GlassKeypad for every
+// value picker (Repeat, Time/Start/End wheels, the Every-N interval wheel). No
+// inline-expanding rows and no Apple numpad anywhere.
 
 struct ReminderEditorView: View {
     @Environment(\.modelContext) private var context
@@ -21,13 +28,55 @@ struct ReminderEditorView: View {
     @State private var soundMode: NotificationSoundMode = .defaultSound
     @State private var imageFilename: String?
     @State private var photoItem: PhotosPickerItem?
-    @State private var openSection: String?
+
+    @State private var activePicker: ActivePicker?            // drives the popups
+    @State private var anchorFrames: [String: CGRect] = [:]   // value frames for anchoring
     @State private var showDeleteConfirm = false
     @State private var showDiscardConfirm = false
     @State private var original = ReminderSnapshot()
     @State private var didLoad = false
 
+    // Custom numeric keypad (replaces Apple's numpad for the time wheels)
+    @State private var keypadVisible = false
+    @State private var typedDigits = ""
+    @State private var keypadMeasuredHeight: CGFloat = 0
+    // Extra scroll room at the bottom while the system keyboard is up (for the
+    // title / message text fields), so the focused field can lift above it.
+    @State private var keyboardSpacer: CGFloat = 0
+
     private let scheduler = RollingReminderScheduler()
+
+    /// One coordinate space shared by the anchor tags and the popups so they
+    /// line up exactly (matches the Schedule editor).
+    private let anchorSpace = "reminderAnchorSpace"
+
+    /// What the shared anchored popup is currently editing.
+    private enum ActivePicker: Equatable {
+        case repeatMode, time, start, end, interval
+    }
+
+    private let repeatOptions: [(value: String, title: String)] =
+        [("once", "Once"), ("multiple", "Multiple")]
+    private var repeatTitle: String {
+        repeatOptions.first { $0.value == repeatMode }?.title ?? ""
+    }
+
+    /// Anchor-frame id for the active picker (matches the `.anchorFrame(...)` tag).
+    private func anchorId(for picker: ActivePicker) -> String {
+        switch picker {
+        case .repeatMode: return "repeat"
+        case .time:       return "time"
+        case .start:      return "start"
+        case .end:        return "end"
+        case .interval:   return "interval"
+        }
+    }
+
+    /// Time popups widen in 12-hour mode to fit the extra AM/PM wheel column.
+    private var timePopupWidth: CGFloat { TimeFormatSetting.is24Hour ? 210 : 250 }
+    private var intervalUnitLabel: String {
+        everyUnitHours ? (everyAmount == 1 ? "hour" : "hours") : "min"
+    }
 
     private var canSave: Bool {
         // Needs a title AND scheduling info (at least one weekday selected).
@@ -52,29 +101,33 @@ struct ReminderEditorView: View {
 
     var body: some View {
         SettingsScreen(centered: true, onBack: attemptBack,
-                       swipeBackBlocked: { hasUnsavedChanges }, trailing: { editorButtons }) {
+                       swipeBackBlocked: { hasUnsavedChanges },
+                       manualKeyboardAvoidance: true,
+                       trailing: { editorButtons }) {
             // Title (header-less: grey placeholder is the label)
             AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20))
 
-            // Repeat
-            AppDropdown(
-                label: "Repeat",
-                options: [("once", "Once"), ("multiple", "Multiple")],
-                selection: $repeatMode,
-                openSection: $openSection,
-                id: "repeat"
-            )
+            // Repeat — tappable value that opens a shared anchored popup.
+            repeatRow
 
             // Days
             WeekdayCircleSelector(selected: $weekdays)
 
             // Time
             if repeatMode == "once" {
-                TimeFieldRow(id: "time", label: "Time", minutesOfDay: $onceMinutes, openSection: $openSection)
+                valueRow(label: "Time", value: clockString(minutesOfDay: onceMinutes), anchorId: "time") {
+                    if !dismissOpenInputIfAny() { activePicker = .time }
+                }
             } else {
-                TimeFieldRow(id: "start", label: "Start", minutesOfDay: $startMinutes, openSection: $openSection)
-                IntervalFieldRow(id: "every", label: "Every", amount: $everyAmount, unitIsHours: $everyUnitHours, openSection: $openSection)
-                TimeFieldRow(id: "end", label: "End", minutesOfDay: $endMinutes, openSection: $openSection)
+                valueRow(label: "Start", value: clockString(minutesOfDay: startMinutes), anchorId: "start") {
+                    if !dismissOpenInputIfAny() { activePicker = .start }
+                }
+                valueRow(label: "Every", value: "\(everyAmount) \(intervalUnitLabel)", anchorId: "interval") {
+                    if !dismissOpenInputIfAny() { activePicker = .interval }
+                }
+                valueRow(label: "End", value: clockString(minutesOfDay: endMinutes), anchorId: "end") {
+                    if !dismissOpenInputIfAny() { activePicker = .end }
+                }
             }
 
             // Sound (only the value is tappable)
@@ -100,7 +153,12 @@ struct ReminderEditorView: View {
             // the controls above it. Multiline, expands to fit.
             AppTextField(text: $message, placeholder: "Message", fontSize: appScaledSize(18), multiline: true)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+                .background(KeyboardScrollNudge())
+
+            // Room for the focused field to lift above the system keyboard.
+            Color.clear.frame(height: keyboardSpacer)
         }
+        .onPreferenceChange(AnchorFrameKey.self) { anchorFrames = $0 }
         .overlay {
             if showDeleteConfirm {
                 ConfirmPopup(
@@ -118,8 +176,190 @@ struct ReminderEditorView: View {
                     onCancel: { showDiscardConfirm = false }
                 )
             }
+            anchoredPopup
+            if keypadVisible {
+                VStack(spacing: 0) {
+                    Spacer()
+                    GlassKeypad(onDigit: keypadDigit, onBackspace: keypadBackspace, onDone: keypadDone)
+                        .background(GeometryReader { g in
+                            Color.clear.preference(key: KeypadHeightKey.self, value: g.size.height)
+                        })
+                }
+                .ignoresSafeArea(edges: .bottom)
+                .transition(.move(edge: .bottom))
+                .zIndex(2)
+            }
+        }
+        .coordinateSpace(.named(anchorSpace))
+        .onChange(of: activePicker) { _, v in
+            if v == nil, keypadVisible {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { keypadVisible = false }
+            }
+        }
+        .onPreferenceChange(KeypadHeightKey.self) { keypadMeasuredHeight = $0 }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+            if let f = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                withAnimation(.easeOut(duration: 0.25)) { keyboardSpacer = f.height }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.2)) { keyboardSpacer = 0 }
         }
         .onAppear(perform: loadIfNeeded)
+    }
+
+    // MARK: - Repeat picker (shared anchored popup)
+
+    private var repeatRow: some View {
+        HStack {
+            DSText("Repeat").dsTextStyle(.title3)
+            Spacer(minLength: 8)
+            Button { if !dismissOpenInputIfAny() { activePicker = .repeatMode } } label: {
+                HStack(spacing: 4) {
+                    Text(repeatTitle).font(appFont(18)).foregroundStyle(.primary)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .anchorFrame("repeat", in: .named(anchorSpace))
+        }
+        .frame(height: 34)
+    }
+
+    // MARK: - Reusable value row (label + tappable value that opens a popup)
+
+    private func valueRow(label: String, value: String, anchorId: String,
+                          action: @escaping () -> Void) -> some View {
+        HStack {
+            DSText(label).dsTextStyle(.title3)
+            Spacer(minLength: 8)
+            Button(action: action) {
+                Text(value).font(appFont(18)).foregroundStyle(.primary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .anchorFrame(anchorId, in: .named(anchorSpace))
+        }
+        .frame(height: 34)
+    }
+
+    // MARK: - Shared anchored popup (repeat, time wheels, interval wheel)
+
+    @ViewBuilder
+    private var anchoredPopup: some View {
+        if let picker = activePicker, let rect = anchorFrames[anchorId(for: picker)] {
+            let close = { dismissKeypadAndPopup() }
+            let space = CoordinateSpace.named(anchorSpace)
+            let inset: CGFloat = keypadVisible ? (keypadMeasuredHeight > 0 ? keypadMeasuredHeight : 320) : 0
+            switch picker {
+            case .repeatMode:
+                AnchoredPopup(anchor: rect, width: 210, estimatedHeight: 112,
+                              alignment: .trailing, space: space, onClose: { activePicker = nil }) {
+                    repeatOptionList
+                }
+            case .time:
+                AnchoredPopup(anchor: rect, width: timePopupWidth, estimatedHeight: 185,
+                              alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
+                    SteppedWheel(minutes: $onceMinutes, mode: .time, onRequestKeypad: showKeypad)
+                }
+            case .start:
+                AnchoredPopup(anchor: rect, width: timePopupWidth, estimatedHeight: 185,
+                              alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
+                    SteppedWheel(minutes: $startMinutes, mode: .time, onRequestKeypad: showKeypad)
+                }
+            case .end:
+                AnchoredPopup(anchor: rect, width: timePopupWidth, estimatedHeight: 185,
+                              alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
+                    SteppedWheel(minutes: $endMinutes, mode: .time, onRequestKeypad: showKeypad)
+                }
+            case .interval:
+                // No keypad here — the interval wheel scrolls only.
+                AnchoredPopup(anchor: rect, width: 200, estimatedHeight: 185,
+                              alignment: .trailing, space: space, onClose: { activePicker = nil }) {
+                    IntervalWheel(amount: $everyAmount, unitIsHours: $everyUnitHours)
+                }
+            }
+        }
+    }
+
+    private var repeatOptionList: some View {
+        VStack(spacing: 0) {
+            ForEach(repeatOptions, id: \.value) { option in
+                Button {
+                    repeatMode = option.value
+                    activePicker = nil
+                } label: {
+                    HStack(spacing: 12) {
+                        Text(option.title).font(appFont(18)).foregroundStyle(.primary)
+                        Spacer(minLength: 8)
+                        if option.value == repeatMode {
+                            Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold))
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(height: 44)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Custom keypad (HHMM entry for the time wheels)
+
+    /// The minutes binding the keypad currently types into (matches activePicker).
+    private var activeMinutesBinding: Binding<Int>? {
+        switch activePicker {
+        case .time:  return $onceMinutes
+        case .start: return $startMinutes
+        case .end:   return $endMinutes
+        default:     return nil
+        }
+    }
+
+    private func showKeypad() {
+        typedDigits = ""
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { keypadVisible = true }
+    }
+
+    private func keypadDigit(_ d: String) {
+        typedDigits = String((typedDigits + d).filter(\.isNumber).suffix(4))
+        applyTypedToActive()
+    }
+    private func keypadBackspace() {
+        typedDigits = String(typedDigits.dropLast())
+        applyTypedToActive()
+    }
+    /// HHMM entry (24-hour, unambiguous), minutes snapped to the nearest 5.
+    private func applyTypedToActive() {
+        guard let binding = activeMinutesBinding, !typedDigits.isEmpty else { return }
+        let s = typedDigits
+        let hh = min(23, Int(String(s.prefix(2))) ?? 0)
+        var mm = s.count >= 3 ? (Int(String(s.dropFirst(2))) ?? 0) : 0
+        mm = min(55, Int((Double(mm) / 5).rounded()) * 5)
+        binding.wrappedValue = hh * 60 + mm
+    }
+    private func keypadDone() { dismissKeypadAndPopup() }
+
+    /// Eases the keypad down and the popup out together.
+    private func dismissKeypadAndPopup() {
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.92)) {
+            keypadVisible = false
+            activePicker = nil
+        }
+    }
+
+    /// If a keypad/popup is open, dismiss it and return true — so a tap on a value
+    /// while something is open just CLOSES it instead of opening a new popup.
+    private func dismissOpenInputIfAny() -> Bool {
+        if keypadVisible || activePicker != nil {
+            dismissKeypadAndPopup()
+            return true
+        }
+        return false
     }
 
     // MARK: - Custom top bar (bare icons, no glass card)

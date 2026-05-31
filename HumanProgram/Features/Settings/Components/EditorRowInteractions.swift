@@ -266,9 +266,11 @@ extension UIView {
 
 // MARK: - Stepped wheel (hours/minutes or generic value), tap → keypad
 
-/// Hours + minutes wheel where minutes snap to 5-minute steps. Hours are free
-/// (0–23). `.time` renders "HH" / "MM"; `.duration` renders "Nh" / "Nm". A tap
-/// (not a drag) requests the custom keypad; drags still scroll the wheel.
+/// Hours + minutes wheel where minutes snap to 5-minute steps. `.duration`
+/// renders "Nh" / "Nm" (always). `.time` honors the app's 12h/24h setting: in
+/// 24h it shows HH (0–23) : MM; in 12h it shows H (1–12) : MM + an AM/PM column.
+/// A tap (not a drag) requests the custom keypad; drags still scroll the wheel.
+/// (The keypad always types HHMM in 24h — unambiguous — regardless of display.)
 struct SteppedWheel: View {
     @Binding var minutes: Int
     enum Mode { case time, duration }
@@ -277,6 +279,7 @@ struct SteppedWheel: View {
 
     private let step = 5
     private var minuteOptions: [Int] { Array(stride(from: 0, to: 60, by: step)) }
+    private var is24: Bool { TimeFormatSetting.is24Hour }
 
     private var hourBinding: Binding<Int> {
         Binding(get: { minutes / 60 }, set: { minutes = $0 * 60 + (minutes % 60) })
@@ -285,31 +288,110 @@ struct SteppedWheel: View {
         Binding(get: { ((minutes % 60) / step) * step },
                 set: { minutes = (minutes / 60) * 60 + $0 })
     }
+    /// Displayed hour 1…12 (12h mode), preserving the current AM/PM.
+    private var hour12Binding: Binding<Int> {
+        Binding(
+            get: { let h = minutes / 60 % 12; return h == 0 ? 12 : h },
+            set: { newH12 in
+                let isPM = (minutes / 60) >= 12
+                let base = newH12 % 12            // 12 → 0
+                minutes = (base + (isPM ? 12 : 0)) * 60 + (minutes % 60)
+            }
+        )
+    }
+    /// true = PM (12h mode).
+    private var isPMBinding: Binding<Bool> {
+        Binding(
+            get: { (minutes / 60) >= 12 },
+            set: { pm in
+                let base = (minutes / 60) % 12    // 0…11
+                minutes = (base + (pm ? 12 : 0)) * 60 + (minutes % 60)
+            }
+        )
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            Picker("", selection: hourBinding) {
-                ForEach(0..<24, id: \.self) { h in
-                    Text(mode == .time ? String(format: "%02d", h) : "\(h)h").tag(h)
+        Group {
+            if mode == .duration {
+                HStack(spacing: 0) {
+                    Picker("", selection: hourBinding) {
+                        ForEach(0..<24, id: \.self) { Text("\($0)h").tag($0) }
+                    }
+                    .pickerStyle(.wheel)
+                    Picker("", selection: minuteBinding) {
+                        ForEach(minuteOptions, id: \.self) { Text("\($0)m").tag($0) }
+                    }
+                    .pickerStyle(.wheel)
                 }
-            }
-            .pickerStyle(.wheel)
-
-            if mode == .time {
-                Text(":").font(.system(size: 20, weight: .semibold))
-            }
-
-            Picker("", selection: minuteBinding) {
-                ForEach(minuteOptions, id: \.self) { m in
-                    Text(mode == .time ? String(format: "%02d", m) : "\(m)m").tag(m)
+                .frame(width: 180, height: 150)
+            } else if is24 {
+                HStack(spacing: 0) {
+                    Picker("", selection: hourBinding) {
+                        ForEach(0..<24, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
+                    }
+                    .pickerStyle(.wheel)
+                    Text(":").font(.system(size: 20, weight: .semibold))
+                    Picker("", selection: minuteBinding) {
+                        ForEach(minuteOptions, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
+                    }
+                    .pickerStyle(.wheel)
                 }
+                .frame(width: 180, height: 150)
+            } else {
+                // 12-hour: hour (1–12) : minute  +  AM/PM
+                HStack(spacing: 0) {
+                    Picker("", selection: hour12Binding) {
+                        ForEach(1...12, id: \.self) { Text("\($0)").tag($0) }
+                    }
+                    .pickerStyle(.wheel).frame(maxWidth: .infinity)
+                    Text(":").font(.system(size: 20, weight: .semibold))
+                    Picker("", selection: minuteBinding) {
+                        ForEach(minuteOptions, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
+                    }
+                    .pickerStyle(.wheel).frame(maxWidth: .infinity)
+                    Picker("", selection: isPMBinding) {
+                        Text("AM").tag(false)
+                        Text("PM").tag(true)
+                    }
+                    .pickerStyle(.wheel).frame(maxWidth: .infinity)
+                }
+                .frame(width: 230, height: 150)
             }
-            .pickerStyle(.wheel)
         }
-        .frame(width: 180, height: 150)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
         .simultaneousGesture(TapGesture().onEnded { onRequestKeypad() })
+    }
+}
+
+/// Amount + unit (min / hr) two-wheel picker for reminder intervals ("Every N").
+/// Lives inside an `AnchoredPopup`; no custom keypad (the amount range is small
+/// enough to just scroll). Mirrors the old IntervalFieldRow's wheel.
+struct IntervalWheel: View {
+    @Binding var amount: Int
+    @Binding var unitIsHours: Bool
+
+    private var amountRange: ClosedRange<Int> { unitIsHours ? 1...10 : 1...59 }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Picker("", selection: $amount) {
+                ForEach(Array(amountRange), id: \.self) { Text("\($0)").tag($0) }
+            }
+            .pickerStyle(.wheel)
+            Picker("", selection: $unitIsHours) {
+                Text("min").tag(false)
+                Text("hr").tag(true)
+            }
+            .pickerStyle(.wheel)
+        }
+        .frame(width: 190, height: 150)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .onChange(of: unitIsHours) { _, hours in
+            if hours, amount > 10 { amount = 10 }
+            if amount < 1 { amount = 1 }
+        }
     }
 }
 
