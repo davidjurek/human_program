@@ -87,17 +87,11 @@ struct BlockColorPickerView: View {
                 }
             }
 
-            // Live preview of the working custom colour.
+            // Preview swatch + Reset on one line (hex is shown in the Hex row). [#14]
             HStack(spacing: 10) {
                 RoundedRectangle(cornerRadius: 8).fill(currentColor)
                     .frame(width: 44, height: 28)
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.12)))
-                DSText("#\(currentHex)").dsTextStyle(.subheadline)
-                Spacer()
-            }
-
-            // Reset, then the mode switch + chosen editor. [#14]
-            HStack {
                 Spacer()
                 Button { store.reset() } label: { DSText("Reset to presets").dsTextStyle(.subheadline) }
                     .buttonStyle(.plain)
