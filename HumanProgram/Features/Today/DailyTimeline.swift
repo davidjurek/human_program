@@ -76,11 +76,14 @@ struct DailyTimeline: View {
                 // Label is framed to a fixed height and CENTERED on y so it lines
                 // up with its hour line (both centred on the same y). The line
                 // starts at orangeX, leaving the laneLeadingGap after the labels.
+                // The pixel font's digits have no descender, so they sit high in
+                // the text box; nudge the label down so the digits' visual centre
+                // meets the hour line (which sits exactly at y).
                 Text(String(format: "%02d:00", h))
                     .font(appFont(13)).foregroundStyle(.secondary)
                     .fixedSize()
                     .frame(height: 16)
-                    .offset(x: 0, y: min(max(0, y - 8), S - 16))
+                    .offset(x: 0, y: min(max(0, y - 4), S - 16))
                 Rectangle().fill(Color.primary.opacity(0.18))
                     .frame(width: laneSpan, height: 1)
                     .offset(x: orangeX, y: min(max(0, y), S - 1))
