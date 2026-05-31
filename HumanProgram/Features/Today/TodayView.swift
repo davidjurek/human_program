@@ -189,20 +189,24 @@ struct TodayView: View {
 
             if addingTask {
                 HStack(spacing: 10) {
+                    // No trailing commit circle — blank space; commit via return
+                    // or by tapping out. [#8]
                     TextField("New task", text: $newTask)
                         .font(appFont(17))
                         .focused($addFocused)
                         .submitLabel(.done)
                         .onSubmit(commitAdd)
-                    Button(action: commitAdd) {
-                        SelectionCircle(isOn: !newTask.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }.buttonStyle(.plain).disabled(newTask.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .onChange(of: addFocused) { _, focused in
+                            // Tap-out: empty dismisses the field, text auto-adds. [#2/#9]
+                            if !focused { commitAdd() }
+                        }
+                    Spacer(minLength: 0)
                 }
                 .frame(height: 40)
             }
 
-            // Centered, padded liquid-glass "Add Task" under the last task.
-            if !vm.isPastLocked && !addingTask {
+            // "Add Task" is always visible — it never disappears. [#2]
+            if !vm.isPastLocked {
                 HStack {
                     Spacer()
                     Button {
@@ -218,6 +222,7 @@ struct TodayView: View {
                 .padding(.top, 4)
             }
         }
+        .frame(minHeight: vm.sortedTasks.isEmpty ? 126 : 0, alignment: .top)   // [#4]
     }
 
     private func commitAdd() {
@@ -230,6 +235,10 @@ struct TodayView: View {
     }
 
     // MARK: - Exercise (reference only)
+
+    private var isExerciseEmpty: Bool {
+        (vm.exerciseRoutine?.items.isEmpty ?? true)
+    }
 
     private var exerciseSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -251,13 +260,16 @@ struct TodayView: View {
                         }
                     }
                 } else {
+                    // Centered within the content area's empty min-height. [#5]
                     DSText("Nothing for today")
                         .dsTextStyle(.subheadline)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // Empty content area ≈ the empty Tasks section height (header + ~100). [#5]
+            .frame(maxWidth: .infinity,
+                   minHeight: isExerciseEmpty ? 100 : 0,
+                   alignment: isExerciseEmpty ? .center : .leading)
         }
     }
 }
