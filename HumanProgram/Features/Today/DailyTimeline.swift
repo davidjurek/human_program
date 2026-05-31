@@ -48,12 +48,13 @@ struct DailyTimeline: View {
         let placed = placedLabels(S: S)
 
         ZStack(alignment: .topLeading) {
-            // Hour grid lines + 3-hour labels.
+            // Hour grid lines (span only the two lanes) + 3-hour labels.
+            let laneSpan = laneW * 2 + laneGap
             ForEach(Array(stride(from: 0, through: 24, by: 3)), id: \.self) { h in
                 let y = CGFloat(h) / 24 * S
                 Rectangle().fill(Color.primary.opacity(0.08))
-                    .frame(width: S - timeColW, height: 1)
-                    .offset(x: timeColW, y: min(y, S - 1))
+                    .frame(width: laneSpan, height: 1)
+                    .offset(x: orangeX, y: min(y, S - 1))
                 Text(String(format: "%02d:00", h))
                     .font(appFont(11)).foregroundStyle(.secondary)
                     .offset(x: 0, y: min(max(0, y - 6), S - 12))

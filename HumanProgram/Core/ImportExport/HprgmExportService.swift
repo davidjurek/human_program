@@ -105,11 +105,53 @@ struct NotificationReminderJSON: Codable {
     let updatedAt: Date
 }
 
+struct RoutineItemJSON: Codable {
+    let id: String
+    let text: String
+    let notes: String
+    let sortOrder: Int
+}
+
+struct RoutineJSON: Codable {
+    let id: String
+    let title: String
+    let emoji: String
+    let notes: String
+    let createdAt: Date
+    let updatedAt: Date
+    let items: [RoutineItemJSON]
+}
+
+struct CalendarEventLocalStateJSON: Codable {
+    let date: Date
+    let eventId: String
+    let completed: Bool
+    let hidden: Bool
+    let titleOverride: String?
+    let notesOverride: String?
+    let sortOrder: Int
+    let updatedAt: Date
+}
+
+/// User preferences stored in UserDefaults (NOT the PIN / Face ID / app-lock keys,
+/// which are intentionally excluded from backups).
+struct AppSettingsJSON: Codable {
+    var fontChoice: String?
+    var fontSizeStep: Int?
+    var appearanceMode: String?
+    var appIcon: String?
+    var bgLight: Int?
+    var bgDark: Int?
+    var dateFormat: String?
+    var timeFormat: String?
+    var selectedCalendarIds: [String]?
+}
+
 // MARK: - HprgmBundle
 
 struct HprgmBundle: Codable {
     let formatName: String      // "Human Program Export"
-    let formatVersion: Int      // 1
+    let formatVersion: Int      // 2
     let exportedAt: Date
     let appVersion: String
     let backlogItems: [BacklogItemJSON]
@@ -119,6 +161,10 @@ struct HprgmBundle: Codable {
     let scheduleTemplates: [ScheduleTemplateJSON]
     let dailyPages: [DailyPageJSON]
     let notifications: [NotificationReminderJSON]
+    // Added in format v2 — optional so v1 backups still decode.
+    let routines: [RoutineJSON]?
+    let calendarEventStates: [CalendarEventLocalStateJSON]?
+    let settings: AppSettingsJSON?
 }
 
 // MARK: - HprgmExportService
@@ -158,12 +204,15 @@ struct HprgmExportService {
         let scheduleTemplates    = try fetchScheduleTemplates(context: context)
         let dailyPages           = try fetchDailyPages(context: context)
         let notifications        = try fetchNotifications(context: context)
+        let routines             = try fetchRoutines(context: context)
+        let calendarStates       = try fetchCalendarStates(context: context)
+        let settings             = gatherSettings()
 
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
 
         return HprgmBundle(
             formatName: "Human Program Export",
-            formatVersion: 1,
+            formatVersion: 2,
             exportedAt: Date(),
             appVersion: appVersion,
             backlogItems: backlogItems,
@@ -172,7 +221,63 @@ struct HprgmExportService {
             exerciseRoutines: exerciseRoutines,
             scheduleTemplates: scheduleTemplates,
             dailyPages: dailyPages,
-            notifications: notifications
+            notifications: notifications,
+            routines: routines,
+            calendarEventStates: calendarStates,
+            settings: settings
+        )
+    }
+
+    private func fetchRoutines(context: ModelContext) throws -> [RoutineJSON] {
+        let descriptor = FetchDescriptor<Routine>(sortBy: [SortDescriptor(\.createdAt)])
+        let routines = try context.fetch(descriptor)
+        return routines.map { routine in
+            let items = routine.items
+                .sorted { $0.sortOrder < $1.sortOrder }
+                .map { RoutineItemJSON(id: $0.id, text: $0.text, notes: $0.notes, sortOrder: $0.sortOrder) }
+            return RoutineJSON(
+                id: routine.id,
+                title: routine.title,
+                emoji: routine.emoji,
+                notes: routine.notes,
+                createdAt: routine.createdAt,
+                updatedAt: routine.updatedAt,
+                items: items
+            )
+        }
+    }
+
+    private func fetchCalendarStates(context: ModelContext) throws -> [CalendarEventLocalStateJSON] {
+        let descriptor = FetchDescriptor<CalendarEventLocalState>(sortBy: [SortDescriptor(\.date)])
+        let states = try context.fetch(descriptor)
+        return states.map { s in
+            CalendarEventLocalStateJSON(
+                date: s.date,
+                eventId: s.eventId,
+                completed: s.completed,
+                hidden: s.hidden,
+                titleOverride: s.titleOverride,
+                notesOverride: s.notesOverride,
+                sortOrder: s.sortOrder,
+                updatedAt: s.updatedAt
+            )
+        }
+    }
+
+    private func gatherSettings() -> AppSettingsJSON {
+        let d = UserDefaults.standard
+        func str(_ k: String) -> String? { d.object(forKey: k) as? String }
+        func int(_ k: String) -> Int? { d.object(forKey: k) as? Int }
+        return AppSettingsJSON(
+            fontChoice: str("settings.fontChoice"),
+            fontSizeStep: int("settings.fontSizeStep"),
+            appearanceMode: str("settings.appearanceMode"),
+            appIcon: str("settings.appIcon"),
+            bgLight: int("settings.bgLight"),
+            bgDark: int("settings.bgDark"),
+            dateFormat: str("settings.dateFormat"),
+            timeFormat: str("settings.timeFormat"),
+            selectedCalendarIds: d.stringArray(forKey: "selectedCalendarIds")
         )
     }
 

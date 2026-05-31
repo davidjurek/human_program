@@ -205,7 +205,7 @@ struct TodayView: View {
                     } label: {
                         DSText("Add Task").dsTextStyle(.headline)
                             .padding(.horizontal, 28).padding(.vertical, 12)
-                            .popupGlass(cornerRadius: 18)
+                            .contentShape(Rectangle())
                     }.buttonStyle(.plain)
                     Spacer()
                 }

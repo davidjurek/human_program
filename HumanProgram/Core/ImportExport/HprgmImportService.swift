@@ -32,10 +32,13 @@ struct HprgmImportService {
     ///   4. Insert new records from the bundle
     ///   5. Save the context
     func importData(_ bundle: HprgmBundle, context: ModelContext) throws {
-        // ── 1. Delete non-locked daily pages (tasks cascade-deleted automatically) ──
+        // ── 1. Delete ALL daily pages (tasks cascade-deleted automatically) ──
+        // A restore is an explicit "REPLACES all current data" action, so it is a
+        // faithful full restore: even past-locked snapshots are replaced by the
+        // backup's pages (this is NOT the automatic refresh the snapshot rule guards).
         let pageDescriptor = FetchDescriptor<DailyPage>()
         let existingPages = try context.fetch(pageDescriptor)
-        for page in existingPages where !page.isPastLocked {
+        for page in existingPages {
             context.delete(page)
         }
 
@@ -69,6 +72,14 @@ struct HprgmImportService {
         let notificationDescriptor = FetchDescriptor<NotificationReminder>()
         for reminder in try context.fetch(notificationDescriptor) {
             context.delete(reminder)
+        }
+
+        // Routines (cascade deletes their items) + calendar local state.
+        for routine in try context.fetch(FetchDescriptor<Routine>()) {
+            context.delete(routine)
+        }
+        for state in try context.fetch(FetchDescriptor<CalendarEventLocalState>()) {
+            context.delete(state)
         }
 
         // ── 4. Insert records from the bundle ──
@@ -145,12 +156,12 @@ struct HprgmImportService {
             context.insert(template)
         }
 
-        // Daily pages (non-locked only — locked ones were kept in step 1)
-        for json in bundle.dailyPages where !json.isPastLocked {
+        // Daily pages — ALL of them, locked snapshots included, exactly as backed up.
+        for json in bundle.dailyPages {
             let page = DailyPage(date: json.date, createdAutomatically: json.createdAutomatically)
             page.id = json.id
             page.dayComplete = json.dayComplete
-            page.isPastLocked = false
+            page.isPastLocked = json.isPastLocked
             page.scheduleBlocks = json.scheduleBlocks
             page.createdAt = json.createdAt
             page.updatedAt = json.updatedAt
@@ -192,7 +203,53 @@ struct HprgmImportService {
             context.insert(reminder)
         }
 
+        // Routines + their steps (format v2; absent in v1 backups).
+        for json in bundle.routines ?? [] {
+            let routine = Routine(title: json.title)
+            routine.id = json.id
+            routine.emoji = json.emoji
+            routine.notes = json.notes
+            routine.createdAt = json.createdAt
+            routine.updatedAt = json.updatedAt
+            context.insert(routine)
+            for itemJSON in json.items {
+                let item = RoutineItem(text: itemJSON.text, sortOrder: itemJSON.sortOrder)
+                item.id = itemJSON.id
+                item.notes = itemJSON.notes
+                item.routine = routine
+                context.insert(item)
+            }
+        }
+
+        // Calendar local state (completion / hidden / overrides per event+date).
+        for json in bundle.calendarEventStates ?? [] {
+            let state = CalendarEventLocalState(date: json.date, eventId: json.eventId)
+            state.completed = json.completed
+            state.hidden = json.hidden
+            state.titleOverride = json.titleOverride
+            state.notesOverride = json.notesOverride
+            state.sortOrder = json.sortOrder
+            state.updatedAt = json.updatedAt
+            context.insert(state)
+        }
+
         // ── 5. Save ──
         try context.save()
+
+        // ── 6. Restore user preferences (UserDefaults) — excludes PIN / Face ID. ──
+        if let s = bundle.settings { applySettings(s) }
+    }
+
+    private func applySettings(_ s: AppSettingsJSON) {
+        let d = UserDefaults.standard
+        if let v = s.fontChoice { d.set(v, forKey: "settings.fontChoice") }
+        if let v = s.fontSizeStep { d.set(v, forKey: "settings.fontSizeStep") }
+        if let v = s.appearanceMode { d.set(v, forKey: "settings.appearanceMode") }
+        if let v = s.appIcon { d.set(v, forKey: "settings.appIcon") }
+        if let v = s.bgLight { d.set(v, forKey: "settings.bgLight") }
+        if let v = s.bgDark { d.set(v, forKey: "settings.bgDark") }
+        if let v = s.dateFormat { d.set(v, forKey: "settings.dateFormat") }
+        if let v = s.timeFormat { d.set(v, forKey: "settings.timeFormat") }
+        if let v = s.selectedCalendarIds { d.set(v, forKey: "selectedCalendarIds") }
     }
 }
