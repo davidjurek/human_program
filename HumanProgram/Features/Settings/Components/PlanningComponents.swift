@@ -40,40 +40,6 @@ struct WeekdayCircleSelector: View {
     }
 }
 
-// MARK: - Day toggle button (single circular S/M/T… toggle)
-
-/// Circular single-day toggle used by the Exercise recurrence editor.
-/// (Relocated here when the old RecurrenceRuleEditorView was removed.)
-struct DayToggleButton: View {
-    let label: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(isSelected ? .white : AppColors.textSecondary)
-                .frame(width: 36, height: 36)
-                .background(
-                    isSelected
-                        ? AppColors.accent
-                        : AppColors.surfaceSunken
-                )
-                .clipShape(Circle())
-                .overlay(
-                    Circle()
-                        .strokeBorder(
-                            isSelected ? Color.clear : AppColors.border,
-                            lineWidth: 1
-                        )
-                )
-        }
-        .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.15), value: isSelected)
-    }
-}
-
 // MARK: - Weekday strip (read-only S M T W T F S summary for list rows)
 
 /// Compact S M T W T F S strip: enabled days bold/primary, the rest grey.

@@ -19,8 +19,8 @@ struct SettingsView: View {
             }
 
             SettingsGroup(title: "Data") {
-                SettingsNavRow(label: "Import", systemImage: "square.and.arrow.down") { ImportExportView() }
-                SettingsNavRow(label: "Export", systemImage: "square.and.arrow.up") { ImportExportView() }
+                SettingsNavRow(label: "Import", systemImage: "square.and.arrow.down") { ImportView() }
+                SettingsNavRow(label: "Export", systemImage: "square.and.arrow.up") { ExportView() }
             }
 
             SettingsGroup(title: "Info") {

@@ -1,264 +1,349 @@
 import SwiftUI
 import SwiftData
+import DSKit
 import UniformTypeIdentifiers
 
-struct ImportExportView: View {
-    @Environment(\.modelContext) private var context
-    @Query private var backlogItems: [BacklogItem]
-    @Query private var dailyPages: [DailyPage]
+// Import and Export, split into two DSKit pages. Import offers three options
+// (text backlog, CSV backlog, restore .hprgm); Export offers one (.hprgm full
+// backup). Every step is a real pushed page.
 
-    @State private var exportURL: URL? = nil
-    @State private var showShareSheet = false
-    @State private var showFilePicker = false
-    @State private var showImportPreview = false
-    @State private var importBundle: HprgmBundle? = nil
-    @State private var showHistorySheet = false
-    @State private var errorMessage: String? = nil
-    @State private var isExporting = false
+// MARK: - Import menu
+
+struct ImportView: View {
+    var body: some View {
+        SettingsScreen {
+            SettingsGroup(title: "Backlog") {
+                SettingsNavRow(label: "Import from Text", systemImage: "text.alignleft") {
+                    TextBacklogImportView()
+                }
+                SettingsNavRow(label: "Import from CSV", systemImage: "tablecells") {
+                    CSVBacklogImportView()
+                }
+            }
+            SettingsGroup(title: "Full Backup") {
+                SettingsNavRow(label: "Restore from .hprgm", systemImage: "arrow.down.doc") {
+                    HprgmRestoreView()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Export menu
+
+struct ExportView: View {
+    @Environment(\.modelContext) private var context
+    @State private var shareURL: URL?
+    @State private var error: String?
 
     var body: some View {
-        ZStack {
-            AppColors.background.ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 0) {
-
-                    // MARK: Export Section
-                    sectionHeader("Export")
-
-                    VStack(spacing: 1) {
-                        actionRow(
-                            icon: "square.and.arrow.up",
-                            title: "Export Full Backup (.hprgm)",
-                            subtitle: "All tasks, schedules, backlog, and settings",
-                            isDestructive: false
-                        ) {
-                            exportHprgm()
-                        }
-
-                        Divider()
-                            .padding(.leading, 52)
-
-                        actionRow(
-                            icon: "tablecells",
-                            title: "Export Backlog as CSV",
-                            subtitle: "\(backlogItems.count) item\(backlogItems.count == 1 ? "" : "s")",
-                            isDestructive: false
-                        ) {
-                            exportBacklogCSV()
-                        }
-
-                        Divider()
-                            .padding(.leading, 52)
-
-                        actionRow(
-                            icon: "clock.arrow.circlepath",
-                            title: "Export Task History as CSV",
-                            subtitle: "Choose a date range",
-                            isDestructive: false
-                        ) {
-                            showHistorySheet = true
-                        }
-                    }
-                    .background(AppColors.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 32)
-
-                    // MARK: Import Section
-                    sectionHeader("Import")
-
-                    VStack(spacing: 0) {
-                        actionRow(
-                            icon: "square.and.arrow.down",
-                            title: "Import .hprgm Backup",
-                            subtitle: "Replaces current planner data",
-                            isDestructive: true
-                        ) {
-                            showFilePicker = true
-                        }
-                    }
-                    .background(AppColors.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 24)
-
-                    // MARK: Import Warning Note
-                    Text("Importing a backup replaces your recurring tasks, schedules, backlog, and exercise routines. Past completed days are always preserved.")
-                        .font(AppTypography.caption())
-                        .foregroundStyle(AppColors.textTertiary)
-                        .multilineTextAlignment(.leading)
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 32)
-                }
-                .padding(.top, 16)
-            }
-        }
-        .navigationTitle("Import / Export")
-        .navigationBarTitleDisplayMode(.inline)
-
-        // MARK: Share Sheet
-        .sheet(isPresented: $showShareSheet) {
-            if let url = exportURL {
-                ShareSheet(activityItems: [url])
-                    .ignoresSafeArea()
-            }
-        }
-
-        // MARK: File Picker for Import
-        .fileImporter(
-            isPresented: $showFilePicker,
-            allowedContentTypes: [.hprgm],
-            allowsMultipleSelection: false
-        ) { result in
-            handleFilePickerResult(result)
-        }
-
-        // MARK: Import Preview Sheet
-        .sheet(isPresented: $showImportPreview) {
-            if let bundle = importBundle {
-                HprgmImportPreviewView(bundle: bundle) {
-                    showImportPreview = false
+        SettingsScreen {
+            SettingsGroup(title: "Full Backup") {
+                SettingsButtonRow(label: "Export .hprgm", systemImage: "square.and.arrow.up") {
+                    exportBackup()
                 }
             }
+            DSText("Exports your full app state — backlog, schedules, recurring tasks, exercise, daily pages, settings — except the game and your PIN/Face ID.")
+                .dsTextStyle(.subheadline)
+            if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
         }
-
-        // MARK: Task History Date Range Sheet
-        .sheet(isPresented: $showHistorySheet) {
-            TaskHistoryExportSheet(pages: dailyPages)
-        }
-
-        // MARK: Error Alert
-        .alert("Export Failed", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { errorMessage = nil }
-        } message: {
-            if let msg = errorMessage {
-                Text(msg)
-            }
-        }
+        .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
     }
 
-    // MARK: - Section Header
-
-    @ViewBuilder
-    private func sectionHeader(_ title: String) -> some View {
-        HStack {
-            Text(title.uppercased())
-                .font(AppTypography.sectionHeader())
-                .foregroundStyle(AppColors.sectionHeader)
-                .padding(.leading, 24)
-                .padding(.bottom, 6)
-            Spacer()
-        }
-    }
-
-    // MARK: - Action Row
-
-    @ViewBuilder
-    private func actionRow(
-        icon: String,
-        title: String,
-        subtitle: String,
-        isDestructive: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(isDestructive ? AppColors.accentRed : AppColors.accent)
-                    .frame(width: 24, alignment: .center)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(AppTypography.bodyText())
-                        .foregroundStyle(isDestructive ? AppColors.accentRed : AppColors.textPrimary)
-                    Text(subtitle)
-                        .font(AppTypography.caption())
-                        .foregroundStyle(AppColors.textTertiary)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(AppColors.textTertiary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Export Actions
-
-    private func exportHprgm() {
+    private func exportBackup() {
         do {
-            let service = HprgmExportService()
-            let url = try service.export(context: context)
-            exportURL = url
-            showShareSheet = true
+            shareURL = try HprgmExportService().export(context: context)
         } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func exportBacklogCSV() {
-        let exporter = BacklogCSVExporter()
-        let csv = exporter.export(items: backlogItems)
-        let filename = exporter.suggestedFilename()
-
-        do {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-            try csv.write(to: url, atomically: true, encoding: .utf8)
-            exportURL = url
-            showShareSheet = true
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    // MARK: - Import Actions
-
-    private func handleFilePickerResult(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            do {
-                let service = HprgmImportService()
-                let bundle = try service.preview(fileURL: url)
-                importBundle = bundle
-                showImportPreview = true
-            } catch {
-                errorMessage = "Could not read the file: \(error.localizedDescription)"
-            }
-        case .failure(let error):
-            errorMessage = error.localizedDescription
+            self.error = "Export failed: \(error.localizedDescription)"
         }
     }
 }
 
-// MARK: - ShareSheet
+// MARK: - Text backlog import (input → select → summary)
+
+struct TextBacklogImportView: View {
+    @State private var text = ""
+    @State private var rows: [ParsedBacklogRow] = []
+    @State private var pushSelect = false
+
+    var body: some View {
+        SettingsScreen(centered: true) {
+            SettingsSectionLabel(title: "Paste titles — one per line")
+            TextEditor(text: $text)
+                .font(appFont(17))
+                .scrollContentBackground(.hidden)
+                .frame(height: 280)
+                .padding(8)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+            SettingsButtonRow(label: "Load", systemImage: "arrow.right.circle") {
+                rows = BacklogImportParser.parseText(text)
+                if !rows.isEmpty { pushSelect = true }
+            }
+        }
+        .navigationDestination(isPresented: $pushSelect) {
+            ImportSelectionView(rows: rows, skippedNoTitle: 0)
+        }
+    }
+}
+
+// MARK: - CSV backlog import
+
+struct CSVBacklogImportView: View {
+    @State private var rows: [ParsedBacklogRow] = []
+    @State private var skipped = 0
+    @State private var pushSelect = false
+    @State private var error: String?
+    @State private var showPicker = false
+    @State private var shareTemplate: URL?
+
+    var body: some View {
+        SettingsScreen(centered: true) {
+            SettingsGroup(title: "CSV") {
+                SettingsButtonRow(label: "Download template", systemImage: "arrow.down.doc") {
+                    shareTemplate = writeTemplate()
+                }
+                SettingsButtonRow(label: "Choose CSV file", systemImage: "folder") {
+                    showPicker = true
+                }
+            }
+            DSText("The file must be headerless: columns are title, project, date (YYYY-MM-DD), notes. Rows with no title are skipped; a bad date or wrong column count rejects the whole file.")
+                .dsTextStyle(.subheadline)
+            if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
+        }
+        .sheet(item: $shareTemplate) { url in ShareSheet(items: [url]) }
+        .fileImporter(isPresented: $showPicker, allowedContentTypes: [.commaSeparatedText, .text, .plainText]) { result in
+            handle(result)
+        }
+        .navigationDestination(isPresented: $pushSelect) {
+            ImportSelectionView(rows: rows, skippedNoTitle: skipped)
+        }
+    }
+
+    private func writeTemplate() -> URL? {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("backlog-template.csv")
+        try? BacklogImportParser.csvTemplate.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    private func handle(_ result: Result<URL, Error>) {
+        error = nil
+        guard case .success(let url) = result else { return }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        guard let content = try? String(contentsOf: url, encoding: .utf8) else {
+            error = "Couldn't read the file."; return
+        }
+        switch BacklogImportParser.parseCSV(content) {
+        case .rejected(let reason):
+            error = "Import rejected: \(reason)"
+        case .parsed(let parsed, let skippedNoTitle):
+            rows = parsed; skipped = skippedNoTitle
+            if rows.isEmpty { error = "No valid rows found." } else { pushSelect = true }
+        }
+    }
+}
+
+// MARK: - Selection page (all selected, deselect, import)
+
+struct ImportSelectionView: View {
+    let rows: [ParsedBacklogRow]
+    let skippedNoTitle: Int
+    @Environment(\.modelContext) private var context
+
+    @State private var selected: Set<UUID> = []
+    @State private var summary: ImportSummary?
+    @State private var pushSummary = false
+
+    var body: some View {
+        SettingsScreen(centered: true, trailing: {
+            Button { runImport() } label: {
+                Text("Import").font(appFont(18)).foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
+            }
+        }) {
+            SettingsSectionLabel(title: "\(selected.count) of \(rows.count) selected")
+            ForEach(rows) { row in
+                Button {
+                    if selected.contains(row.id) { selected.remove(row.id) } else { selected.insert(row.id) }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: selected.contains(row.id) ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 20)).foregroundStyle(selected.contains(row.id) ? Color.green : Color.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            DSText(row.title).dsTextStyle(.body).lineLimit(1)
+                            if let sub = subtitle(row) { DSText(sub).dsTextStyle(.subheadline) }
+                        }
+                        Spacer()
+                    }
+                    .frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+            }
+        }
+        .onAppear { if selected.isEmpty { selected = Set(rows.map { $0.id }) } }
+        .navigationDestination(isPresented: $pushSummary) {
+            if let summary { ImportSummaryView(summary: summary) }
+        }
+    }
+
+    private func subtitle(_ row: ParsedBacklogRow) -> String? {
+        var parts: [String] = []
+        if let p = row.project { parts.append(p) }
+        if let d = row.date { let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"; parts.append(f.string(from: d)) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private func runImport() {
+        summary = BacklogImporter.run(rows: rows, selected: selected, skippedNoTitle: skippedNoTitle, context: context)
+        pushSummary = true
+    }
+}
+
+// MARK: - Summary page (expandable categories)
+
+struct ImportSummaryView: View {
+    let summary: ImportSummary
+
+    var body: some View {
+        SettingsScreen(centered: true) {
+            SettingsSectionLabel(title: "Import complete")
+            disclosure("Imported", summary.imported, color: .green)
+            disclosure("Not imported", summary.notImported, color: .secondary)
+            disclosure("Rejected", summary.rejected, color: .red)
+        }
+    }
+
+    private func disclosure(_ title: String, _ items: [String], color: Color) -> some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(items, id: \.self) { DSText($0).dsTextStyle(.subheadline) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
+        } label: {
+            HStack {
+                DSText(title).dsTextStyle(.title3)
+                Spacer()
+                Text("\(items.count)").font(appFont(18)).foregroundStyle(color)
+            }
+        }
+        .tint(.primary)
+    }
+}
+
+// MARK: - hprgm restore
+
+struct HprgmRestoreView: View {
+    @Environment(\.modelContext) private var context
+    @State private var showPicker = false
+    @State private var pickedURL: URL?
+    @State private var confirm = ""
+    @State private var error: String?
+    @State private var done = false
+
+    private var canRestore: Bool { pickedURL != nil && confirm.uppercased() == "RESET" }
+
+    var body: some View {
+        SettingsScreen(centered: true) {
+            VStack(spacing: 16) {
+                DSImageView(systemName: "exclamationmark.triangle.fill", size: 48, tint: .color(.red))
+                    .padding(.top, 12)
+                DSText("Restore Backup").dsTextStyle(.title2)
+                DSText("Restoring REPLACES all current data with the backup. This cannot be undone. Your PIN and Face ID stay as they are.")
+                    .dsTextStyle(.body).multilineTextAlignment(.center)
+
+                SettingsButtonRow(label: pickedURL == nil ? "Choose .hprgm file" : "File selected ✓",
+                                  systemImage: "folder") { showPicker = true }
+
+                DSText("Type RESET to confirm").dsTextStyle(.subheadline).padding(.top, 8)
+                TextField("", text: $confirm, prompt: Text("RESET").foregroundStyle(.tertiary))
+                    .autocorrectionDisabled().textInputAutocapitalization(.characters)
+                    .font(appFont(18)).multilineTextAlignment(.center)
+                    .padding(.vertical, 14).padding(.horizontal, 20)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+
+                if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
+                if done { DSText("Restore complete.").dsTextStyle(.subheadline, Color.green) }
+
+                Button { restore() } label: {
+                    Text("Restore Everything").font(appFont(18)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 16)
+                        .background(canRestore ? Color.red : Color.red.opacity(0.35), in: Capsule())
+                }.buttonStyle(.plain).disabled(!canRestore)
+            }
+            .frame(maxWidth: .infinity).padding(.horizontal, 8)
+        }
+        .fileImporter(isPresented: $showPicker,
+                      allowedContentTypes: [UTType(filenameExtension: "hprgm") ?? .data, .json, .data]) { result in
+            if case .success(let url) = result { pickedURL = url; error = nil }
+        }
+    }
+
+    private func restore() {
+        guard let url = pickedURL, canRestore else { return }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let bundle = try HprgmImportService().preview(fileURL: url)
+            try HprgmImportService().importData(bundle, context: context)
+            done = true
+        } catch {
+            self.error = "Restore failed: \(error.localizedDescription)"
+        }
+    }
+}
+
+// MARK: - Importer + summary model
+
+public struct ImportSummary {
+    public var imported: [String]
+    public var notImported: [String]
+    public var rejected: [String]
+}
+
+enum BacklogImporter {
+    @MainActor
+    static func run(rows: [ParsedBacklogRow], selected: Set<UUID>, skippedNoTitle: Int,
+                    context: ModelContext) -> ImportSummary {
+        let repo = BacklogRepository(context: context)
+        let existing = (try? repo.fetchAll()) ?? []
+        var seenTitles = Set(existing.map { $0.title.lowercased() })
+        var projectsByName: [String: ProjectBucket] = [:]
+        for p in (try? repo.fetchProjects()) ?? [] { projectsByName[p.name.lowercased()] = p }
+
+        var imported: [String] = [], notImported: [String] = [], rejected: [String] = []
+
+        for row in rows {
+            guard selected.contains(row.id) else { notImported.append(row.title); continue }
+            let key = row.title.lowercased()
+            if seenTitles.contains(key) { rejected.append("\(row.title) — duplicate title"); continue }
+            seenTitles.insert(key)
+
+            var project: ProjectBucket? = nil
+            if let pname = row.project {
+                if let existing = projectsByName[pname.lowercased()] {
+                    project = existing
+                } else if let created = try? repo.createProject(name: pname) {
+                    project = created
+                    projectsByName[pname.lowercased()] = created
+                }
+            }
+            try? repo.create(title: row.title, notes: row.notes, project: project, assignedDate: row.date)
+            imported.append(row.title)
+        }
+        if skippedNoTitle > 0 { rejected.append("\(skippedNoTitle) row(s) with no title") }
+        return ImportSummary(imported: imported, notImported: notImported, rejected: rejected)
+    }
+}
+
+// MARK: - Share sheet + URL Identifiable
 
 struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
+    let items: [Any]
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(
-            activityItems: activityItems,
-            applicationActivities: nil
-        )
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
 
-// MARK: - UTType extension for .hprgm
-
-extension UTType {
-    static let hprgm = UTType(exportedAs: "com.humanprogram.hprgm")
+extension URL: @retroactive Identifiable {
+    public var id: String { absoluteString }
 }
