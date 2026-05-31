@@ -21,16 +21,38 @@ struct BacklogTaskDetailView: View {
     @State private var hasDate = false
     @State private var date = Calendar.current.startOfDay(for: Date())
     @State private var didLoad = false
+    /// The item created in this session (so a brand-new task, after Save, behaves
+    /// like an existing one — read mode, Edit/Save — instead of popping). [#28]
+    @State private var savedItem: BacklogItem?
+    @State private var showDiscard = false
 
     private var repo: BacklogRepository { BacklogRepository(context: context) }
-    private var isNew: Bool { item == nil }
+    private var effectiveItem: BacklogItem? { item ?? savedItem }
+    private var isNew: Bool { effectiveItem == nil }
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
+    /// Unsaved edits relative to the persisted item (or any input for a new one).
+    private var isDirty: Bool {
+        let assigned = hasDate ? Calendar.current.startOfDay(for: date) : nil
+        if let it = effectiveItem {
+            return title != it.title
+                || notes != it.notes
+                || projectId != it.project?.id
+                || assigned != it.assignedDate
+        }
+        return !title.trimmingCharacters(in: .whitespaces).isEmpty
+            || !notes.isEmpty || projectId != nil || hasDate
+    }
+
     var body: some View {
-        SettingsScreen(centered: true, trailing: { trailingButton }) {
+        SettingsScreen(centered: true,
+                       onBack: handleBack,
+                       swipeBackBlocked: { editing && isDirty },
+                       trailing: { trailingButton }) {
             SettingsSectionLabel(title: "Task")
             if editing {
-                AppTextField(text: $title, placeholder: "Title", fontSize: 20)
+                // Match read mode's .title3 size so the title doesn't reflow. [#25]
+                AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20))
             } else {
                 DSText(title.isEmpty ? "Untitled" : title).dsTextStyle(.title3)
                     .frame(minHeight: 34, alignment: .leading)
@@ -70,6 +92,8 @@ struct BacklogTaskDetailView: View {
                         } else {
                             DSText(dateString).dsTextStyle(.subheadline)
                         }
+                    } else if !editing {
+                        DSText("None").dsTextStyle(.subheadline)   // [#23]
                     }
                     if editing {
                         Toggle("", isOn: $hasDate).labelsHidden().tint(appToggleTint)
@@ -83,11 +107,23 @@ struct BacklogTaskDetailView: View {
                 AppTextField(text: $notes, placeholder: "Note", fontSize: 18, multiline: true)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             } else {
-                DSText(notes.isEmpty ? "—" : notes).dsTextStyle(.body)
+                DSText(notes).dsTextStyle(.body)   // blank when empty [#24]
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .overlay {
+            if showDiscard {
+                ConfirmPopup(message: "Discard changes?",
+                             confirmTitle: "Discard",
+                             onConfirm: { showDiscard = false; dismiss() },
+                             onCancel: { showDiscard = false })
+            }
+        }
         .onAppear(perform: loadIfNeeded)
+    }
+
+    private func handleBack() {
+        if editing && isDirty { showDiscard = true } else { dismiss() }
     }
 
     private var trailingButton: some View {
@@ -100,10 +136,9 @@ struct BacklogTaskDetailView: View {
                 }.disabled(!canSave)
             } else {
                 Button {
-                    if editing { save() }
-                    editing.toggle()
+                    if editing { save(); editing = false } else { editing = true }
                 } label: {
-                    Text(editing ? "Done" : "Edit").font(appFont(18))
+                    Text(editing ? "Save" : "Edit").font(appFont(18))   // [#29]
                         .foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
                 }
             }
@@ -138,16 +173,17 @@ struct BacklogTaskDetailView: View {
         let trimmed = title.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         let project = projectId.flatMap { pid in projects.first(where: { $0.id == pid }) }
-        let assigned = hasDate ? date : nil
-        if let item {
-            try? repo.update(item, title: trimmed, notes: notes, project: project, assignedDate: assigned)
+        let assigned = hasDate ? Calendar.current.startOfDay(for: date) : nil
+        if let existing = effectiveItem {
+            try? repo.update(existing, title: trimmed, notes: notes, project: project, assignedDate: assigned)
             // Clearing project/date isn't covered by update's non-nil contract; set directly.
-            item.project = project
-            item.assignedDate = assigned.map { Calendar.current.startOfDay(for: $0) }
+            existing.project = project
+            existing.assignedDate = assigned
             try? context.save()
         } else {
-            try? repo.create(title: trimmed, notes: notes, project: project, assignedDate: assigned)
-            dismiss()
+            // New task: create, then stay on the page in read mode. [#28]
+            savedItem = try? repo.create(title: trimmed, notes: notes, project: project, assignedDate: assigned)
+            editing = false
         }
     }
 }

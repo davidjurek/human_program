@@ -41,6 +41,7 @@ struct BacklogView: View {
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeBack()
         .overlay { overlays }
         .navigationDestination(isPresented: $pushEditorForNew) {
             BacklogTaskDetailView(item: nil, startInEdit: true)
@@ -149,16 +150,15 @@ struct BacklogView: View {
     }
 
     private func projectRowContent(name: String, count: Int) -> some View {
-        HStack(spacing: 14) {
-            DSImageView(systemName: "folder", size: .font(.title3), tint: .color(.primary))
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 DSText(name).dsTextStyle(.title3)
                 DSText("\(count) items").dsTextStyle(.subheadline)
             }
-            Spacer()
+            Spacer(minLength: 8)
             DSChevronView()
         }
-        .frame(minHeight: 52)
+        .frame(height: 60)
         .contentShape(Rectangle())
     }
 
@@ -178,9 +178,14 @@ struct BacklogView: View {
                     DSText("Done").dsTextStyle(.headline)
                 }.buttonStyle(.plain).padding(.horizontal, 6)
             } else {
-                iconButton(mode == .tasks ? "folder" : "checklist") {
-                    mode = mode == .tasks ? .projects : .tasks
-                }
+                // View toggle shows the CURRENT view as a word. Both words are
+                // left-aligned at the same x (fixed width); "Task" leaves a wide
+                // gap to the sort button — intended.
+                Button { mode = mode == .tasks ? .projects : .tasks } label: {
+                    DSText(mode == .tasks ? "Task" : "Project").dsTextStyle(.headline)
+                        .frame(width: 78, alignment: .leading)
+                        .frame(height: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain)
                 sortMenu
                 iconButton("plus") { addTapped() }
                 Button { selecting = true } label: {
@@ -218,6 +223,7 @@ struct BacklogView: View {
             Image(systemName: "arrow.up.arrow.down").font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.primary).frame(width: 40, height: 44).contentShape(Rectangle())
         }
+        .tint(.primary)   // keep the glyph black, not the menu accent (blue)
     }
 
     private func addTapped() {
@@ -377,6 +383,7 @@ struct BacklogFolderView: View {
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeBack()
         .overlay {
             if showMove {
                 MoveToProjectPopup(projects: projects.filter { $0.id != project?.id },

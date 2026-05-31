@@ -136,7 +136,7 @@ struct HubView: View {
                     }
                 }
             }
-            .padding(.horizontal, 42)
+            .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationBarBackButtonHidden(true)
@@ -150,11 +150,11 @@ private struct HubTile: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            DSImageView(systemName: icon, size: 30, tint: .color(.primary))
+            DSImageView(systemName: icon, size: 34, tint: .color(.primary))
             DSText(label).dsTextStyle(.headline)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 120)
+        .aspectRatio(1, contentMode: .fit)   // square tiles [#16]
         .popupGlass(cornerRadius: 22)
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }

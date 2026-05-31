@@ -134,7 +134,18 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
 ///
 /// When `blocked()` returns true (unsaved changes) the swipe doesn't pop;
 /// instead it runs `onBlocked` (the discard guard) so the popup appears.
-private struct SwipeBackEnabler: UIViewControllerRepresentable {
+extension View {
+    /// Re-enables the iOS leading-edge swipe-back gesture on a screen that hides
+    /// the nav-bar back button but is NOT built on `SettingsScreen` (e.g. the
+    /// Backlog screens with their own custom top bar). `blocked`/`onBlocked` work
+    /// the same as `SettingsScreen` (route through a discard guard when needed).
+    func enableSwipeBack(blocked: @escaping () -> Bool = { false },
+                         onBlocked: @escaping () -> Void = {}) -> some View {
+        background(SwipeBackEnabler(blocked: blocked, onBlocked: onBlocked))
+    }
+}
+
+struct SwipeBackEnabler: UIViewControllerRepresentable {
     var blocked: () -> Bool
     var onBlocked: () -> Void
 
