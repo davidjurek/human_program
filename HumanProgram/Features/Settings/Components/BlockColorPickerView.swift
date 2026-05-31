@@ -10,7 +10,7 @@ import DSKit
 final class ColorPresetStore: ObservableObject {
     static let shared = ColorPresetStore()
     private let key = "blockColorPresets"
-    static let maxPresets = 24
+    static let maxPresets = 18   // 6×3 [#14]
 
     @Published private(set) var presets: [String]
 
@@ -32,6 +32,14 @@ final class ColorPresetStore: ObservableObject {
     func delete(_ hex: String) {
         presets.removeAll { $0.caseInsensitiveCompare(hex) == .orderedSame }; persist()
     }
+    /// Fill the first empty slot with `hex` (no-op if full or already present). [#14]
+    func addToEmptySlot(_ hex: String) {
+        let h = hex.uppercased()
+        guard !presets.contains(h), presets.count < Self.maxPresets else { return }
+        presets.append(h); persist()
+    }
+    /// Restore the shipped default swatches. [#14]
+    func reset() { presets = BlockColors.swatches; persist() }
     var isFull: Bool { presets.count >= Self.maxPresets }
 }
 
@@ -67,18 +75,15 @@ struct BlockColorPickerView: View {
                     .buttonStyle(.plain)
             }
 
-            // Preset swatches (long-press to delete) + an "add current" tile.
+            // 18 fixed slots: filled swatches (long-press to delete) + empty
+            // placeholders (tap to store the current custom colour). No "+". [#14]
             LazyVGrid(columns: cols, spacing: 10) {
-                ForEach(store.presets, id: \.self) { hex in
-                    swatch(hex)
-                }
-                if !store.isFull {
-                    Button { store.add(currentHex) } label: {
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(Color.primary.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [3]))
-                            .frame(height: 34)
-                            .overlay(Image(systemName: "plus").font(.system(size: 14)).foregroundStyle(.secondary))
-                    }.buttonStyle(.plain)
+                ForEach(0..<ColorPresetStore.maxPresets, id: \.self) { i in
+                    if i < store.presets.count {
+                        swatch(store.presets[i])
+                    } else {
+                        emptySlot
+                    }
                 }
             }
 
@@ -91,7 +96,13 @@ struct BlockColorPickerView: View {
                 Spacer()
             }
 
-            // Mode switch + the chosen editor.
+            // Reset, then the mode switch + chosen editor. [#14]
+            HStack {
+                Spacer()
+                Button { store.reset() } label: { DSText("Reset to presets").dsTextStyle(.subheadline) }
+                    .buttonStyle(.plain)
+            }
+
             Picker("", selection: $mode) {
                 ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -106,7 +117,22 @@ struct BlockColorPickerView: View {
         .padding(20)
         .frame(width: 320)
         .popupGlass(cornerRadius: 22)
-        .onAppear { syncFromBinding() }
+        .onAppear {
+            syncFromBinding()
+            // App font on the RGB/HSB/Spectrum segmented control. [#14]
+            let attrs: [NSAttributedString.Key: Any] = [.font: appUIFont(14)]
+            UISegmentedControl.appearance().setTitleTextAttributes(attrs, for: .normal)
+            UISegmentedControl.appearance().setTitleTextAttributes(attrs, for: .selected)
+        }
+    }
+
+    /// Empty preset slot — tap to store the current custom colour. [#14]
+    private var emptySlot: some View {
+        RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05))
+            .frame(height: 34)
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.10)))
+            .contentShape(Rectangle())
+            .onTapGesture { store.addToEmptySlot(currentHex) }
     }
 
     // MARK: - Swatch
