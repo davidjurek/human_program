@@ -38,6 +38,8 @@ struct CalendarView: View {
     @State private var monthPage = 120
     @State private var weekPage = 120
     @State private var dayPage = 120
+    // The day whose all-day list popup is open (nil = closed). [#cal-allday]
+    @State private var allDayPopupDate: Date?
 
     private var selectedCalendarIds: [String] {
         UserDefaults.standard.stringArray(forKey: "selectedCalendarIds") ?? []
@@ -73,6 +75,8 @@ struct CalendarView: View {
         .navigationDestination(isPresented: $showAddEvent) {
             AddCalendarEventView(defaultDate: selectedDate, calendarService: calendarService, onSave: loadEvents)
         }
+        // All-day events list popup (Week/Day band tap). [#cal-allday]
+        .overlay { allDayListPopup }
         .task { await checkAuthAndLoad() }
     }
 
@@ -337,6 +341,7 @@ struct CalendarView: View {
                     VStack(spacing: 0) {
                         weekNavHeader(weekStart: ws)
                         weekDayHeaderRow(weekStart: ws)
+                        weekAllDayBand(weekStart: ws, colW: colW)
                         Divider()
                         weekTimeline(weekStart: ws, colW: colW).frame(maxHeight: .infinity)
                     }
@@ -423,9 +428,9 @@ struct CalendarView: View {
                             .frame(width: weekTimeColW - 4, alignment: .trailing)
                             .offset(x: 0, y: max(0, y - 7))
                     }
-                    // Events per day column.
+                    // Timed events per day column (all-day events live in the band). [#cal-allday]
                     ForEach(Array(weekDays.enumerated()), id: \.offset) { idx, day in
-                        ForEach(eventsForDay(day), id: \.eventIdentifier) { event in
+                        ForEach(timedEventsForDay(day), id: \.eventIdentifier) { event in
                             let s = minuteOfDay(event.startDate)
                             let e = minuteOfDay(event.endDate)
                             let h = max(weekHourHeight / 3, CGFloat(max(e - s, 20)) / 60 * weekHourHeight)
@@ -470,6 +475,7 @@ struct CalendarView: View {
                 let d = dayStart(forPage: i)
                 VStack(spacing: 0) {
                     dayNavHeader(day: d)
+                    dayAllDayBand(day: d)
                     Divider()
                     dayTimeline(day: d)
                 }
@@ -506,7 +512,7 @@ struct CalendarView: View {
             let comps = cal.dateComponents([.hour, .minute], from: Date())
             return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
         }()
-        let dayEvents = eventsForDay(selectedDate).sorted { $0.startDate < $1.startDate }
+        let dayEvents = timedEventsForDay(selectedDate).sorted { $0.startDate < $1.startDate }
         let hourHeight: CGFloat = 56
 
         return ScrollViewReader { proxy in
@@ -683,6 +689,139 @@ struct CalendarView: View {
             .sorted { $0.startDate < $1.startDate }
     }
 
+    /// Timed (non-all-day) events that START on `date` — the ones placed in the
+    /// 00:00–24:00 grid. All-day events are pulled out into the top band. [#cal-allday]
+    private func timedEventsForDay(_ date: Date) -> [EKEvent] {
+        eventsForDay(date).filter { !$0.isAllDay }
+    }
+
+    /// All-day events that OVERLAP `date` (so a multi-day holiday shows a chip on
+    /// every day it covers — one chip per day, per spec). [#cal-allday]
+    private func allDayEventsForDay(_ date: Date) -> [EKEvent] {
+        let cal = Calendar.current
+        let dayStart = cal.startOfDay(for: date)
+        guard let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
+        return events
+            .filter { $0.isAllDay && $0.startDate < dayEnd && $0.endDate > dayStart }
+            .sorted { ($0.title ?? "") < ($1.title ?? "") }
+    }
+
+    // MARK: - All-day band (fixed-height row above the timeline) [#cal-allday]
+
+    /// Fixed band height: ~1.4× the gap between two hour lines.
+    private var weekAllDayBandHeight: CGFloat { weekHourHeight * 1.4 }
+    private var dayAllDayBandHeight: CGFloat { 56 * 1.4 }
+
+    /// Week all-day band: a fixed-height row with one column per day. Shown only
+    /// when some day in the week has an all-day event; size never grows with count.
+    @ViewBuilder
+    private func weekAllDayBand(weekStart displayedWeekStart: Date, colW: CGFloat) -> some View {
+        let cal = Calendar.current
+        let weekDays = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: displayedWeekStart) }
+        if weekDays.contains(where: { !allDayEventsForDay($0).isEmpty }) {
+            HStack(spacing: 0) {
+                Color.clear.frame(width: weekTimeColW, height: weekAllDayBandHeight)
+                ForEach(Array(weekDays.enumerated()), id: \.offset) { _, day in
+                    allDayColumn(allDayEventsForDay(day), height: weekAllDayBandHeight,
+                                 font: 9, chipHeight: 15) { allDayPopupDate = day }
+                        .frame(width: colW)
+                }
+            }
+            .frame(height: weekAllDayBandHeight)
+        }
+    }
+
+    /// Day all-day band: a single fixed-height column, aligned to the timeline's
+    /// event area (gutter + trailing inset). Shown only when the day has all-day events.
+    @ViewBuilder
+    private func dayAllDayBand(day: Date) -> some View {
+        let items = allDayEventsForDay(day)
+        if !items.isEmpty {
+            HStack(spacing: 8) {
+                Color.clear.frame(width: 48, height: dayAllDayBandHeight)
+                allDayColumn(items, height: dayAllDayBandHeight, font: 12, chipHeight: 22) {
+                    allDayPopupDate = day
+                }
+                .padding(.trailing, 16)
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    /// One day's stacked all-day chips (max 3), with a "+" badge at the bottom-right
+    /// when there are more. Tapping the column opens the full scrollable list popup.
+    private func allDayColumn(_ events: [EKEvent], height: CGFloat, font: CGFloat,
+                              chipHeight: CGFloat, onTap: @escaping () -> Void) -> some View {
+        let shown = Array(events.prefix(3))
+        let overflow = events.count > 3
+        return ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 2) {
+                ForEach(shown, id: \.eventIdentifier) { e in
+                    Text(e.title ?? "")
+                        .font(appFont(font)).foregroundStyle(.white)
+                        .lineLimit(1)
+                        .padding(.horizontal, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: chipHeight)
+                        .background(RoundedRectangle(cornerRadius: 3).fill(Color(cgColor: e.calendar.cgColor)))
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(2)
+            if overflow {
+                Image(systemName: "plus")
+                    .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                    .padding(3)
+                    .background(Circle().fill(Color.black.opacity(0.45)))
+                    .padding(2)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .onTapGesture { if !events.isEmpty { onTap() } }
+    }
+
+    /// Scrollable popup listing one day's all-day events; tap a row → event detail.
+    @ViewBuilder
+    private var allDayListPopup: some View {
+        if let date = allDayPopupDate {
+            let items = allDayEventsForDay(date)
+            ZStack {
+                Color.clear.contentShape(Rectangle()).onTapGesture { allDayPopupDate = nil }
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(items, id: \.eventIdentifier) { e in
+                            Button {
+                                allDayPopupDate = nil
+                                selectedDate = date
+                                selectedEvent = e
+                                showEventDetail = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Color(cgColor: e.calendar.cgColor))
+                                        .frame(width: 4, height: 20)
+                                    Text(e.title ?? "").font(appFont(16)).foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 8)
+                                }
+                                .padding(.horizontal, 16)
+                                .frame(height: 44).frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+                .frame(width: 280).frame(maxHeight: 264)
+                .popupGlass(cornerRadius: 22)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea()
+        }
+    }
+
     private func daysInMonthGrid(for monthStart: Date) -> [Date] {
         let cal = Calendar.current
         guard let monthRange = cal.range(of: .day, in: .month, for: monthStart) else { return [] }
@@ -704,12 +843,9 @@ struct CalendarView: View {
     }
 
     private func hourLabel(_ hour: Int) -> String {
-        // Honor the Format setting: 24h → 00:00 … 23:00, else 12a/1a style. [#23/#25]
-        let is24 = (UserDefaults.standard.string(forKey: "settings.timeFormat") ?? "12h") == "24h"
-        if is24 { return String(format: "%02d:00", hour) }
-        let h = hour % 12 == 0 ? 12 : hour % 12
-        let suffix = hour < 12 ? "a" : "p"
-        return "\(h)\(suffix)"
+        // Week/Day timeline gutter is ALWAYS 24-hour (00:00 … 23:00), matching the
+        // Today schedule, regardless of the time-format setting. [#cal-allday]
+        String(format: "%02d:00", hour)
     }
 
     private var nowTimeString: String {
