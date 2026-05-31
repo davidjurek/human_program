@@ -18,7 +18,8 @@ struct CalendarView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @State private var viewMode: CalendarViewMode = .month
+    @State private var viewMode: CalendarViewMode =
+        CalendarViewMode(rawValue: UserDefaults.standard.string(forKey: "calMode") ?? "Month") ?? .month
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var calendarService = CalendarAdapterService()
     @State private var events: [EKEvent] = []
@@ -28,6 +29,7 @@ struct CalendarView: View {
     @State private var showEventDetail = false
     @State private var showAddEvent = false
     @State private var authStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
+    @State private var listScrollTick = 0   // bump to scroll the List back to today [#list]
 
     private var selectedCalendarIds: [String] {
         UserDefaults.standard.stringArray(forKey: "selectedCalendarIds") ?? []
@@ -88,6 +90,7 @@ struct CalendarView: View {
         displayedMonthStart = CalendarView.monthStart(for: today)
         displayedWeekStart = CalendarView.weekStart(for: today)
         loadEvents()
+        listScrollTick += 1   // scroll the List agenda back to today [#list]
     }
 
     // MARK: - Mode picker
@@ -537,54 +540,54 @@ struct CalendarView: View {
     private var agendaView: some View {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
-        let futureDays: [Date] = (0..<30).compactMap { cal.date(byAdding: .day, value: $0, to: today) }
-        let daysWithEvents = futureDays.filter { !eventsForDay($0).isEmpty }
+        // Every day in the loaded ±2yr window that has events, sorted. Today (or
+        // the next day with events) is the scroll anchor. [#list]
+        let daysWithEvents = Set(events.map { cal.startOfDay(for: $0.startDate) }).sorted()
+        let anchorDay = daysWithEvents.first(where: { $0 >= today }) ?? daysWithEvents.last
 
-        return ScrollView {
-            if daysWithEvents.isEmpty {
-                VStack(spacing: 16) {
-                    Spacer(minLength: 40)
-                    Image(systemName: "calendar")
-                        .font(.system(size: 40))
-                        .foregroundStyle(Color.secondary)
-                    Text("No events in the next 30 days")
-                        .font(appFont(14))
-                        .foregroundStyle(Color.secondary)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
-            } else {
-                LazyVStack(alignment: .leading, pinnedViews: [.sectionHeaders]) {
-                    ForEach(daysWithEvents, id: \.self) { day in
-                        Section {
-                            VStack(spacing: 0) {
-                                ForEach(eventsForDay(day), id: \.eventIdentifier) { event in
-                                    EventRowView(event: event) {
-                                        selectedDate = day
-                                        selectedEvent = event
-                                        showEventDetail = true
+        return ScrollViewReader { proxy in
+            ScrollView {
+                if daysWithEvents.isEmpty {
+                    Text("No events").font(appFont(14)).foregroundStyle(Color.secondary)
+                        .frame(maxWidth: .infinity).padding(.top, 60)
+                } else {
+                    LazyVStack(alignment: .leading, pinnedViews: [.sectionHeaders]) {
+                        ForEach(daysWithEvents, id: \.self) { day in
+                            Section {
+                                VStack(spacing: 0) {
+                                    ForEach(eventsForDay(day), id: \.eventIdentifier) { event in
+                                        EventRowView(event: event) {
+                                            selectedDate = day
+                                            selectedEvent = event
+                                            showEventDetail = true
+                                        }
+                                        Divider().padding(.leading, 16)
                                     }
-                                    Divider().padding(.leading, 16)
                                 }
+                                .background(Color.primary.opacity(0.06))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, 8)
+                            } header: {
+                                HStack {
+                                    Text(day, format: .dateTime.weekday(.wide).month(.abbreviated).day())
+                                        .font(appFont(15, bold: true))
+                                        .foregroundStyle(cal.isDateInToday(day) ? Color.accentColor : Color.primary)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 6)
+                                .background(Color.clear)
                             }
-                            .background(Color.primary.opacity(0.06))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 8)
-                        } header: {
-                            HStack {
-                                Text(day, format: .dateTime.weekday(.wide).month(.abbreviated).day())
-                                    .font(appFont(15, bold: true))
-                                    .foregroundStyle(Color.primary)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 6)
-                            .background(Color.clear)
+                            .id(day)
                         }
                     }
+                    .padding(.top, 8)
                 }
-                .padding(.top, 8)
+            }
+            .onAppear { if let a = anchorDay { proxy.scrollTo(a, anchor: .top) } }
+            .onChange(of: listScrollTick) { _, _ in
+                if let a = anchorDay { withAnimation { proxy.scrollTo(a, anchor: .top) } }
             }
         }
     }
@@ -619,8 +622,10 @@ struct CalendarView: View {
             start = cal.startOfDay(for: selectedDate)
             end = cal.date(byAdding: .day, value: 1, to: start) ?? start
         case .list:
-            start = cal.startOfDay(for: Date())
-            end = cal.date(byAdding: .day, value: 30, to: start) ?? start
+            // Wide window so the agenda scrolls across years (today centred). [#list]
+            let today = cal.startOfDay(for: Date())
+            start = cal.date(byAdding: .year, value: -2, to: today) ?? today
+            end = cal.date(byAdding: .year, value: 2, to: today) ?? today
         }
 
         events = calendarService.fetchEvents(from: start, to: end, calendarIds: selectedCalendarIds)
