@@ -51,8 +51,10 @@ struct BacklogTaskDetailView: View {
                        trailing: { trailingButton }) {
             SettingsSectionLabel(title: "Task")
             if editing {
-                // Match read mode's .title3 size so the title doesn't reflow. [#25]
+                // Match read mode's .title3 size AND min-height so the title
+                // doesn't change size or shift position in edit mode. [#41]
                 AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20))
+                    .frame(minHeight: 34, alignment: .leading)
             } else {
                 DSText(title.isEmpty ? "Untitled" : title).dsTextStyle(.title3)
                     .frame(minHeight: 34, alignment: .leading)

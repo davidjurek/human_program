@@ -601,7 +601,9 @@ struct ScheduleEditorView: View {
             VStack(alignment: .leading, spacing: 2) {
                 if isEditing {
                     TextField("Title", text: nameBinding(for: block.id))
-                        .font(appFont(17))
+                        // Match the read style (.body is font-scaled) so the title
+                        // doesn't change size when entering edit mode. [#21]
+                        .font(appFont(appScaledSize(17)))
                         .focused($titleFieldFocused)
                         .submitLabel(.done)
                         .onSubmit { editingTitleId = nil }
