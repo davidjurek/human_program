@@ -54,6 +54,7 @@ struct CalendarView: View {
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeBack()
         .sheet(isPresented: $showEventDetail, onDismiss: loadEvents) {
             if let event = selectedEvent {
                 CalendarEventDetailSheet(event: event, date: selectedDate, context: context)

@@ -40,6 +40,7 @@ struct RoutinesView: View {
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeBack()
         .navigationDestination(isPresented: $pushNew) {
             RoutineEditorView(routine: nil)
         }

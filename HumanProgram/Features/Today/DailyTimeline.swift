@@ -9,6 +9,9 @@ struct TimelineItem: Identifiable {
     let startMin: Int
     let endMin: Int
     let isCalendar: Bool
+    /// Schedule-block colour (left lane). nil → gray fallback. Calendar lane
+    /// ignores this and always uses the fixed light blue.
+    var color: Color? = nil
 }
 
 // The Daily "Schedule" square on the Today screen. It is exactly as tall as it is
@@ -23,8 +26,11 @@ struct DailyTimeline: View {
     let now: Date
 
     private let timeColW: CGFloat = 44
-    private let laneW: CGFloat = 20
-    private let laneGap: CGFloat = 4
+    private let laneW: CGFloat = 36      // [#1] widened 1.8× (was 20)
+    private let laneGap: CGFloat = 7.2   // [#1] widened 1.8× (was 4)
+
+    /// Fixed light blue for the calendar (right) lane. [#15]
+    private static let calendarBlue = Color(red: 0.46, green: 0.67, blue: 0.96).opacity(0.55)
 
     var body: some View {
         // A clear square (height == width) reserves the layout height; the
@@ -48,34 +54,37 @@ struct DailyTimeline: View {
         let placed = placedLabels(S: S)
 
         ZStack(alignment: .topLeading) {
-            // Hour grid lines (span only the two lanes) + 3-hour labels.
             let laneSpan = laneW * 2 + laneGap
-            ForEach(Array(stride(from: 0, through: 24, by: 3)), id: \.self) { h in
-                let y = CGFloat(h) / 24 * S
-                Rectangle().fill(Color.primary.opacity(0.08))
-                    .frame(width: laneSpan, height: 1)
-                    .offset(x: orangeX, y: min(y, S - 1))
-                Text(String(format: "%02d:00", h))
-                    .font(appFont(11)).foregroundStyle(.secondary)
-                    .offset(x: 0, y: min(max(0, y - 6), S - 12))
-            }
 
-            // Schedule lane (left) + calendar lane (right). No fills/colors — the
-            // lane (x position) is the only distinction.
+            // Schedule lane (left) + calendar lane (right). Calendar blocks are a
+            // fixed light blue; schedule blocks use their assigned colour (gray
+            // fallback). Drawn BEFORE the grid lines so the hour lines sit on top.
             ForEach(items) { it in
                 let top = yFor(it.startMin, S: S)
                 let h = max(3, yFor(it.endMin, S: S) - top)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.primary.opacity(0.12))
+                    .fill(it.isCalendar ? Self.calendarBlue : (it.color ?? Color.primary.opacity(0.50)))
                     .frame(width: laneW, height: h)
                     .offset(x: it.isCalendar ? greenX : orangeX, y: top)
+            }
+
+            // Hour grid lines (span only the two lanes) + 3-hour labels. Drawn on
+            // top of the blocks so the hour lines stay visible across them.
+            ForEach(Array(stride(from: 0, through: 24, by: 3)), id: \.self) { h in
+                let y = CGFloat(h) / 24 * S
+                Rectangle().fill(Color.primary.opacity(0.18))
+                    .frame(width: laneSpan, height: 1)
+                    .offset(x: orangeX, y: min(y, S - 1))
+                Text(String(format: "%02d:00", h))
+                    .font(appFont(13)).foregroundStyle(.secondary)
+                    .offset(x: 0, y: min(max(0, y - 6), S - 12))
             }
 
             // Item labels in the open space to the right, top-aligned to each
             // block, stacked so they don't collide.
             ForEach(placed, id: \.item.id) { entry in
                 Text("\(entry.item.title), \(hhmm(entry.item.startMin))–\(hhmm(entry.item.endMin))")
-                    .font(appFont(10)).foregroundStyle(.primary)
+                    .font(appFont(13)).foregroundStyle(.primary)
                     .lineLimit(1).truncationMode(.tail)
                     .frame(width: labelW, alignment: .leading)
                     .offset(x: labelX, y: entry.y)
@@ -84,13 +93,18 @@ struct DailyTimeline: View {
             // Live "now" line: pill over the time column + full-width red line.
             if showNow {
                 let y = yFor(currentMinute, S: S)
-                Rectangle().fill(Color.red).frame(width: S, height: 1)
+                // Stop the line at the right edge of the block column (time column +
+                // both lanes), not the full square width.
+                Rectangle().fill(Color.red).frame(width: timeColW + laneSpan, height: 1)
                     .offset(x: 0, y: y)
                 Text(hhmm(currentMinute))
-                    .font(appFont(11, bold: true)).foregroundStyle(.white)
+                    .font(appFont(13, bold: true)).foregroundStyle(.white)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Capsule().fill(Color.red))
-                    .offset(x: 0, y: min(max(0, y - 10), S - 20))
+                    // Shift left by the capsule's horizontal padding (6) so the pill's
+                    // time digits line up with the hour-label digits; the rounded left
+                    // edge is allowed to spill into the left margin.
+                    .offset(x: -6, y: min(max(0, y - 10), S - 20))
             }
         }
     }

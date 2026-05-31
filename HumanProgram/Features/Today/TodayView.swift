@@ -41,15 +41,16 @@ struct TodayView: View {
                     tasksSection
                     if vm.isComplete { CompletionBannerView() }
                     exerciseSection
-                    Color.clear.frame(height: 40)
+                    Color.clear.frame(height: 32)              // [#41] bottom inset
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 8)
+                .padding(.top, 28)                             // [#41] top inset
             }
         }
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeBack()
         .task { await vm.loadPage(); await loadCalendarItems() }
         .onReceive(ticker) { now = $0 }
         .onChange(of: vm.viewingDate) { _, _ in Task { await loadCalendarItems() } }
@@ -103,13 +104,13 @@ struct TodayView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { vm.relockOnLeave(); dismiss() }
             Spacer()
-            HStack(spacing: 18) {
+            HStack(spacing: 26) {                                 // [#44] spread out
                 navButton("arrow.left") { vm.goToPreviousDay() }
                 navButton("arrow.right") { vm.goToNextDay() }
                 Button { vm.goToToday() } label: {
                     DSText("Today").dsTextStyle(.subheadline)
                 }.buttonStyle(.plain)
-                navButton("calendar") { showDatePicker = true }
+                navButton("calendar", size: 18) { showDatePicker = true }   // [#7] 18pt glyph
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -118,9 +119,9 @@ struct TodayView: View {
         .padding(.bottom, 4)
     }
 
-    private func navButton(_ icon: String, _ action: @escaping () -> Void) -> some View {
+    private func navButton(_ icon: String, size: CGFloat = 16, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon).font(.system(size: 16, weight: .semibold))
+            Image(systemName: icon).font(.system(size: size, weight: .semibold))
                 .foregroundStyle(.primary).frame(width: 30, height: 30)
                 .contentShape(Rectangle())
         }.buttonStyle(.plain)
@@ -129,9 +130,13 @@ struct TodayView: View {
     // MARK: - Title row + padlock
 
     private var titleRow: some View {
+        // The padlock is an OVERLAY so its 52pt height never stretches the title
+        // row and pushes the schedule/everything below it down. [#16]
         HStack {
             DSText(longDate).dsTextStyle(.title2)
             Spacer()
+        }
+        .overlay(alignment: .trailing) {
             if !vm.isToday && isPast {
                 PastLockButton(locked: vm.isPastLocked) {
                     Task {
@@ -245,7 +250,7 @@ struct TodayView: View {
                         }
                     }
                 } else {
-                    DSText("There is no exercise routine for \(weekdayName).")
+                    DSText("Nothing for today")
                         .dsTextStyle(.subheadline)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 8)
@@ -253,12 +258,6 @@ struct TodayView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private var weekdayName: String {
-        let f = DateFormatter()
-        f.dateFormat = "EEEE"
-        return f.string(from: vm.viewingDate)
     }
 }
 
@@ -312,7 +311,6 @@ private struct TodayTaskRow: View {
                         .strikethrough(task.completed)
                         .lineLimit(2)
                     Spacer()
-                    DSChevronView()
                 }
                 .contentShape(Rectangle())
             }.buttonStyle(.plain)

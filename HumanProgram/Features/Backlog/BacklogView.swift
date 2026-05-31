@@ -52,7 +52,7 @@ struct BacklogView: View {
 
     private var content: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 7) {        // [#43] 48 + 7 = 55pt pitch
                 if mode == .tasks {
                     taskRows(items: sortedTasks)
                 } else {
@@ -156,9 +156,8 @@ struct BacklogView: View {
                 DSText("\(count) items").dsTextStyle(.subheadline)
             }
             Spacer(minLength: 8)
-            DSChevronView()
         }
-        .frame(height: 60)
+        .frame(height: 48)                                 // [#43] tighter row
         .contentShape(Rectangle())
     }
 

@@ -31,12 +31,13 @@ struct StatsView: View {
                     streakRow(title: "Exercise Streak", runs: exerciseRuns)
                     Color.clear.frame(height: 40)
                 }
-                .padding(.horizontal, 20).padding(.top, 8)
+                .padding(.horizontal, 20).padding(.top, 28)   // [#39] small top gap
             }
         }
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .enableSwipeBack()
         .sheet(isPresented: $showWeekPicker) {
             StatsWeekPicker(date: cal.date(byAdding: .day, value: 3, to: weekStart) ?? today) { setWeek(containing: $0) }
         }

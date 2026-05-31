@@ -18,7 +18,7 @@ struct BacklogRow<Destination: View>: View {
     @ViewBuilder let destination: () -> Destination
 
     @State private var dragX: CGFloat = 0
-    private let rowHeight: CGFloat = 60
+    private let rowHeight: CGFloat = 48   // [#43] tighter row (was 60)
     private let trashW: CGFloat = 68
 
     var body: some View {
@@ -68,7 +68,6 @@ struct BacklogRow<Destination: View>: View {
                 if let subtitle { DSText(subtitle).dsTextStyle(.subheadline) }
             }
             Spacer(minLength: 8)
-            if !selecting { DSChevronView() }
         }
         .frame(height: rowHeight)
         .frame(maxWidth: .infinity, alignment: .leading)

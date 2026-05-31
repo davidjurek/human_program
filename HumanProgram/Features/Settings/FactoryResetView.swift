@@ -81,14 +81,14 @@ struct FactoryResetView: View {
                     .dsTextStyle(.body)
                     .multilineTextAlignment(.center)
 
-                DSText("Type RESET to confirm")
+                DSText("Type reset to confirm")
                     .dsTextStyle(.subheadline)
                     .padding(.top, 12)
 
                 TextField("", text: $confirmationInput,
-                          prompt: Text("RESET").foregroundStyle(.tertiary))
+                          prompt: Text("reset").foregroundStyle(.tertiary))
                     .autocorrectionDisabled()
-                    .textInputAutocapitalization(.characters)
+                    .textInputAutocapitalization(.never)
                     .font(appFont(18))
                     .multilineTextAlignment(.center)
                     .padding(.vertical, 14)
