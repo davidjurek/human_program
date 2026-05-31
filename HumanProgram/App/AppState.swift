@@ -13,7 +13,13 @@ public final class AppState {
         totalCompleteDays: 0,
         totalTrackedDays: 0
     )
+    /// A full-screen interstitial to present at the app root (reset / restore done).
+    public var pendingInterstitial: AppInterstitial? = nil
     public init() {}
+}
+
+public enum AppInterstitial: Equatable {
+    case reset, restored
 }
 
 public enum AppTab: String, CaseIterable {

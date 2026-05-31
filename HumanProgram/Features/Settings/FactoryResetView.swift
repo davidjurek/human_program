@@ -52,6 +52,7 @@ struct FactoryResetView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
 
     @State private var confirmationInput: String = ""
     @State private var isResetting: Bool = false
@@ -137,7 +138,9 @@ struct FactoryResetView: View {
 
             try? AppLockRepository().removePIN()
 
-            dismiss()
+            // Show the full-screen "reset to factory state" interstitial; clearing
+            // hp.hasLaunched means the Welcome screen waits underneath it.
+            appState.pendingInterstitial = .reset
         } catch {
             // If save fails, still leave the screen — the deletes may be partial
             // but we don't want to strand the user here.
@@ -174,7 +177,8 @@ struct FactoryResetView: View {
             "hp.lock.enabled",
             "hp.lock.biometric",
             "hp.lock.timeout",
-            "selectedCalendarIds"
+            "selectedCalendarIds",
+            "hp.hasLaunched"
         ]
         for key in keys {
             UserDefaults.standard.removeObject(forKey: key)

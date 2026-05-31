@@ -11,6 +11,18 @@ struct ContentView: View {
     @Environment(\.modelContext) private var context
     @State private var lockVM = AppLockViewModel()
     @State private var path: [HubDestination] = [.today]   // launch at Today
+    @AppStorage("hp.hasLaunched") private var hasLaunched = false
+
+    private var showInterstitial: Bool {
+        appState.pendingInterstitial != nil || !hasLaunched
+    }
+    private var interstitialMode: AppInterstitialView.Mode {
+        switch appState.pendingInterstitial {
+        case .reset:    return .reset
+        case .restored: return .restored
+        case nil:       return .welcome
+        }
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -25,6 +37,12 @@ struct ContentView: View {
         )) {
             LockScreenView(vm: lockVM)
         }
+        .fullScreenCover(isPresented: Binding(
+            get: { showInterstitial },
+            set: { _ in }
+        )) {
+            AppInterstitialView(mode: interstitialMode, onAction: handleInterstitial)
+        }
         .onReceive(
             NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
         ) { _ in
@@ -36,6 +54,19 @@ struct ContentView: View {
             } catch {
                 print("[AppStartup] error: \(error)")
             }
+        }
+    }
+
+    /// Tapping the interstitial button. For reset/restored we clear the pending
+    /// state and return to Today; after a reset, `hasLaunched` was cleared so the
+    /// Welcome screen appears next (waiting underneath). For Welcome, mark launched.
+    private func handleInterstitial() {
+        if appState.pendingInterstitial != nil {
+            appState.pendingInterstitial = nil
+            path = [.today]
+        } else {
+            hasLaunched = true
+            path = [.today]
         }
     }
 }

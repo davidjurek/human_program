@@ -233,6 +233,7 @@ struct ImportSummaryView: View {
 
 struct HprgmRestoreView: View {
     @Environment(\.modelContext) private var context
+    @Environment(AppState.self) private var appState
     @State private var showPicker = false
     @State private var pickedURL: URL?
     @State private var confirm = ""
@@ -284,7 +285,8 @@ struct HprgmRestoreView: View {
         do {
             let bundle = try HprgmImportService().preview(fileURL: url)
             try HprgmImportService().importData(bundle, context: context)
-            done = true
+            // Full-screen "backup restored" interstitial → Today.
+            appState.pendingInterstitial = .restored
         } catch {
             self.error = "Restore failed: \(error.localizedDescription)"
         }
