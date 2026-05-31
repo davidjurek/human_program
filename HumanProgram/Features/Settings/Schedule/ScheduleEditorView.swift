@@ -40,6 +40,7 @@ struct ScheduleEditorView: View {
     @State private var toDate = Calendar.current.startOfDay(for: Date())
     @State private var sleepStart = 21 * 60 + 30       // 21:30
     @State private var sleepEnd = 5 * 60 + 30          // 05:30
+    @State private var sleepColorHex: String? = nil    // Sleep block colour [#20]
     @State private var blocks: [DraftBlock] = []       // non-sleep, in order
 
     // Inline add-block row
@@ -172,8 +173,14 @@ struct ScheduleEditorView: View {
                 DateFieldRow(label: "To", date: $toDate, notBefore: fromDate)
             }
 
-            // Sleep
-            SettingsSectionLabel(title: "Sleep")
+            // Sleep — section label with the Sleep colour circle on the right. [#20]
+            HStack {
+                SettingsSectionLabel(title: "Sleep")
+                Spacer()
+                ColorPicker("", selection: sleepColorBinding, supportsOpacity: false)
+                    .labelsHidden()
+                    .frame(width: 26, height: 26)
+            }
             valueRow(label: "Sleep from", value: hhmm(sleepStart), anchorId: "sleepFrom") {
                 if !dismissOpenInputIfAny() { activePicker = .sleepFrom }
             }
@@ -360,6 +367,29 @@ struct ScheduleEditorView: View {
         Binding(
             get: { blocks.first(where: { $0.id == id })?.title ?? "" },
             set: { v in if let i = blocks.firstIndex(where: { $0.id == id }) { blocks[i].title = v } }
+        )
+    }
+
+    /// Colour binding for a block — resolves to its colour (or default-by-name),
+    /// and persists a picked colour as hex. [#20]
+    private func colorBinding(for id: UUID) -> Binding<Color> {
+        Binding(
+            get: {
+                guard let b = blocks.first(where: { $0.id == id }) else { return .gray }
+                return BlockColors.color(hex: b.colorHex, title: b.title)
+            },
+            set: { newColor in
+                if let i = blocks.firstIndex(where: { $0.id == id }) {
+                    blocks[i].colorHex = newColor.hexString
+                }
+            }
+        )
+    }
+
+    private var sleepColorBinding: Binding<Color> {
+        Binding(
+            get: { BlockColors.color(hex: sleepColorHex, title: "Sleep") },
+            set: { sleepColorHex = $0.hexString }
         )
     }
 
@@ -618,6 +648,12 @@ struct ScheduleEditorView: View {
             .contentShape(Rectangle())
             .onTapGesture { tapTitle(block) }
 
+            // Colour circle (swatches + custom via the system picker) just left of
+            // the duration. [#20]
+            ColorPicker("", selection: colorBinding(for: block.id), supportsOpacity: false)
+                .labelsHidden()
+                .frame(width: 26, height: 26)
+
             Text(durationPadded(block.duration))
                 .font(appFont(15)).foregroundStyle(.secondary)
                 .contentShape(Rectangle())
@@ -770,7 +806,7 @@ struct ScheduleEditorView: View {
             if let s = seed {
                 sleepStart = s.sleepStart
                 sleepEnd = s.sleepEnd
-                blocks = s.blocks.map { DraftBlock(title: $0.title, duration: $0.duration) }
+                blocks = s.blocks.map { DraftBlock(title: $0.title, duration: $0.duration, colorHex: $0.colorHex) }
             }
             return
         }
@@ -788,20 +824,23 @@ struct ScheduleEditorView: View {
         if let sleep = sorted.first(where: { $0.title == "Sleep" }) {
             sleepStart = sleep.startMinuteOfDay
             sleepEnd = sleep.endMinuteOfDay
+            sleepColorHex = sleep.colorHex
         }
         blocks = sorted.filter { $0.title != "Sleep" }
-            .map { DraftBlock(title: $0.title, duration: $0.durationMinutes) }
+            .map { DraftBlock(title: $0.title, duration: $0.durationMinutes, colorHex: $0.colorHex) }
     }
 
     private func buildBlocks() -> [ScheduleBlock] {
         var result: [ScheduleBlock] = [
-            ScheduleBlock(title: "Sleep", startMinuteOfDay: sleepStart, endMinuteOfDay: sleepEnd, sortOrder: 0)
+            ScheduleBlock(title: "Sleep", startMinuteOfDay: sleepStart, endMinuteOfDay: sleepEnd,
+                          sortOrder: 0, colorHex: sleepColorHex)
         ]
         for (i, b) in blocks.enumerated() {
             // Times are placeholders; ScheduleRepository.normalizeBlocks recomputes
             // them from each block's duration when saving.
             result.append(ScheduleBlock(title: b.title, startMinuteOfDay: 0,
-                                        endMinuteOfDay: b.duration % 1440, sortOrder: i + 1))
+                                        endMinuteOfDay: b.duration % 1440, sortOrder: i + 1,
+                                        colorHex: b.colorHex))
         }
         return result
     }
@@ -874,6 +913,7 @@ struct DraftBlock: Identifiable, Equatable, Hashable {
     var id = UUID()
     var title: String
     var duration: Int   // minutes
+    var colorHex: String? = nil   // assigned block colour [#20]
 }
 
 /// Seed data for duplicating a schedule into a fresh editor (blocks + sleep only).

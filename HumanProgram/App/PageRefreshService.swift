@@ -72,6 +72,7 @@ public struct PageRefreshService {
                         startMinuteOfDay: block.startMinuteOfDay,
                         endMinuteOfDay: block.endMinuteOfDay,
                         sortOrder: block.sortOrder,
+                        colorHex: block.colorHex,
                         templateIsEnabled: template.isEnabled,
                         templateAssignedWeekdays: template.assignedWeekdays,
                         templateCustomDateStart: template.customDateStart,

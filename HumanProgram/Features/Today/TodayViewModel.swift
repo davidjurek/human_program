@@ -200,7 +200,7 @@ public final class TodayViewModel {
         let templates = try context.fetch(FetchDescriptor<ScheduleTemplate>())
         return templates.flatMap { t in
             t.blocks.map { b in
-                ScheduleBlockInput(id: b.id, title: b.title, startMinuteOfDay: b.startMinuteOfDay, endMinuteOfDay: b.endMinuteOfDay, sortOrder: b.sortOrder, templateIsEnabled: t.isEnabled, templateAssignedWeekdays: t.assignedWeekdays, templateCustomDateStart: t.customDateStart, templateCustomDateEnd: t.customDateEnd)
+                ScheduleBlockInput(id: b.id, title: b.title, startMinuteOfDay: b.startMinuteOfDay, endMinuteOfDay: b.endMinuteOfDay, sortOrder: b.sortOrder, colorHex: b.colorHex, templateIsEnabled: t.isEnabled, templateAssignedWeekdays: t.assignedWeekdays, templateCustomDateStart: t.customDateStart, templateCustomDateEnd: t.customDateEnd)
             }
         }
     }

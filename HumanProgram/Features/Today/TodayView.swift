@@ -90,7 +90,9 @@ struct TodayView: View {
         (vm.page?.scheduleBlocks ?? []).sorted { $0.sortOrder < $1.sortOrder }.map { b in
             let end = b.endMinuteOfDay <= b.startMinuteOfDay ? 1440 : b.endMinuteOfDay
             return TimelineItem(id: "blk-\(b.id)", title: b.title,
-                                startMin: b.startMinuteOfDay, endMin: end, isCalendar: false)
+                                startMin: b.startMinuteOfDay, endMin: end, isCalendar: false,
+                                color: BlockColors.color(hex: b.colorHex, title: b.title)
+                                    .opacity(0.55))   // [#18] block colour drives the left lane
         }
     }
 

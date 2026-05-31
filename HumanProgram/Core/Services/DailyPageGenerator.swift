@@ -74,6 +74,7 @@ public struct ScheduleBlockInput: Sendable {
     public let startMinuteOfDay: Int
     public let endMinuteOfDay: Int
     public let sortOrder: Int
+    public let colorHex: String?
     public let templateIsEnabled: Bool
     public let templateAssignedWeekdays: [Int]
     public let templateCustomDateStart: Date?
@@ -85,6 +86,7 @@ public struct ScheduleBlockInput: Sendable {
         startMinuteOfDay: Int,
         endMinuteOfDay: Int,
         sortOrder: Int,
+        colorHex: String? = nil,
         templateIsEnabled: Bool,
         templateAssignedWeekdays: [Int],
         templateCustomDateStart: Date?,
@@ -95,6 +97,7 @@ public struct ScheduleBlockInput: Sendable {
         self.startMinuteOfDay = startMinuteOfDay
         self.endMinuteOfDay = endMinuteOfDay
         self.sortOrder = sortOrder
+        self.colorHex = colorHex
         self.templateIsEnabled = templateIsEnabled
         self.templateAssignedWeekdays = templateAssignedWeekdays
         self.templateCustomDateStart = templateCustomDateStart
@@ -198,7 +201,8 @@ public struct DailyPageGenerator: Sendable {
                     title: block.title,
                     startMinuteOfDay: block.startMinuteOfDay,
                     endMinuteOfDay: block.endMinuteOfDay,
-                    sortOrder: block.sortOrder
+                    sortOrder: block.sortOrder,
+                    colorHex: block.colorHex                 // carry the colour to the page [#18]
                 )
             }
     }

@@ -19,6 +19,7 @@ public struct ScheduleBlock: Codable, Identifiable, Hashable, Sendable {
     public var startMinuteOfDay: Int   // minutes from midnight (0–1439)
     public var endMinuteOfDay: Int     // may be <= start for overnight blocks
     public var sortOrder: Int
+    public var colorHex: String?       // assigned block colour (nil → default-by-name) [#20]
 
     public var durationMinutes: Int {
         if endMinuteOfDay > startMinuteOfDay {
@@ -34,13 +35,15 @@ public struct ScheduleBlock: Codable, Identifiable, Hashable, Sendable {
         title: String,
         startMinuteOfDay: Int,
         endMinuteOfDay: Int,
-        sortOrder: Int
+        sortOrder: Int,
+        colorHex: String? = nil
     ) {
         self.id = id
         self.title = title
         self.startMinuteOfDay = startMinuteOfDay
         self.endMinuteOfDay = endMinuteOfDay
         self.sortOrder = sortOrder
+        self.colorHex = colorHex
     }
 }
 
@@ -51,19 +54,22 @@ public struct DailyPageScheduleBlock: Codable, Identifiable, Hashable, Sendable 
     public var startMinuteOfDay: Int
     public var endMinuteOfDay: Int
     public var sortOrder: Int
+    public var colorHex: String?       // snapshot of the block colour [#20]
 
     public init(
         id: String = UUID().uuidString,
         title: String,
         startMinuteOfDay: Int,
         endMinuteOfDay: Int,
-        sortOrder: Int
+        sortOrder: Int,
+        colorHex: String? = nil
     ) {
         self.id = id
         self.title = title
         self.startMinuteOfDay = startMinuteOfDay
         self.endMinuteOfDay = endMinuteOfDay
         self.sortOrder = sortOrder
+        self.colorHex = colorHex
     }
 }
 
