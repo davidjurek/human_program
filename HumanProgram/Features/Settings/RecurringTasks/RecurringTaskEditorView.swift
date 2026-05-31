@@ -22,11 +22,22 @@ struct RecurringTaskEditorView: View {
     @State private var weekdays: Set<Int> = []
     @State private var fromDate = Calendar.current.startOfDay(for: Date())
     @State private var toDate = Calendar.current.startOfDay(for: Date())
-    @State private var openSection: String?
+    @State private var activePicker: ActivePicker?            // drives the repeat popup
+    @State private var anchorFrames: [String: CGRect] = [:]   // value frames for anchoring
     @State private var showDeleteConfirm = false
     @State private var showDiscardConfirm = false
     @State private var original = RecurringTaskSnapshot()
     @State private var didLoad = false
+
+    // One coordinate space shared by the anchor tags and the popup (matches the
+    // Schedule editor's pattern). [#popup]
+    private let anchorSpace = "recurringAnchorSpace"
+    private enum ActivePicker: Equatable { case repeatMode }
+    private let repeatOptions: [(value: String, title: String)] =
+        [("weekly", "Weekly"), ("custom", "Custom range")]
+    private var repeatTitle: String {
+        repeatOptions.first { $0.value == repeatMode }?.title ?? ""
+    }
 
     private var canSave: Bool {
         // Needs a title AND at least one weekday selected (both modes use weekdays).
@@ -53,14 +64,8 @@ struct RecurringTaskEditorView: View {
             // Title
             AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20))
 
-            // Repeat
-            AppDropdown(
-                label: "Repeat",
-                options: [("weekly", "Weekly"), ("custom", "Custom range")],
-                selection: $repeatMode,
-                openSection: $openSection,
-                id: "repeat"
-            )
+            // Repeat — tappable value that opens a shared anchored popup. [#popup]
+            repeatRow
 
             // Days (always shown)
             WeekdayCircleSelector(selected: $weekdays)
@@ -75,6 +80,7 @@ struct RecurringTaskEditorView: View {
             AppTextField(text: $notes, placeholder: "Note", fontSize: appScaledSize(18), multiline: true)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .onPreferenceChange(AnchorFrameKey.self) { anchorFrames = $0 }
         .overlay {
             if showDeleteConfirm {
                 ConfirmPopup(
@@ -92,8 +98,65 @@ struct RecurringTaskEditorView: View {
                     onCancel: { showDiscardConfirm = false }
                 )
             }
+            anchoredPopup
         }
+        .coordinateSpace(.named(anchorSpace))
         .onAppear(perform: loadIfNeeded)
+    }
+
+    // MARK: - Repeat picker (shared anchored popup)
+
+    private var repeatRow: some View {
+        HStack {
+            DSText("Repeat").dsTextStyle(.title3)
+            Spacer(minLength: 8)
+            Button { activePicker = activePicker == .repeatMode ? nil : .repeatMode } label: {
+                HStack(spacing: 4) {
+                    Text(repeatTitle).font(appFont(18)).foregroundStyle(.primary)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .anchorFrame("repeat", in: .named(anchorSpace))
+        }
+        .frame(height: 34)
+    }
+
+    @ViewBuilder
+    private var anchoredPopup: some View {
+        if activePicker == .repeatMode, let rect = anchorFrames["repeat"] {
+            AnchoredPopup(anchor: rect, width: 210, estimatedHeight: 112,
+                          alignment: .trailing, space: .named(anchorSpace),
+                          onClose: { activePicker = nil }) {
+                repeatOptionList
+            }
+        }
+    }
+
+    private var repeatOptionList: some View {
+        VStack(spacing: 0) {
+            ForEach(repeatOptions, id: \.value) { option in
+                Button {
+                    repeatMode = option.value
+                    activePicker = nil
+                } label: {
+                    HStack(spacing: 12) {
+                        Text(option.title).font(appFont(18)).foregroundStyle(.primary)
+                        Spacer(minLength: 8)
+                        if option.value == repeatMode {
+                            Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold))
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(height: 44)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     @ViewBuilder
