@@ -448,15 +448,7 @@ struct DateFieldRow: View {
         HStack {
             DSText(label).dsTextStyle(.title3)
             Spacer(minLength: 8)
-            Group {
-                if let notBefore {
-                    DatePicker("", selection: $date, in: notBefore..., displayedComponents: .date)
-                } else {
-                    DatePicker("", selection: $date, displayedComponents: .date)
-                }
-            }
-            .labelsHidden()
-            .tint(weekdaySelectedColor)
+            DSDateField(date: $date, minDate: notBefore)   // custom DSKit calendar, card-less [#13]
         }
         .frame(height: 34)
     }

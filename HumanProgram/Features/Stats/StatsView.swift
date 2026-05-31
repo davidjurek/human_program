@@ -281,10 +281,7 @@ private struct StatsWeekPicker: View {
         ZStack {
             SettingsBackground()
             VStack(spacing: 16) {
-                DatePicker("", selection: $selected, displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .tint(weekdaySelectedColor)
-                    .environment(\.font, appFont(16))      // [#40] app font in the popup calendar
+                DSCalendarView(date: $selected)            // [#13/#40] custom DSKit calendar
                     .padding()
                 Button {
                     onSelect(selected); dismiss()

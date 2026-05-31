@@ -89,8 +89,7 @@ struct BacklogTaskDetailView: View {
                     Spacer(minLength: 8)
                     if hasDate {
                         if editing {
-                            DatePicker("", selection: $date, displayedComponents: .date)
-                                .labelsHidden().tint(weekdaySelectedColor)
+                            DSDateField(date: $date)   // custom DSKit calendar [#13]
                         } else {
                             DSText(dateString).dsTextStyle(.subheadline)
                         }

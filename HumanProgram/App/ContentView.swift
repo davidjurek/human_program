@@ -50,6 +50,12 @@ struct ContentView: View {
                     BlockColorPickerView(colorHex: .constant("5FBF6A"), title: "Exercise") {}
                 }
             }
+            if UserDefaults.standard.string(forKey: "debugView") == "calendar" {
+                ZStack {
+                    SettingsBackground()
+                    DSCalendarView(date: .constant(Date())).padding(20)
+                }
+            }
         }
         .fullScreenCover(isPresented: Binding(
             get: { lockVM.isLocked },
