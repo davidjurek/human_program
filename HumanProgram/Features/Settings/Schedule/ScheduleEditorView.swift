@@ -42,6 +42,7 @@ struct ScheduleEditorView: View {
     @State private var sleepEnd = 5 * 60 + 30          // 05:30
     @State private var sleepColorHex: String? = nil    // Sleep block colour [#20]
     @State private var blocks: [DraftBlock] = []       // non-sleep, in order
+    @State private var colorPickerTarget: ColorPickerTarget?   // custom colour picker [#14]
 
     // Inline add-block row
     @State private var newTitle = ""
@@ -177,9 +178,9 @@ struct ScheduleEditorView: View {
             HStack {
                 SettingsSectionLabel(title: "Sleep")
                 Spacer()
-                ColorPicker("", selection: sleepColorBinding, supportsOpacity: false)
-                    .labelsHidden()
-                    .frame(width: 26, height: 26)
+                colorCircle(hex: sleepColorHex, title: "Sleep") {
+                    if !dismissOpenInputIfAny() { colorPickerTarget = .sleep }
+                }
             }
             valueRow(label: "Sleep from", value: hhmm(sleepStart), anchorId: "sleepFrom") {
                 if !dismissOpenInputIfAny() { activePicker = .sleepFrom }
@@ -221,6 +222,7 @@ struct ScheduleEditorView: View {
                 .transition(.move(edge: .bottom))
                 .zIndex(2)
             }
+            colorPickerOverlay.zIndex(3)   // [#14]
         }
         .coordinateSpace(.named(anchorSpace))
         // Any interaction elsewhere (a popup, editing a title, toggling days,
@@ -370,27 +372,49 @@ struct ScheduleEditorView: View {
         )
     }
 
-    /// Colour binding for a block — resolves to its colour (or default-by-name),
-    /// and persists a picked colour as hex. [#20]
-    private func colorBinding(for id: UUID) -> Binding<Color> {
+    /// Which colour the custom picker is editing. [#14]
+    enum ColorPickerTarget: Equatable { case block(UUID); case sleep }
+
+    /// Hex binding for a block's colour (nil → default-by-name resolved on read). [#14]
+    private func colorHexBinding(for id: UUID) -> Binding<String?> {
         Binding(
-            get: {
-                guard let b = blocks.first(where: { $0.id == id }) else { return .gray }
-                return BlockColors.color(hex: b.colorHex, title: b.title)
-            },
-            set: { newColor in
-                if let i = blocks.firstIndex(where: { $0.id == id }) {
-                    blocks[i].colorHex = newColor.hexString
-                }
-            }
+            get: { blocks.first(where: { $0.id == id })?.colorHex },
+            set: { v in if let i = blocks.firstIndex(where: { $0.id == id }) { blocks[i].colorHex = v } }
         )
     }
+    private var sleepColorHexBinding: Binding<String?> {
+        Binding(get: { sleepColorHex }, set: { sleepColorHex = $0 })
+    }
 
-    private var sleepColorBinding: Binding<Color> {
-        Binding(
-            get: { BlockColors.color(hex: sleepColorHex, title: "Sleep") },
-            set: { sleepColorHex = $0.hexString }
-        )
+    @ViewBuilder
+    private var colorPickerOverlay: some View {
+        if let target = colorPickerTarget {
+            ZStack {
+                Color.black.opacity(0.2).ignoresSafeArea()
+                    .onTapGesture { colorPickerTarget = nil }
+                switch target {
+                case .block(let id):
+                    BlockColorPickerView(colorHex: colorHexBinding(for: id),
+                                         title: blocks.first(where: { $0.id == id })?.title ?? "Block") {
+                        colorPickerTarget = nil
+                    }
+                case .sleep:
+                    BlockColorPickerView(colorHex: sleepColorHexBinding, title: "Sleep") {
+                        colorPickerTarget = nil
+                    }
+                }
+            }
+        }
+    }
+
+    /// A tappable colour circle that opens the custom picker. [#14]
+    private func colorCircle(hex: String?, title: String, open: @escaping () -> Void) -> some View {
+        Button(action: open) {
+            Circle().fill(BlockColors.color(hex: hex, title: title))
+                .frame(width: 24, height: 24)
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.2)))
+                .contentShape(Circle())
+        }.buttonStyle(.plain)
     }
 
     // MARK: - Custom keypad
@@ -648,11 +672,10 @@ struct ScheduleEditorView: View {
             .contentShape(Rectangle())
             .onTapGesture { tapTitle(block) }
 
-            // Colour circle (swatches + custom via the system picker) just left of
-            // the duration. [#20]
-            ColorPicker("", selection: colorBinding(for: block.id), supportsOpacity: false)
-                .labelsHidden()
-                .frame(width: 26, height: 26)
+            // Colour circle (opens the custom DSKit picker) just left of the duration. [#14]
+            colorCircle(hex: block.colorHex, title: block.title) {
+                if !dismissOpenInputIfAny() { colorPickerTarget = .block(block.id) }
+            }
 
             Text(durationPadded(block.duration))
                 .font(appFont(15)).foregroundStyle(.secondary)

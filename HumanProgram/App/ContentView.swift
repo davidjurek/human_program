@@ -41,6 +41,16 @@ struct ContentView: View {
                     dest.view(context: context)
                 }
         }
+        .overlay {
+            // TEMP QA: present the custom colour picker for a screenshot. Inert
+            // without the launch arg; removed at the end of this round. [#14]
+            if UserDefaults.standard.string(forKey: "debugView") == "colorpicker" {
+                ZStack {
+                    SettingsBackground()
+                    BlockColorPickerView(colorHex: .constant("5FBF6A"), title: "Exercise") {}
+                }
+            }
+        }
         .fullScreenCover(isPresented: Binding(
             get: { lockVM.isLocked },
             set: { _ in }
