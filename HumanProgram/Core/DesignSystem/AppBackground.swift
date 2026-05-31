@@ -30,27 +30,27 @@ enum AppBackground: String, Equatable {
                 endPoint: .bottomTrailing
             )
         case .gradientMint:
-            // Serene mint → sage → pale butter. [#56]
-            LinearGradient(
-                colors: [
-                    Color(red: 0.78, green: 0.92, blue: 0.88),
-                    Color(red: 0.86, green: 0.93, blue: 0.83),
-                    Color(red: 0.99, green: 0.97, blue: 0.86)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            // Serene soft-aurora: mint / sage / butter / blue blobs over a base. [#56/#19]
+            ZStack {
+                Color(red: 0.88, green: 0.94, blue: 0.91)
+                RadialGradient(colors: [Color(red: 0.66, green: 0.88, blue: 0.82).opacity(0.85), .clear],
+                               center: .topLeading, startRadius: 0, endRadius: 380)
+                RadialGradient(colors: [Color(red: 0.99, green: 0.95, blue: 0.78).opacity(0.80), .clear],
+                               center: .bottomTrailing, startRadius: 0, endRadius: 440)
+                RadialGradient(colors: [Color(red: 0.78, green: 0.89, blue: 0.97).opacity(0.65), .clear],
+                               center: .init(x: 0.15, y: 0.85), startRadius: 0, endRadius: 320)
+            }
         case .gradientRose:
-            // Peaceful rose → lilac → periwinkle. [#56]
-            LinearGradient(
-                colors: [
-                    Color(red: 0.97, green: 0.86, blue: 0.90),
-                    Color(red: 0.88, green: 0.85, blue: 0.96),
-                    Color(red: 0.83, green: 0.90, blue: 0.97)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            // Peaceful soft-aurora: rose / lilac / periwinkle blobs over a base. [#56/#19]
+            ZStack {
+                Color(red: 0.96, green: 0.91, blue: 0.94)
+                RadialGradient(colors: [Color(red: 0.99, green: 0.80, blue: 0.87).opacity(0.85), .clear],
+                               center: .topTrailing, startRadius: 0, endRadius: 380)
+                RadialGradient(colors: [Color(red: 0.83, green: 0.80, blue: 0.97).opacity(0.80), .clear],
+                               center: .bottomLeading, startRadius: 0, endRadius: 440)
+                RadialGradient(colors: [Color(red: 0.78, green: 0.88, blue: 0.98).opacity(0.60), .clear],
+                               center: .topLeading, startRadius: 0, endRadius: 320)
+            }
         case .plainDark:
             Color(red: 0.07, green: 0.07, blue: 0.08)
         case .darkGrey1:
