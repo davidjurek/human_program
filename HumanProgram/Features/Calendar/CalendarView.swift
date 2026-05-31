@@ -391,10 +391,19 @@ struct CalendarView: View {
                                     y: CGFloat(s) / 60 * weekHourHeight)
                         }
                     }
-                    // Red now-bar across, if this week contains today.
+                    // Red now-bar, if this week contains today: pill in the time
+                    // column + line that STOPS at the grid's right edge. [#25/#27]
                     if weekDays.contains(where: { cal.isDate($0, inSameDayAs: today) }) {
-                        Rectangle().fill(Color.red).frame(height: 1)
-                            .offset(x: weekTimeColW, y: CGFloat(nowMin) / 60 * weekHourHeight)
+                        let nowY = CGFloat(nowMin) / 60 * weekHourHeight
+                        Rectangle().fill(Color.red).frame(width: colW * 7, height: 1)
+                            .offset(x: weekTimeColW, y: nowY)
+                        Text(nowTimeString)
+                            .font(appFont(13, bold: true)).foregroundStyle(.white)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Capsule().fill(Color.red))
+                            .fixedSize()
+                            .frame(width: weekTimeColW, alignment: .center)   // centered in time column [#26]
+                            .offset(x: 0, y: nowY - 11)
                     }
                 }
                 .frame(height: totalH)
@@ -478,19 +487,22 @@ struct CalendarView: View {
                         .padding(.trailing, 16)
                     }
 
-                    // Current time line: red time pill (left) + full-width line. [#43]
+                    // Current time: red pill centered in the time column + line
+                    // attached to it. [#26/#28]
                     if isToday {
                         let topOffset = CGFloat(nowMinute) / 60.0 * hourHeight
-                        HStack(spacing: 4) {
+                        HStack(spacing: 8) {
                             Text(nowTimeString)
-                                .font(appFont(10, bold: true)).foregroundStyle(.white)
+                                .font(appFont(13, bold: true)).foregroundStyle(.white)
                                 .padding(.horizontal, 5).padding(.vertical, 2)
                                 .background(Capsule().fill(Color.red))
+                                .fixedSize()
+                                .frame(width: 48, alignment: .center)
                             Rectangle().fill(Color.red).frame(height: 1)
                         }
                         .padding(.trailing, 8)
                         .frame(maxWidth: .infinity)
-                        .offset(y: topOffset - 8)
+                        .offset(y: topOffset - 11)
                         .id("currentTime")
                     }
                 }

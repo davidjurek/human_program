@@ -55,8 +55,20 @@ public final class TodayViewModel {
         page?.dayComplete ?? false
     }
 
+    // Default order: recurring → calendar → backlog → manual (newest appended).
+    // Within a group, by sortOrder (append/creation order). [#11]
     public var sortedTasks: [DailyPageTask] {
-        (page?.tasks ?? []).sorted { $0.sortOrder < $1.sortOrder }
+        func rank(_ t: DailyPageTask) -> Int {
+            switch t.sourceType {
+            case .recurring: return 0
+            case .calendar:  return 1
+            case .backlog:   return 2
+            case .manual:    return 3
+            }
+        }
+        return (page?.tasks ?? []).sorted {
+            rank($0) != rank($1) ? rank($0) < rank($1) : $0.sortOrder < $1.sortOrder
+        }
     }
 
     public func loadPage() async {
