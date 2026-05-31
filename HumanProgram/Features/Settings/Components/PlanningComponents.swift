@@ -170,29 +170,20 @@ extension View {
             .shadow(color: .black.opacity(0.12), radius: 14, y: 4)
     }
 
-    /// Clear liquid glass for the hub tiles. Kept SEPARATE from `popupGlass` so
-    /// the two can be tuned independently. [#22]
+    /// Transparent liquid glass for the hub tiles — applied DIRECTLY to the view
+    /// (the proper iOS-26 API; applying it as a background shape rendered opaque
+    /// white). Kept SEPARATE from `popupGlass`. [#22]
+    @ViewBuilder
     func hubTileGlass(cornerRadius: CGFloat = 22) -> some View {
-        self
-            .background(HubTileGlassBackground(cornerRadius: cornerRadius))
-            .shadow(color: .black.opacity(0.10), radius: 12, y: 4)
-    }
-}
-
-/// Clear (transparent) liquid glass — no white tint overlay, unlike the frosty
-/// `PopupGlassBackground`. Used only by the hub tiles. [#22]
-struct HubTileGlassBackground: View {
-    let cornerRadius: CGFloat
-    var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        Group {
-            if #available(iOS 26.0, *) {
-                shape.fill(.clear).glassEffect(.clear, in: shape)
-            } else {
-                BlurView(style: .systemUltraThinMaterial).clipShape(shape)
-            }
-        }
-        .overlay(shape.strokeBorder(Color.primary.opacity(0.06)))
+        // Genuinely translucent — the gradient shows through (ultra-thin material
+        // reads transparent in the simulator, unlike glassEffect(.clear) which
+        // renders opaque-white there). A faint white rim + soft shadow give the
+        // liquid-glass sheen. [#22]
+        self
+            .background(.ultraThinMaterial, in: shape)
+            .overlay(shape.strokeBorder(Color.white.opacity(0.30), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.08), radius: 10, y: 3)
     }
 }
 

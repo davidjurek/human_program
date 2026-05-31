@@ -10,7 +10,17 @@ struct ContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var context
     @State private var lockVM = AppLockViewModel()
-    @State private var path: [HubDestination] = [.today]   // launch at Today
+    @State private var path: [HubDestination] = ContentView.initialPath()
+
+    /// Normally launches to Today. `-startDest <name|hub>` (read by UserDefaults
+    /// from launch args) overrides for screenshot/QA only; inert in normal use.
+    static func initialPath() -> [HubDestination] {
+        if let d = UserDefaults.standard.string(forKey: "startDest") {
+            if d == "hub" { return [] }
+            if let dest = HubDestination(rawValue: d) { return [dest] }
+        }
+        return [.today]
+    }
     @AppStorage("hp.hasLaunched") private var hasLaunched = false
 
     private var showInterstitial: Bool {
