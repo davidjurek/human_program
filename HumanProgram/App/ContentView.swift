@@ -10,17 +10,7 @@ struct ContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var context
     @State private var lockVM = AppLockViewModel()
-    @State private var path: [HubDestination] = ContentView.initialPath()
-
-    /// Normally launches to Today. `-startDest <name|hub>` (read by UserDefaults
-    /// from launch args) overrides for screenshot/QA only; inert in normal use.
-    static func initialPath() -> [HubDestination] {
-        if let d = UserDefaults.standard.string(forKey: "startDest") {
-            if d == "hub" { return [] }
-            if let dest = HubDestination(rawValue: d) { return [dest] }
-        }
-        return [.today]
-    }
+    @State private var path: [HubDestination] = [.today]   // launch at Today
     @AppStorage("hp.hasLaunched") private var hasLaunched = false
 
     private var showInterstitial: Bool {
@@ -40,22 +30,6 @@ struct ContentView: View {
                 .navigationDestination(for: HubDestination.self) { dest in
                     dest.view(context: context)
                 }
-        }
-        .overlay {
-            // TEMP QA: present the custom colour picker for a screenshot. Inert
-            // without the launch arg; removed at the end of this round. [#14]
-            if UserDefaults.standard.string(forKey: "debugView") == "colorpicker" {
-                ZStack {
-                    SettingsBackground()
-                    BlockColorPickerView(colorHex: .constant("5FBF6A"), title: "Exercise") {}
-                }
-            }
-            if UserDefaults.standard.string(forKey: "debugView") == "calendar" {
-                ZStack {
-                    SettingsBackground()
-                    DSCalendarView(date: .constant(Date())).padding(20)
-                }
-            }
         }
         .fullScreenCover(isPresented: Binding(
             get: { lockVM.isLocked },
