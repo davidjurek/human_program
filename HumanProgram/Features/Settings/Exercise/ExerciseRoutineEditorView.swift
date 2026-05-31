@@ -66,7 +66,7 @@ struct ExerciseRoutineEditorView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 4)
 
-            AppTextField(text: $name, placeholder: "Routine name", fontSize: 20)
+            AppTextField(text: $name, placeholder: "Routine name", fontSize: appScaledSize(20))
 
             SettingsSectionLabel(title: "Exercises")
             exerciseList

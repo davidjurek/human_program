@@ -156,7 +156,7 @@ struct ScheduleEditorView: View {
                        scrollDisabled: dragInfo != nil || swipeDragId != nil,
                        manualKeyboardAvoidance: true,
                        trailing: { editorButtons }) {
-            AppTextField(text: $name, placeholder: "Schedule name", fontSize: 20)
+            AppTextField(text: $name, placeholder: "Schedule name", fontSize: appScaledSize(20))
 
             if let conflictMessage {
                 Text(conflictMessage)
@@ -697,7 +697,7 @@ struct ScheduleEditorView: View {
                 // title) so SwiftUI's keyboard-avoidance gap is identical for both.
                 // Its placeholder also shows while empty/focused natively.
                 TextField("Block title", text: $newTitle)
-                    .font(appFont(17))
+                    .font(appFont(appScaledSize(17)))
                     .frame(minHeight: 34)
             }
             HStack(spacing: 0) {

@@ -51,7 +51,7 @@ struct RecurringTaskEditorView: View {
         SettingsScreen(centered: true, onBack: attemptBack,
                        swipeBackBlocked: { hasUnsavedChanges }, trailing: { editorButtons }) {
             // Title
-            AppTextField(text: $title, placeholder: "Title", fontSize: 20)
+            AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20))
 
             // Repeat
             AppDropdown(
