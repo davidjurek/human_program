@@ -96,15 +96,20 @@ public struct RollingReminderScheduler: Sendable {
             content.sound = nil
         }
 
-        // Attach the optional image (saved by ReminderImageStore).
+        // Attach the optional image (saved by ReminderImageStore). [#57]
+        // UNNotificationAttachment takes OWNERSHIP of the file it's given (it moves
+        // it into the system attachment store), which would destroy our stored
+        // original and break later reschedules. So attach a temp COPY instead.
         if let filename = reminder.imageFilename {
-            let dir = FileManager.default
-                .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("ReminderImages", isDirectory: true)
-            let url = dir.appendingPathComponent(filename)
-            if FileManager.default.fileExists(atPath: url.path),
-               let attachment = try? UNNotificationAttachment(identifier: filename, url: url) {
-                content.attachments = [attachment]
+            let src = ReminderImageStore.url(for: filename)
+            if FileManager.default.fileExists(atPath: src.path) {
+                let tmp = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString + "-" + filename)
+                try? FileManager.default.removeItem(at: tmp)
+                if (try? FileManager.default.copyItem(at: src, to: tmp)) != nil,
+                   let attachment = try? UNNotificationAttachment(identifier: filename, url: tmp) {
+                    content.attachments = [attachment]
+                }
             }
         }
 

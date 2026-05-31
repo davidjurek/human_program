@@ -308,6 +308,10 @@ enum ReminderImageStore {
         UIImage(contentsOfFile: dir.appendingPathComponent(filename).path)
     }
 
+    /// On-disk URL for a stored image — used by the notification scheduler so it
+    /// looks in the SAME directory the image was saved to. [#57]
+    static func url(for filename: String) -> URL { dir.appendingPathComponent(filename) }
+
     static func delete(_ filename: String) {
         try? FileManager.default.removeItem(at: dir.appendingPathComponent(filename))
     }
