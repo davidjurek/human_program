@@ -156,6 +156,10 @@ The Schedule editor is the reference implementation. The hold-to-reorder + swipe
 - **Popups are sized to their content, never full-width.** The anchored popups use a fixed/intrinsic width and drop under the tapped value (right-aligned for trailing values), not a full-width sheet.
 - **Tapping out of an open keypad/keyboard/popup just dismisses it** — it does not also open whatever was tapped. Any value/title tap first checks "is something open? if so close it and return" (`dismissOpenInputIfAny`), so an accidental tap on a `##h ##m` value while the keypad is up only closes the keypad.
 
+## Navigation model (post-DSKit rebuild)
+
+The **hub** (`HubView` in `App/ContentView.swift`) is the navigation **root** — a static, centered 2×3 grid of liquid-glass tiles (Today, Backlog, Calendar, Routines, Stats, Settings), no title/back arrow. On launch the app deep-links straight to **Today** (pushed on top of the hub), so every section's upper-left back arrow returns to the hub. **No tab bar.** The app-unlock gate is a `fullScreenCover` over everything.
+
 ## What's built and what isn't
 
 ### Built (milestone 1)
