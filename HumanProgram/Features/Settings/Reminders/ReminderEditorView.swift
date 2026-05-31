@@ -51,7 +51,8 @@ struct ReminderEditorView: View {
     }
 
     var body: some View {
-        SettingsScreen(centered: true, onBack: attemptBack, trailing: { editorButtons }) {
+        SettingsScreen(centered: true, onBack: attemptBack,
+                       swipeBackBlocked: { hasUnsavedChanges }, trailing: { editorButtons }) {
             // Title (header-less: grey placeholder is the label)
             AppTextField(text: $title, placeholder: "Title", fontSize: 20)
 
@@ -131,6 +132,7 @@ struct ReminderEditorView: View {
                     .font(.system(size: 18))
                     .foregroundStyle(.red)
                     .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
         }
         Button { save() } label: {

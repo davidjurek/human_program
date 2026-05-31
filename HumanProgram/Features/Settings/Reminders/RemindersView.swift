@@ -11,14 +11,7 @@ struct RemindersView: View {
 
     var body: some View {
         SettingsScreen(centered: true, trailing: {
-            NavigationLink {
-                ReminderEditorView(reminder: nil)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
-            }
+            AddNavButton { ReminderEditorView(reminder: nil) }
         }) {
             if reminders.isEmpty {
                 DSText("No reminders yet")

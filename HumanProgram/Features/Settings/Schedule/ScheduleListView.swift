@@ -15,14 +15,7 @@ struct ScheduleListView: View {
 
     var body: some View {
         SettingsScreen(centered: true, trailing: {
-            NavigationLink {
-                ScheduleEditorView(template: nil)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
-            }
+            AddNavButton { ScheduleEditorView(template: nil) }
         }) {
             if templates.isEmpty {
                 DSText("No schedules yet")

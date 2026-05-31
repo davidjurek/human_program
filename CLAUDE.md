@@ -100,7 +100,6 @@ That's it. An empty task list is NOT complete. Exercise is not in the task list 
 ## Design rules — ALWAYS follow these
 
 - **Reuse UI, never duplicate it.** When the same visual element appears in more than one place — a row, a section header, a banner, a button style, a card, a sheet layout, a spacing value — it must come from ONE shared component, modifier, or token. Do not copy-paste a chunk of view code and tweak it. Before building any UI, search the codebase for an existing component that already does it (or nearly does it) and extend that instead. If a change to one screen needs the same change on another, that is a sign the markup should have been shared — extract it into a reusable view rather than editing two copies. This is the single most important UI rule: many small UI edits are coming, and duplicated view code means each fix has to be made in several places and they will drift apart.
-- **No swipe-to-delete** anywhere in the app. Not on tasks, not on backlog items, not anywhere.
 - **No stock `List {}` with default iOS styling** for the main task list or backlog list. Use `VStack` with custom row views.
 - **Read mode is the default.** Edit controls are hidden until the user enters edit mode.
 - **Read and edit modes must share identical layout — no reflow.** Hiding an edit-only control (delete button, reorder handle, inline field) must NOT move other content. Reserve the same spacing, row heights, columns, padding, and alignment in both modes. Build one shared layout and make edit-only controls invisible/disabled in read mode — don't build two separate layouts that "look close."
@@ -123,8 +122,10 @@ Every Settings-area screen is composed from the shared components in `Features/S
 
 - `SettingsScreen { ... }` — themed scroll container. Soft lavender→blue→peach **gradient** background (`SettingsBackground`, Settings screens only), **no nav title** (titles are hidden app-wide; back button stays). Top inset 28.
   - **Side margins depend on screen type, set by the `centered` flag:**
-    - **Menu screens** (the default, `centered: false`) — **left 44, right 20** (intentional right-shifted asymmetry).
+    - **Menu screens** (the default, `centered: false`) — **left 42, right 14** (intentional right-shifted asymmetry).
     - **Non-menu screens** (editors, list screens, etc. — pass `centered: true`) — **left 20, right 20** (symmetric).
+  - **Swipe-back is re-enabled here.** Hiding the nav bar kills iOS's leading-edge swipe-back gesture, so `SettingsScreen` re-installs it (a recognizer that re-asserts on every (re)appear, so it doesn't go stale after visiting another screen). Editors pass `onBack`/`swipeBackBlocked`: when there are unsaved changes the swipe (and the back button) route through the **discard-changes guard** instead of popping. Toolbar icon buttons (back, `+`, trash, Save) get `.contentShape(Rectangle())` so the whole 44×44 is tappable.
+  - A faint **gradient frost** sits behind the top bar so the back/Save buttons stay legible over scrolling content.
 - `SettingsGroup(title:) { rows }` — a section. Optional uppercase label, then rows. Spacing: **18pt** label→first row, **38pt** between rows. Top-level groups are spaced **28pt** apart. Every section that should read as its own block needs a `title` (an untitled group collapses to the smaller 28pt gap and looks inconsistent — give it a header).
 - `SettingsRowContent` / `SettingsNavRow` — **open, card-less rows**: icon + `.title3` label, **no chevron**, full-width tap target. `SettingsNavRow` pushes a destination.
 - Row look: leading SF Symbol icon (`DSImageView(systemName:size:.font(.title3),tint:.color(.primary))`) + `DSText(label).dsTextStyle(.title3)`, optional trailing value.
@@ -138,6 +139,21 @@ Every Settings-area screen is composed from the shared components in `Features/S
 - **`.label` typography token is ambiguous bare** — use `.body` or `.headline` instead, or it won't type-check.
 - DSKit has **no native Toggle / Segmented / Stepper** — use SwiftUI's native controls inside DSKit containers.
 - `DSText(_:)` takes just a string (no `lineSpacing:` arg here).
+
+### Planning editors (Schedule / Recurring / Reminder) — interaction patterns learned the hard way
+
+The Schedule editor is the reference implementation; the wheel/keypad/popup pieces are meant to roll out to the other editors next. Patterns that took many iterations to get right — reuse them, don't re-derive:
+
+- **Toolbar icon buttons need `.contentShape(Rectangle())`** on their 44×44 frame, or only the opaque glyph is tappable and taps near it miss (hit the `+`, trash, etc.). Use the shared `AddNavButton`.
+- **Popups all share `popupGlass()`** — one modifier (clear iOS-26 `glassEffect`, blur fallback) used by every popup (confirm dialogs, Repeat dropdown, wheel popups). Change the glass in that one place.
+- **Anchored popups** (`AnchoredPopup`, drops under a tapped value) must capture the value's frame and position themselves in **one shared NAMED coordinate space**, never `.global`. The popup layer ignores the safe area, so its `.global` origin doesn't match the content's `.global` frames and the popup jumps to the corner.
+- **Numeric entry uses a custom keypad (`GlassKeypad`), NOT the system numpad.** iOS 26 floats keyboard accessory bars, so a flush attached "Done" bar on the system keyboard is impossible. The custom keypad is bottom-pinned liquid glass, feeds HHMM (minutes snap to 5), and ✓/tap-outside close it + the wheel popup.
+- **Uniform keyboard gap (text fields):** SwiftUI's automatic keyboard avoidance gives a non-uniform, field-TYPE-dependent gap (a `UITextView`-backed field gets a bigger gap than a plain `TextField`) and fights manual scrolling. The combo that works: (1) disable SwiftUI avoidance on the screen (`SettingsScreen(manualKeyboardAvoidance: true)` → `.ignoresSafeArea(.keyboard)`); (2) add a **bottom content spacer = keyboard height** for scroll room — do NOT use `contentInset` for the room, SwiftUI resets it and the scroll snaps back; (3) a small UIKit `keyboardDidShow` observer scrolls the focused field to a fixed gap (20pt) above the keyboard, only when it's actually covered. Keep title fields the **same SwiftUI `TextField` type** so the measured frames match.
+- **Reorder and swipe-to-delete use UIKit recognizers**, not SwiftUI gestures. SwiftUI gesture composition can't cleanly separate tap / hold-to-drag / horizontal-swipe / vertical-scroll on one custom row. Reorder = a `UILongPressGestureRecognizer` (≈0.4s, small allowable movement) on the enclosing scroll view, hit-testing rows by their reported window frames; swipe = a `UIPanGestureRecognizer` that only *begins* for horizontal drags so vertical drags fall through to native scrolling.
+- **Editable rows have four distinct, non-overlapping gestures:** a quick **tap** edits (inline title / opens the value popup), a **hold (~0.4s)** pops the row and starts a drag-reorder, a **horizontal swipe** reveals delete, and a **vertical drag** scrolls the page. The reorder pop appears the instant the hold fires and auto-shrinks the moment the finger lifts (driven by gesture state, never a stuck flag). A tap must NOT fire after a hold/drag/swipe.
+- **Swipe-to-delete behaviour:** swiping a row reveals a red circular trash that **slides in from the trailing edge** (content + trash move together, clipped — never flash in over the row). It **stays open**; drag back to close; **tap the trash to delete** (there is NO full-swipe-to-delete and no expand-to-fill). Opening one row's trash, or interacting with anything else (editing, a control), **auto-closes** an open one — but **scrolling does not** close it.
+- **Popups are sized to their content, never full-width.** The anchored popups use a fixed/intrinsic width and drop under the tapped value (right-aligned for trailing values), not a full-width sheet.
+- **Tapping out of an open keypad/keyboard/popup just dismisses it** — it does not also open whatever was tapped. Any value/title tap first checks "is something open? if so close it and return" (`dismissOpenInputIfAny`), so an accidental tap on a `##h ##m` value while the keypad is up only closes the keypad.
 
 ## What's built and what isn't
 
@@ -179,8 +195,7 @@ These are not up for debate. If a task seems to require changing one of these, s
 - **Backup files (`.hprgm`) are not encrypted.** App lock protects the data on device. Backup files are plain.
 - **Sleep block is mandatory** as the first block in every schedule template.
 - **Exercise does not count toward day completion** unless the user also creates a separate recurring task for it.
-- **No swipe-to-delete anywhere.** Use undo/redo once that's built.
-- **No confirmation dialogs for delete.** Same reason.
+- **No confirmation dialogs for delete.** The plan is undo/redo. Skip the confirmation for now. (Swipe-to-delete is allowed — the old "no swipe-to-delete" rule was removed at the owner's request; it's now used for schedule blocks.)
 - **Weekday 1=Sun, 2=Mon … 7=Sat everywhere.** Do not change this encoding.
 
 ---

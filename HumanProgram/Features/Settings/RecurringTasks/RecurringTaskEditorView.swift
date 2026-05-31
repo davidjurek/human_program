@@ -48,7 +48,8 @@ struct RecurringTaskEditorView: View {
     }
 
     var body: some View {
-        SettingsScreen(centered: true, onBack: attemptBack, trailing: { editorButtons }) {
+        SettingsScreen(centered: true, onBack: attemptBack,
+                       swipeBackBlocked: { hasUnsavedChanges }, trailing: { editorButtons }) {
             // Title
             AppTextField(text: $title, placeholder: "Title", fontSize: 20)
 
@@ -103,6 +104,7 @@ struct RecurringTaskEditorView: View {
                     .font(.system(size: 18))
                     .foregroundStyle(.red)
                     .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
         }
         Button { save() } label: {

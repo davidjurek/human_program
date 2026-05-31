@@ -41,7 +41,8 @@ struct AboutView: View {
         .fullScreenCover(isPresented: $showSudokuGate) {
             SudokuGateView()
         }
-        .sheet(isPresented: $showDocument) {
+        // Pushed page (back button + swipe-back), not a modal sheet.
+        .navigationDestination(isPresented: $showDocument) {
             HiddenDocumentView()
         }
     }
@@ -67,32 +68,21 @@ struct AboutView: View {
 // CatCornerView is defined in Features/Settings/CatCornerView.swift
 
 // ── Hidden document view ──────────────────────────────────────────
+// A pushed page on the shared SettingsScreen container (themed gradient
+// background, back button, swipe-back) — not a modal sheet.
 struct HiddenDocumentView: View {
-    @Environment(\.dismiss) private var dismiss
-
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    DSText("Universal Declaration of Human Rights")
-                        .dsTextStyle(.title3)
-                        .padding(.bottom, 4)
-                    DSText("Adopted by the UN General Assembly on 10 December 1948.")
-                        .dsTextStyle(.subheadline)
-                    DSText(humanRightsExcerpt)
-                        .dsTextStyle(.body)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(24)
+        SettingsScreen(centered: true) {
+            VStack(alignment: .leading, spacing: 16) {
+                DSText("Universal Declaration of Human Rights")
+                    .dsTextStyle(.title3)
+                    .padding(.bottom, 4)
+                DSText("Adopted by the UN General Assembly on 10 December 1948.")
+                    .dsTextStyle(.subheadline)
+                DSText(humanRightsExcerpt)
+                    .dsTextStyle(.body)
             }
-            .dsScreen()
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

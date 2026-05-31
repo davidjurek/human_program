@@ -96,8 +96,14 @@ struct WeekdayStrip: View {
     }
 }
 
-// MARK: - App dropdown (translucent floating panel, no tail, on top)
+// MARK: - App dropdown (translucent panel, expands inline)
 
+/// Repeat-style picker. The options panel expands INLINE (pushing the rows below
+/// down) rather than floating over them. The old floating version drew its panel
+/// over the next row (the weekday circles), and that row intercepted the tap on
+/// the top option — so selecting the first option (e.g. switching back to
+/// "Weekly") silently did nothing. Expanding inline gives every option a real,
+/// unobstructed tap target and matches the time/duration rows' behaviour.
 struct AppDropdown: View {
     let label: String
     let options: [(value: String, title: String)]
@@ -112,57 +118,50 @@ struct AppDropdown: View {
     }
 
     var body: some View {
-        HStack {
-            DSText(label).dsTextStyle(.title3)
-            Spacer(minLength: 8)
-            Button {
-                withAnimation(.snappy(duration: 0.15)) { openSection = isOpen ? nil : id }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(currentTitle).font(appFont(18)).foregroundStyle(.primary)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(.plain)
-        }
-        .frame(height: 34)
-        .overlay(alignment: .topTrailing) {
-            if isOpen {
-                ZStack(alignment: .topTrailing) {
-                    Color.black.opacity(0.0001)
-                        .frame(width: 3000, height: 3000)
-                        .contentShape(Rectangle())
-                        .onTapGesture { openSection = nil }
-                    panel.offset(y: 40)
-                }
-            }
-        }
-        .zIndex(isOpen ? 1 : 0)
-    }
-
-    private var panel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(options, id: \.value) { option in
+        VStack(spacing: 6) {
+            HStack {
+                DSText(label).dsTextStyle(.title3)
+                Spacer(minLength: 8)
                 Button {
-                    selection = option.value
-                    openSection = nil
+                    withAnimation(.snappy(duration: 0.15)) { openSection = isOpen ? nil : id }
                 } label: {
-                    HStack(spacing: 12) {
-                        Text(option.title).font(appFont(18)).foregroundStyle(.primary)
-                        if option.value == selection {
-                            Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold))
-                        }
+                    HStack(spacing: 4) {
+                        Text(currentTitle).font(appFont(18)).foregroundStyle(.primary)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 18)
-                    .frame(height: 44)
-                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
+            .frame(height: 34)
+
+            if isOpen {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(options, id: \.value) { option in
+                        Button {
+                            selection = option.value
+                            withAnimation(.snappy(duration: 0.15)) { openSection = nil }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(option.title).font(appFont(18)).foregroundStyle(.primary)
+                                Spacer(minLength: 8)
+                                if option.value == selection {
+                                    Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold))
+                                }
+                            }
+                            .padding(.horizontal, 18)
+                            .frame(height: 44)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .popupGlass()
+                .transition(.opacity)
+            }
         }
-        .fixedSize()   // only as big as the options need
-        .popupGlass()
     }
 }
 
@@ -196,18 +195,128 @@ struct BlurView: UIViewRepresentable {
 }
 
 extension View {
+    /// Shared popup background — the liquid-glass look used by EVERY popup
+    /// (confirm dialogs, the Repeat dropdown, the wheel popups). One place, so a
+    /// glass tweak hits all of them.
     func popupGlass(cornerRadius: CGFloat = 16) -> some View {
         self
-            .background {
-                ZStack {
-                    BlurView(style: .systemThickMaterial)
-                    BlurView(style: .systemThickMaterial)   // stacked = heavier blur
-                }
-                .opacity(0.5)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-            }
-            .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(Color.primary.opacity(0.1)))
+            .background(PopupGlassBackground(cornerRadius: cornerRadius))
             .shadow(color: .black.opacity(0.12), radius: 14, y: 4)
+    }
+}
+
+/// Clear liquid glass (iOS 26 `glassEffect`), with an ultra-thin blur fallback.
+struct PopupGlassBackground: View {
+    let cornerRadius: CGFloat
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        Group {
+            if #available(iOS 26.0, *) {
+                shape.fill(.clear).glassEffect(.clear, in: shape)
+            } else {
+                BlurView(style: .systemUltraThinMaterial).clipShape(shape)
+            }
+        }
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.08)))
+    }
+}
+
+// MARK: - Anchored popup (screen-level, drops under a tapped value)
+
+/// Collects the on-screen (global) frame of tagged views, keyed by id, so a
+/// screen-level popup can anchor itself beneath the value that was tapped.
+struct AnchorFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+extension View {
+    /// Tag this view so its frame (in `space`) is reported under `id` (read with
+    /// `.onPreferenceChange(AnchorFrameKey.self)`). Use the SAME coordinate space
+    /// for the matching `AnchoredPopup` so the two line up exactly.
+    func anchorFrame(_ id: String, in space: CoordinateSpace = .global) -> some View {
+        background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: AnchorFrameKey.self, value: [id: proxy.frame(in: space)])
+            }
+        )
+    }
+}
+
+/// A translucent popup (shared `popupGlass`) that drops directly beneath an
+/// on-screen anchor, aligned to it horizontally (so it sits under the tapped
+/// value, not centered on screen), and flips above when there isn't room below.
+/// Tapping outside closes it. Reused for the Repeat picker and the wheel/name
+/// editors so they all share one look.
+struct AnchoredPopup<Content: View>: View {
+    let anchor: CGRect              // frame of the tapped value, in `space`
+    var width: CGFloat = 210
+    var estimatedHeight: CGFloat = 190
+    var alignment: HorizontalAlignment = .trailing
+    /// Must match the coordinate space used by the value's `anchorFrame(_:in:)`.
+    var space: CoordinateSpace = .global
+    /// Height of a bottom obstruction to clear (e.g. the custom keypad). The
+    /// popup floats above it with a gap, same as it does for the keyboard.
+    var bottomInset: CGFloat = 0
+    let onClose: () -> Void
+    @ViewBuilder var content: () -> Content
+
+    @State private var keyboardHeight: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            let pos = position(in: geo)
+            ZStack(alignment: .topLeading) {
+                Color.clear.contentShape(Rectangle()).onTapGesture(perform: onClose)
+                content()
+                    .frame(width: width)
+                    .popupGlass(cornerRadius: 22)
+                    .offset(x: pos.x, y: pos.y)
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+        }
+        .ignoresSafeArea()
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let overlap = max(0, UIScreen.main.bounds.height - frame.minY)
+            withAnimation(.easeInOut(duration: 0.18)) { keyboardHeight = overlap }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeInOut(duration: 0.3)) { keyboardHeight = 0 }
+        }
+    }
+
+    /// Computes the popup's offset within `geo`: drops under the anchor, flips
+    /// above when tight, and lifts fully above the keyboard when it's up.
+    private func position(in geo: GeometryProxy) -> CGPoint {
+        let origin = geo.frame(in: space).origin
+        let a = CGRect(x: anchor.minX - origin.x, y: anchor.minY - origin.y,
+                       width: anchor.width, height: anchor.height)
+        let gap: CGFloat = 8
+
+        // Natural position (ignore the keyboard): under the value, flip above if
+        // there's no room below on the full screen.
+        var y = (geo.size.height - gap - a.maxY >= estimatedHeight) ? a.maxY + gap
+                                                                     : a.minY - gap - estimatedHeight
+        // Only lift for a bottom obstruction (keyboard or custom keypad) if it
+        // would ACTUALLY cover the popup; if it's already fully visible, stay put.
+        let obstruction = max(keyboardHeight, bottomInset)
+        if obstruction > 0 {
+            let obstructionTop = geo.size.height - obstruction - gap
+            if y + estimatedHeight > obstructionTop { y = obstructionTop - estimatedHeight }
+        }
+        y = max(8, y)
+
+        let rawX: CGFloat
+        switch alignment {
+        case .leading:  rawX = a.minX
+        case .trailing: rawX = a.maxX - width
+        default:        rawX = a.midX - width / 2
+        }
+        let x = min(max(8, rawX), max(8, geo.size.width - width - 8))
+        return CGPoint(x: x, y: y)
     }
 }
 
@@ -364,99 +473,6 @@ struct DateFieldRow: View {
             .tint(weekdaySelectedColor)
         }
         .frame(height: 34)
-    }
-}
-
-// MARK: - Duration field — wheel (hours:minutes) with tap-to-numpad
-
-/// Hours:minutes duration wheel, value-only tap to expand. Scrolls normally;
-/// a tap on the wheel opens a numpad to type the duration (HHMM). Mirrors
-/// `WheelHourMinute` but for a duration (0–23 h, 0–59 m).
-struct DurationFieldRow: View {
-    let id: String
-    let label: String
-    @Binding var minutes: Int
-    @Binding var openSection: String?
-
-    private var isOpen: Bool { openSection == id }
-    private var h: Int { minutes / 60 }
-    private var m: Int { minutes % 60 }
-    private var valueString: String {
-        if h > 0 && m > 0 { return "\(h)h \(m)m" }
-        if h > 0 { return "\(h)h" }
-        return "\(m)m"
-    }
-
-    var body: some View {
-        VStack(spacing: 6) {
-            HStack {
-                DSText(label).dsTextStyle(.title3)
-                Spacer()
-                Button { withAnimation { openSection = isOpen ? nil : id } } label: {
-                    Text(valueString).font(appFont(18)).foregroundStyle(.primary)
-                }
-                .buttonStyle(.plain)
-            }
-            .frame(height: 34)
-
-            if isOpen {
-                WheelDuration(minutes: $minutes)
-                    .transition(.opacity)
-            }
-        }
-    }
-}
-
-/// Hours:minutes wheel. Drags scroll; a tap opens a single numpad (HHMM).
-struct WheelDuration: View {
-    @Binding var minutes: Int
-
-    @State private var typed = ""
-    @FocusState private var keypadFocused: Bool
-
-    private var hourBinding: Binding<Int> {
-        Binding(get: { minutes / 60 }, set: { minutes = $0 * 60 + (minutes % 60) })
-    }
-    private var minuteBinding: Binding<Int> {
-        Binding(get: { minutes % 60 }, set: { minutes = (minutes / 60) * 60 + $0 })
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Picker("", selection: hourBinding) {
-                ForEach(0..<24, id: \.self) { Text("\($0)h").tag($0) }
-            }
-            .pickerStyle(.wheel)
-
-            Picker("", selection: minuteBinding) {
-                ForEach(0..<60, id: \.self) { Text("\($0)m").tag($0) }
-            }
-            .pickerStyle(.wheel)
-        }
-        .frame(width: 210, height: 140)
-        .frame(maxWidth: .infinity)
-        .simultaneousGesture(TapGesture().onEnded {
-            typed = ""
-            keypadFocused = true
-        })
-        .overlay(
-            TextField("", text: $typed)
-                .keyboardType(.numberPad)
-                .focused($keypadFocused)
-                .frame(width: 0, height: 0)
-                .opacity(0)
-                .onChange(of: typed) { _, _ in applyTyped() }
-        )
-    }
-
-    private func applyTyped() {
-        let s = String(typed.filter(\.isNumber).prefix(4))
-        guard !s.isEmpty else { return }
-        var hh = 0, mm = 0
-        hh = Int(String(s.prefix(2))) ?? 0
-        if s.count >= 3 { mm = Int(String(s.dropFirst(2))) ?? 0 }
-        minutes = min(23, hh) * 60 + min(59, mm)
-        if s.count >= 4 { keypadFocused = false }
     }
 }
 

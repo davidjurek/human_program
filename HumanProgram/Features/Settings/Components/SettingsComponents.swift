@@ -30,6 +30,18 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
     var centered: Bool = false
     /// Custom back action (e.g. a discard-changes guard). Defaults to dismiss().
     var onBack: (() -> Void)?
+    /// Returns true when a leading-edge swipe-back should be intercepted instead
+    /// of popping — e.g. there are unsaved changes. When it returns true the
+    /// swipe runs `onBack` (which shows the discard popup) rather than popping.
+    /// Default `false`: swipe pops normally.
+    var swipeBackBlocked: () -> Bool = { false }
+    /// Freezes vertical scrolling — used while a row is being drag-reordered so
+    /// the reorder drag doesn't also scroll the page.
+    var scrollDisabled: Bool = false
+    /// Opts out of SwiftUI's automatic keyboard avoidance so the screen can
+    /// position the focused field itself (used by the Schedule editor for a
+    /// consistent gap above the keyboard).
+    var manualKeyboardAvoidance: Bool = false
     @ViewBuilder var trailing: () -> Trailing
     @ViewBuilder var content: () -> Content
 
@@ -40,26 +52,31 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
                 VStack(alignment: .leading, spacing: 28) {
                     content()
                 }
-                .padding(.leading, centered ? 20 : 44)
-                .padding(.trailing, 20)
+                .padding(.leading, centered ? 20 : 42)
+                .padding(.trailing, centered ? 20 : 14)
                 .padding(.top, 28)
                 .padding(.bottom, 32)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollDismissesKeyboard(.interactively)
+            .scrollDisabled(scrollDisabled)
+            .modifier(IgnoreKeyboardSafeArea(active: manualKeyboardAvoidance))
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top) { topBar }
         // Hiding the system back button also turns off iOS's leading-edge
-        // swipe-back gesture. Re-enable it here — but only on screens that use
-        // the default back (onBack == nil). Screens with a custom back guard
-        // (e.g. discard-changes) keep swipe off so a swipe can't bypass it.
-        .background(SwipeBackEnabler(enabled: onBack == nil))
+        // swipe-back gesture. Re-enable it here for EVERY settings screen.
+        // When `swipeBackBlocked()` is true (unsaved changes) the swipe runs
+        // `onBack` — which shows the discard popup — instead of popping, so a
+        // swipe can't silently bypass the guard but still works everywhere.
+        .background(SwipeBackEnabler(blocked: swipeBackBlocked,
+                                     onBlocked: onBack ?? { dismiss() }))
     }
 
     // Bare buttons (no glass card). High-priority back tap so the leading-edge
-    // swipe-back gesture can't swallow it.
+    // swipe-back gesture can't swallow it. A gradient frost sits behind the bar
+    // so the buttons stay legible when content scrolls up under them.
     private var topBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "chevron.left")
@@ -76,42 +93,95 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
+        .background(alignment: .top) {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask(
+                    LinearGradient(
+                        stops: [.init(color: .black, location: 0),
+                                .init(color: .black, location: 0.55),
+                                .init(color: .clear, location: 1)],
+                        startPoint: .top, endPoint: .bottom)
+                )
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+        }
     }
 }
 
 /// Restores the iOS leading-edge swipe-back gesture on screens that hide the
-/// system nav-bar back button (which normally disables the gesture). It does
-/// this by re-pointing the navigation controller's interactive-pop gesture at
-/// our own delegate, which allows the swipe whenever there's a screen to pop
-/// back to. When `enabled` is false the gesture is suppressed (used by screens
-/// with a custom back guard so a swipe can't skip the guard).
+/// system nav-bar back button (which normally disables the gesture).
+///
+/// All settings screens share ONE navigation controller and therefore one
+/// `interactivePopGestureRecognizer`. The fix re-points that recognizer's
+/// delegate at this screen's coordinator and re-asserts it every time the
+/// screen (re)appears — `viewWillAppear` fires when you pop back, so returning
+/// from a guarded editor no longer leaves a stale delegate that kills the swipe
+/// on the screen underneath. That stale-delegate race was why swipe-back worked
+/// on some screens but not others.
+///
+/// When `blocked()` returns true (unsaved changes) the swipe doesn't pop;
+/// instead it runs `onBlocked` (the discard guard) so the popup appears.
 private struct SwipeBackEnabler: UIViewControllerRepresentable {
-    var enabled: Bool
+    var blocked: () -> Bool
+    var onBlocked: () -> Void
 
-    func makeUIViewController(context: Context) -> UIViewController {
-        context.coordinator.enabled = enabled
-        return UIViewController()
+    func makeUIViewController(context: Context) -> Host {
+        let host = Host()
+        host.coordinator = context.coordinator
+        context.coordinator.blocked = blocked
+        context.coordinator.onBlocked = onBlocked
+        return host
     }
 
-    func updateUIViewController(_ vc: UIViewController, context: Context) {
-        context.coordinator.enabled = enabled
-        // Re-assert on every update so popping back to this screen restores it.
-        DispatchQueue.main.async {
-            guard let nav = vc.navigationController else { return }
-            context.coordinator.navController = nav
-            nav.interactivePopGestureRecognizer?.delegate = context.coordinator
-        }
+    func updateUIViewController(_ host: Host, context: Context) {
+        context.coordinator.blocked = blocked
+        context.coordinator.onBlocked = onBlocked
+        host.coordinator = context.coordinator
+        host.reassert()
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         weak var navController: UINavigationController?
-        var enabled = true
+        var blocked: () -> Bool = { false }
+        var onBlocked: () -> Void = {}
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard enabled else { return false }
-            return (navController?.viewControllers.count ?? 0) > 1
+            guard (navController?.viewControllers.count ?? 0) > 1 else { return false }
+            if blocked() {
+                // Unsaved changes: don't pop. Trigger the guard (discard popup).
+                onBlocked()
+                return false
+            }
+            return true
+        }
+    }
+
+    /// Host controller that re-claims the interactive-pop delegate whenever this
+    /// screen appears (including when popped back to), so the swipe never goes
+    /// stale after visiting another screen.
+    final class Host: UIViewController {
+        weak var coordinator: Coordinator?
+
+        func reassert() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let nav = self.navigationController else { return }
+                self.coordinator?.navController = nav
+                nav.interactivePopGestureRecognizer?.delegate = self.coordinator
+                nav.interactivePopGestureRecognizer?.isEnabled = true
+            }
+        }
+
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            reassert()
+        }
+
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            reassert()
         }
     }
 }
@@ -119,8 +189,47 @@ private struct SwipeBackEnabler: UIViewControllerRepresentable {
 extension SettingsScreen where Trailing == EmptyView {
     init(centered: Bool = false,
          onBack: (() -> Void)? = nil,
+         swipeBackBlocked: @escaping () -> Bool = { false },
+         scrollDisabled: Bool = false,
+         manualKeyboardAvoidance: Bool = false,
          @ViewBuilder content: @escaping () -> Content) {
-        self.init(centered: centered, onBack: onBack, trailing: { EmptyView() }, content: content)
+        self.init(centered: centered, onBack: onBack, swipeBackBlocked: swipeBackBlocked,
+                  scrollDisabled: scrollDisabled, manualKeyboardAvoidance: manualKeyboardAvoidance,
+                  trailing: { EmptyView() }, content: content)
+    }
+}
+
+/// Conditionally opts a view out of keyboard safe-area avoidance.
+private struct IgnoreKeyboardSafeArea: ViewModifier {
+    let active: Bool
+    func body(content: Content) -> some View {
+        if active {
+            content.ignoresSafeArea(.keyboard, edges: .bottom)
+        } else {
+            content
+        }
+    }
+}
+
+/// Top-right "+" that pushes a destination. Used by every planning LIST screen
+/// (Recurring Tasks, Schedule, Reminders) so the look — and the tap target —
+/// stay identical. The full 44×44 frame is made tappable with `contentShape`,
+/// so a tap on the padding around the glyph still registers (without it, only
+/// the opaque "+" pixels were hittable, which is why the tap sometimes missed).
+struct AddNavButton<Destination: View>: View {
+    @ViewBuilder var destination: () -> Destination
+
+    var body: some View {
+        NavigationLink {
+            destination()
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

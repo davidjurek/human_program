@@ -13,14 +13,7 @@ struct RecurringTasksView: View {
 
     var body: some View {
         SettingsScreen(centered: true, trailing: {
-            NavigationLink {
-                RecurringTaskEditorView(template: nil)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
-            }
+            AddNavButton { RecurringTaskEditorView(template: nil) }
         }) {
             if templates.isEmpty {
                 DSText("No recurring tasks yet")
