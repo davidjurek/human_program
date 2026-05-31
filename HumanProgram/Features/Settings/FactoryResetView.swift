@@ -7,6 +7,47 @@ import UserNotifications
 // Pushed screen (reached from Settings → Danger Zone, and Settings → Security).
 // Wipes all SwiftData records and the app's UserDefaults. The user must type
 // RESET to enable the destructive action, so it can't fire by accident.
+// ── FactoryResetGate ───────────────────────────────────────────────────────────
+// Reached from Settings → Danger Zone. If a PIN is set, the user must enter it
+// (on the shared numpad) before the reset screen appears; with no PIN, it goes
+// straight to the reset screen.
+struct FactoryResetGate: View {
+    private let repo = AppLockRepository()
+    @State private var hasPIN = false
+    @State private var unlocked = false
+    @State private var error: String?
+    @State private var shake = 0
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Group {
+            if hasPIN && !unlocked {
+                PINEntryView(
+                    title: "Enter PIN",
+                    subtitle: nil,
+                    showsBack: true,
+                    onBack: { dismiss() },
+                    errorMessage: error,
+                    shakeToken: shake,
+                    onSubmit: { pin in
+                        if repo.verifyPIN(pin) {
+                            unlocked = true
+                        } else {
+                            error = "Incorrect PIN."
+                            shake += 1
+                        }
+                    }
+                )
+                .navigationBarBackButtonHidden(true)
+                .toolbar(.hidden, for: .navigationBar)
+            } else {
+                FactoryResetView()
+            }
+        }
+        .onAppear { hasPIN = repo.hasPIN() }
+    }
+}
+
 struct FactoryResetView: View {
 
     @Environment(\.modelContext) private var context

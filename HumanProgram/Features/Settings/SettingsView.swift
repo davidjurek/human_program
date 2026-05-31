@@ -29,7 +29,7 @@ struct SettingsView: View {
 
             SettingsGroup(title: "Danger Zone") {
                 SettingsNavRow(label: "Factory Reset", systemImage: "trash", destructive: true) {
-                    FactoryResetView()
+                    FactoryResetGate()
                 }
             }
         }

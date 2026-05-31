@@ -1,250 +1,285 @@
 import SwiftUI
-import SwiftData
 import DSKit
 import LocalAuthentication
 
 // ── SecuritySettingsView ───────────────────────────────────────────────────────
-// Settings → Security. Built on the shared Settings convention (SettingsScreen +
-// SettingsGroup + open card-less rows). App Lock on/off, then PIN / biometric /
-// lock-timing options when enabled, and the Reset App entry (a pushed screen).
+// Settings → Security. A clean 3-option DSKit menu: PIN, App Lock, Face ID.
+// (No Reset App here — Factory Reset lives in the main Settings Danger Zone.)
+// App Lock and Face ID require a PIN, so they're disabled until one is set.
 struct SecuritySettingsView: View {
-
     @State private var lockVM = AppLockViewModel()
-    @State private var showPINSetup = false
-    @Environment(\.modelContext) private var context
+    @State private var hasPIN = false
+
+    var body: some View {
+        SettingsScreen {
+            SettingsGroup {
+                SettingsNavRow(label: "PIN", systemImage: "key") {
+                    PINMenuView(vm: lockVM)
+                }
+                if hasPIN {
+                    SettingsNavRow(label: "App Lock", systemImage: "lock",
+                                   value: AppLockTimingView.currentLabel(lockVM)) {
+                        AppLockTimingView(vm: lockVM)
+                    }
+                    SettingsNavRow(label: biometryLabel, systemImage: biometryIcon) {
+                        FaceIDSetupView(vm: lockVM)
+                    }
+                } else {
+                    // Disabled until a PIN exists.
+                    SettingsRowContent(label: "App Lock", systemImage: "lock") { EmptyView() }
+                        .opacity(0.35)
+                    SettingsRowContent(label: biometryLabel, systemImage: biometryIcon) { EmptyView() }
+                        .opacity(0.35)
+                }
+            }
+        }
+        .onAppear { hasPIN = lockVM.repo.hasPIN() }
+    }
+
+    private var biometryLabel: String { BiometryInfo.label }
+    private var biometryIcon: String { BiometryInfo.icon }
+}
+
+// ── PIN sub-menu ────────────────────────────────────────────────────────────────
+private struct PINMenuView: View {
+    let vm: AppLockViewModel
+    @State private var hasPIN = false
+
+    var body: some View {
+        SettingsScreen {
+            SettingsGroup {
+                SettingsNavRow(label: hasPIN ? "Change your PIN" : "Create a PIN",
+                               systemImage: "key") {
+                    CreateOrChangePINView(vm: vm, isChange: hasPIN)
+                }
+                if hasPIN {
+                    SettingsNavRow(label: "Delete your PIN", systemImage: "key.slash",
+                                   destructive: true) {
+                        DeletePINView(vm: vm)
+                    }
+                }
+            }
+        }
+        .onAppear { hasPIN = vm.repo.hasPIN() }
+    }
+}
+
+// ── Create / Change PIN (enter → confirm) ───────────────────────────────────────
+private struct CreateOrChangePINView: View {
+    let vm: AppLockViewModel
+    let isChange: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var step: Step = .enter
+    @State private var firstEntry = ""
+    @State private var error: String?
+    @State private var shake = 0
+
+    private enum Step: Hashable { case enter, confirm }
+
+    var body: some View {
+        PINEntryView(
+            title: step == .enter ? (isChange ? "Enter new PIN" : "Create a PIN") : "Confirm PIN",
+            subtitle: step == .enter ? "Digits only · 4–20 digits" : nil,
+            minLength: vm.minPINLength,
+            maxLength: vm.maxPINLength,
+            showsBack: true,
+            onBack: { dismiss() },
+            errorMessage: error,
+            shakeToken: shake,
+            onSubmit: handle
+        )
+        .id(step)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private func handle(_ pin: String) {
+        switch step {
+        case .enter:
+            firstEntry = pin
+            error = nil
+            step = .confirm
+        case .confirm:
+            if pin == firstEntry {
+                do {
+                    try vm.repo.setupPIN(pin)
+                    if !isChange { vm.repo.isLockEnabled = true }
+                    dismiss()
+                } catch {
+                    self.error = "Could not save PIN. Try again."
+                    shake += 1
+                }
+            } else {
+                error = "PINs did not match."
+                firstEntry = ""
+                shake += 1
+                step = .enter
+            }
+        }
+    }
+}
+
+// ── Delete PIN (verify twice → remove) ──────────────────────────────────────────
+private struct DeletePINView: View {
+    let vm: AppLockViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var step: Step = .first
+    @State private var error: String?
+    @State private var shake = 0
+
+    private enum Step: Hashable { case first, second }
+
+    var body: some View {
+        PINEntryView(
+            title: "Delete PIN",
+            subtitle: step == .first
+                ? "Removing your PIN means the app can't be locked."
+                : "Enter your PIN again to confirm.",
+            minLength: vm.minPINLength,
+            maxLength: vm.maxPINLength,
+            showsBack: true,
+            onBack: { dismiss() },
+            errorMessage: error,
+            shakeToken: shake,
+            onSubmit: handle
+        )
+        .id(step)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private func handle(_ pin: String) {
+        guard vm.repo.verifyPIN(pin) else {
+            error = "Incorrect PIN."
+            shake += 1
+            step = .first
+            return
+        }
+        if step == .first {
+            error = nil
+            step = .second
+        } else {
+            try? vm.repo.removePIN()
+            dismiss()
+        }
+    }
+}
+
+// ── App Lock timing (single choice) ─────────────────────────────────────────────
+private struct AppLockTimingView: View {
+    let vm: AppLockViewModel
+    @State private var selection: Int   // seconds, or -1 for "Don't lock"
+
+    init(vm: AppLockViewModel) {
+        self.vm = vm
+        _selection = State(initialValue: vm.repo.isLockEnabled ? vm.repo.lockTimeoutSeconds : -1)
+    }
+
+    // value -1 = Don't lock (lock disabled)
+    static let options: [(label: String, seconds: Int)] = [
+        ("Lock immediately", 0),
+        ("After 1 minute", 60),
+        ("After 3 minutes", 180),
+        ("After 5 minutes", 300),
+        ("After 15 minutes", 900),
+        ("Don't lock", -1)
+    ]
+
+    /// The short value shown on the Security menu row.
+    static func currentLabel(_ vm: AppLockViewModel) -> String {
+        guard vm.repo.isLockEnabled else { return "Don't lock" }
+        switch vm.repo.lockTimeoutSeconds {
+        case 0:   return "Immediately"
+        case 60:  return "1 min"
+        case 180: return "3 min"
+        case 300: return "5 min"
+        case 900: return "15 min"
+        default:  return "On"
+        }
+    }
 
     var body: some View {
         SettingsScreen {
             SettingsGroup(title: "App Lock") {
-                SettingsToggleRow(label: "App Lock", systemImage: "lock", isOn: lockBinding)
-            }
-
-            DSText("When enabled, Human Program asks for your PIN (and optionally \(biometryLabel)) each time you open it.")
-                .dsTextStyle(.subheadline)
-
-            if lockVM.repo.isLockEnabled {
-                SettingsGroup(title: "Options") {
-                    SettingsNavRow(label: "Change PIN", systemImage: "key") {
-                        ChangePINView(vm: lockVM)
-                    }
-
-                    if biometryAvailable {
-                        SettingsToggleRow(label: biometryLabel, systemImage: biometryIcon,
-                                          isOn: biometricBinding)
-                    }
-
-                    SettingsNavRow(label: "Lock Timing", systemImage: "timer",
-                                   value: timingLabel(lockVM.repo.lockTimeoutSeconds)) {
-                        LockTimingView(vm: lockVM)
-                    }
-                }
-
-                SettingsGroup {
-                    SettingsButtonRow(label: "Lock Now", systemImage: "lock.fill") {
-                        lockVM.lockNow()
+                ForEach(Self.options, id: \.seconds) { option in
+                    SettingsSelectRow(label: option.label, isSelected: selection == option.seconds) {
+                        selection = option.seconds
+                        apply(option.seconds)
                     }
                 }
             }
-
-            SettingsGroup(title: "Danger Zone") {
-                SettingsNavRow(label: "Reset App", systemImage: "trash", destructive: true) {
-                    FactoryResetView()
-                }
-            }
-
-            DSText("Reset App permanently deletes all your data. This cannot be undone.")
-                .dsTextStyle(.subheadline)
-        }
-        .fullScreenCover(isPresented: $showPINSetup) {
-            PINSetupView(vm: lockVM)
         }
     }
 
-    // ── Bindings ─────────────────────────────────────────────────────────────────
-
-    private var lockBinding: Binding<Bool> {
-        Binding(
-            get: { lockVM.repo.isLockEnabled },
-            set: { handleLockToggle($0) }
-        )
-    }
-
-    private var biometricBinding: Binding<Bool> {
-        Binding(
-            get: { lockVM.repo.isBiometricEnabled },
-            set: { lockVM.repo.isBiometricEnabled = $0 }
-        )
-    }
-
-    // ── Helpers ────────────────────────────────────────────────────────────────
-
-    private func handleLockToggle(_ newValue: Bool) {
-        if newValue {
-            if lockVM.repo.hasPIN() {
-                lockVM.repo.isLockEnabled = true
-            } else {
-                // Must set a PIN before enabling.
-                showPINSetup = true
-            }
+    private func apply(_ seconds: Int) {
+        if seconds < 0 {
+            vm.repo.isLockEnabled = false
         } else {
-            lockVM.repo.isLockEnabled = false
-            lockVM.repo.isBiometricEnabled = false
+            vm.repo.isLockEnabled = true
+            vm.repo.lockTimeoutSeconds = seconds
         }
-    }
-
-    private func timingLabel(_ seconds: Int) -> String {
-        switch seconds {
-        case 0:   return "Immediately"
-        case 30:  return "30 seconds"
-        case 60:  return "1 minute"
-        case 300: return "5 minutes"
-        case 900: return "15 minutes"
-        default:  return "\(seconds)s"
-        }
-    }
-
-    private var biometryAvailable: Bool {
-        let ctx = LAContext()
-        var err: NSError?
-        return ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err)
-    }
-
-    private var biometryLabel: String {
-        let ctx = LAContext()
-        var err: NSError?
-        guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) else {
-            return "Face ID"
-        }
-        return ctx.biometryType == .faceID ? "Face ID" : "Touch ID"
-    }
-
-    private var biometryIcon: String {
-        let ctx = LAContext()
-        var err: NSError?
-        guard ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err) else {
-            return "faceid"
-        }
-        return ctx.biometryType == .faceID ? "faceid" : "touchid"
     }
 }
 
-// ── Lock timing picker ──────────────────────────────────────────────────────────
-// Pushed select-list (same pattern as Date/Time Format), one row per timeout.
-private struct LockTimingView: View {
+// ── Face ID setup ───────────────────────────────────────────────────────────────
+private struct FaceIDSetupView: View {
     let vm: AppLockViewModel
-    @State private var selection: Int
-
-    init(vm: AppLockViewModel) {
-        self.vm = vm
-        _selection = State(initialValue: vm.repo.lockTimeoutSeconds)
-    }
-
-    private let options: [(label: String, seconds: Int)] = [
-        ("Immediately", 0),
-        ("After 30 seconds", 30),
-        ("After 1 minute", 60),
-        ("After 5 minutes", 300),
-        ("After 15 minutes", 900)
-    ]
+    @State private var isOn = false
 
     var body: some View {
         SettingsScreen {
-            SettingsGroup(title: "Lock Timing") {
-                ForEach(options, id: \.seconds) { option in
-                    SettingsSelectRow(label: option.label, isSelected: selection == option.seconds) {
-                        selection = option.seconds
-                        vm.repo.lockTimeoutSeconds = option.seconds
+            SettingsGroup(title: BiometryInfo.label) {
+                SettingsToggleRow(label: "Use \(BiometryInfo.label)",
+                                  systemImage: BiometryInfo.icon,
+                                  isOn: binding)
+            }
+            DSText("Use \(BiometryInfo.label) to unlock instead of typing your PIN. Your PIN still works as a fallback.")
+                .dsTextStyle(.subheadline)
+        }
+        .onAppear { isOn = vm.repo.isBiometricEnabled }
+    }
+
+    private var binding: Binding<Bool> {
+        Binding(
+            get: { isOn },
+            set: { newValue in
+                if newValue {
+                    Task {
+                        let ok = await vm.repo.authenticateWithBiometrics(
+                            reason: "Enable \(BiometryInfo.label) for Human Program")
+                        await MainActor.run {
+                            isOn = ok
+                            vm.repo.isBiometricEnabled = ok
+                        }
                     }
+                } else {
+                    isOn = false
+                    vm.repo.isBiometricEnabled = false
                 }
             }
-        }
+        )
     }
 }
 
-// ── ChangePINView ──────────────────────────────────────────────────────────────
-// Pushed screen for changing the PIN. Native SecureFields (so the user can type
-// quickly); Save lives in the top-right, disabled until all three are filled.
-private struct ChangePINView: View {
-
-    let vm: AppLockViewModel
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var oldPIN = ""
-    @State private var newPIN = ""
-    @State private var confirmPIN = ""
-    @State private var errorMessage: String? = nil
-    @State private var showSuccess = false
-
-    private var canSave: Bool {
-        !oldPIN.isEmpty && !newPIN.isEmpty && !confirmPIN.isEmpty
+// ── Biometry info helper ────────────────────────────────────────────────────────
+enum BiometryInfo {
+    private static var ctx: (available: Bool, type: LABiometryType) {
+        let c = LAContext()
+        var err: NSError?
+        let ok = c.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err)
+        return (ok, c.biometryType)
     }
-
-    var body: some View {
-        SettingsScreen(centered: true, trailing: {
-            Button { save() } label: {
-                Text("Save").font(appFont(18))
-                    .foregroundStyle(canSave ? .primary : .secondary)
-                    .frame(height: 44).padding(.horizontal, 6)
-            }
-            .disabled(!canSave)
-        }) {
-            SettingsGroup(title: "Current PIN") {
-                PINField(placeholder: "Current PIN", text: $oldPIN)
-            }
-
-            SettingsGroup(title: "New PIN") {
-                PINField(placeholder: "New PIN (4–20 digits)", text: $newPIN)
-                PINField(placeholder: "Confirm new PIN", text: $confirmPIN)
-            }
-
-            if let msg = errorMessage {
-                DSText(msg).dsTextStyle(.subheadline, Color.red)
-            }
-
-            if showSuccess {
-                HStack(spacing: 8) {
-                    DSImageView(systemName: "checkmark.circle.fill", size: .font(.body),
-                                tint: .color(.green))
-                    DSText("PIN changed successfully").dsTextStyle(.subheadline, Color.green)
-                }
-            }
-        }
+    static var available: Bool { ctx.available }
+    static var label: String {
+        let info = ctx
+        guard info.available else { return "Face ID" }
+        return info.type == .faceID ? "Face ID" : (info.type == .touchID ? "Touch ID" : "Face ID")
     }
-
-    private func save() {
-        errorMessage = nil
-
-        guard newPIN == confirmPIN else {
-            errorMessage = "New PINs do not match."
-            return
-        }
-        guard newPIN.count >= vm.minPINLength else {
-            errorMessage = "New PIN must be at least \(vm.minPINLength) digits."
-            return
-        }
-
-        if let err = vm.changePIN(old: oldPIN, new: newPIN) {
-            errorMessage = err
-        } else {
-            showSuccess = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { dismiss() }
-        }
-    }
-}
-
-/// A themed secure entry field used by Change PIN — numeric keypad, app font,
-/// sunken rounded background so it reads as a tappable field on the gradient.
-private struct PINField: View {
-    let placeholder: String
-    @Binding var text: String
-
-    var body: some View {
-        SecureField(placeholder, text: $text)
-            .keyboardType(.numberPad)
-            .font(appFont(18))
-            .padding(.vertical, 12)
-            .padding(.horizontal, 14)
-            .background(Color.primary.opacity(0.06),
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    static var icon: String {
+        let info = ctx
+        guard info.available else { return "faceid" }
+        return info.type == .faceID ? "faceid" : (info.type == .touchID ? "touchid" : "faceid")
     }
 }

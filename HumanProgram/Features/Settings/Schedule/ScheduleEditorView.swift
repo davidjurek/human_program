@@ -27,6 +27,12 @@ struct ScheduleEditorView: View {
     /// nil = creating a new schedule; non-nil = editing an existing one.
     let template: ScheduleTemplate?
 
+    /// When set (and template == nil), prefills a NEW schedule with copied blocks
+    /// + sleep from another schedule (used by the Duplicate button). Title, weekdays
+    /// and repeat are intentionally left blank/default so it can't be saved as-is.
+    var seed: ScheduleSeed? = nil
+
+    @State private var duplicateSeed: ScheduleSeed?
     @State private var name = ""
     @State private var repeatMode = "weekly"          // "weekly" | "custom"
     @State private var weekdays: Set<Int> = []
@@ -229,6 +235,9 @@ struct ScheduleEditorView: View {
         .onChange(of: newDuration) { _, _ in closeSwipeIfOpen() }
         .onPreferenceChange(KeypadHeightKey.self) { keypadMeasuredHeight = $0 }
         .onAppear(perform: loadIfNeeded)
+        .navigationDestination(item: $duplicateSeed) { seed in
+            ScheduleEditorView(template: nil, seed: seed)
+        }
     }
 
     private func closeSwipeIfOpen() {
@@ -258,6 +267,12 @@ struct ScheduleEditorView: View {
     @ViewBuilder
     private var editorButtons: some View {
         if template != nil {
+            // Duplicate: copy blocks + sleep into a fresh, unsaveable new schedule.
+            Button { duplicateSeed = ScheduleSeed(sleepStart: sleepStart, sleepEnd: sleepEnd, blocks: blocks) } label: {
+                Image(systemName: "plus.square.on.square").font(.system(size: 18))
+                    .foregroundStyle(.primary).frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
             Button { showDeleteConfirm = true } label: {
                 Image(systemName: "trash").font(.system(size: 18))
                     .foregroundStyle(.red).frame(width: 44, height: 44)
@@ -747,7 +762,16 @@ struct ScheduleEditorView: View {
         guard !didLoad else { return }
         didLoad = true
         defer { original = currentSnapshot }
-        guard let t = template else { return }
+        guard let t = template else {
+            // New schedule. If duplicating, copy blocks + sleep; leave title,
+            // weekdays and repeat blank/default so it can't be saved as-is.
+            if let s = seed {
+                sleepStart = s.sleepStart
+                sleepEnd = s.sleepEnd
+                blocks = s.blocks.map { DraftBlock(title: $0.title, duration: $0.duration) }
+            }
+            return
+        }
         name = t.name
         if t.customDateStart != nil || t.customDateEnd != nil {
             repeatMode = "custom"
@@ -844,10 +868,18 @@ struct ScheduleEditorView: View {
 }
 
 /// A non-sleep block while editing: title + duration (times are derived).
-struct DraftBlock: Identifiable, Equatable {
+struct DraftBlock: Identifiable, Equatable, Hashable {
     var id = UUID()
     var title: String
     var duration: Int   // minutes
+}
+
+/// Seed data for duplicating a schedule into a fresh editor (blocks + sleep only).
+struct ScheduleSeed: Identifiable, Hashable {
+    let id = UUID()
+    var sleepStart: Int
+    var sleepEnd: Int
+    var blocks: [DraftBlock]
 }
 
 /// Transient drag-reorder state. Driven by the UIKit reorder recognizer.
