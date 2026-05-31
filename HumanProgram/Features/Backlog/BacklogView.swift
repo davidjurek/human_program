@@ -63,6 +63,7 @@ struct BacklogView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
         }
+        .scrollDismissesKeyboard(.interactively)           // [#46] drag-to-dismiss
     }
 
     private var sortedTasks: [BacklogItem] {

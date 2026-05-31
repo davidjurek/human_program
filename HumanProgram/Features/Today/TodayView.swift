@@ -46,6 +46,7 @@ struct TodayView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 28)                             // [#41] top inset
             }
+            .scrollDismissesKeyboard(.interactively)           // [#46] drag-to-dismiss
         }
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
