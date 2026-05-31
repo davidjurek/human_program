@@ -156,6 +156,28 @@ public final class DailyPageRepository {
         try context.save()
     }
 
+    // MARK: - severPastTasks
+
+    /// Sever past page-tasks from their backlog/calendar sources. Once a day is in
+    /// the past (rolled over at 12:01 AM), its tasks become FROZEN SNAPSHOTS: their
+    /// source tags (sourceType/sourceId) are cleared so completing them never
+    /// affects the backlog/calendar, and reassigning a backlog item creates an
+    /// independent new task while the past snapshot stays put. The backlog items and
+    /// calendar events themselves are NOT touched.
+    public func severPastTasks(today: Date, calendar: Calendar = .current) throws {
+        let normalizedToday = calendar.startOfDay(for: today)
+        let pages = try context.fetch(FetchDescriptor<DailyPage>())
+        var changed = false
+        for page in pages where page.date < normalizedToday {
+            for task in page.tasks where task.sourceType != .manual || task.sourceId != nil {
+                task.sourceType = .manual
+                task.sourceId = nil
+                changed = true
+            }
+        }
+        if changed { try context.save() }
+    }
+
     // MARK: - updateTask
 
     /// Update a task's title/notes (pass nil to leave unchanged). Used by the

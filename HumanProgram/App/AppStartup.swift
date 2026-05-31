@@ -20,6 +20,9 @@ public struct AppStartup {
         // 1. Clear overdue backlog assignments
         try backlogRepo.clearOverdueAssignments(today: today)
 
+        // 1b. Sever past page-tasks from the backlog/calendar (day-rollover snapshot).
+        try pageRepo.severPastTasks(today: today)
+
         // 2. Ensure every weekday has an exercise routine (creates missing ones)
         try exerciseRepo.ensureSevenWeekdayRoutines()
 
