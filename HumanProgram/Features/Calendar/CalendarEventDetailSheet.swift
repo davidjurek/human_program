@@ -43,13 +43,13 @@ struct CalendarEventDetailSheet: View {
                     localOverrideSection
                 }
             }
-            .background(AppColors.background)
+            .background(SettingsBackground())
             .navigationTitle("Event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
-                        .foregroundStyle(AppColors.accent)
+                        .foregroundStyle(Color.accentColor)
                 }
             }
             .task { await loadLocalState() }
@@ -73,7 +73,7 @@ struct CalendarEventDetailSheet: View {
                     let displayTitle = titleOverride.isEmpty ? (event.title ?? "(No title)") : titleOverride
                     Text(displayTitle)
                         .font(AppTypography.pageTitle())
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(Color.primary)
 
                     Text(event.calendar.title)
                         .font(AppTypography.caption())
@@ -96,21 +96,21 @@ struct CalendarEventDetailSheet: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "clock")
                     .font(.system(size: 16))
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(Color.secondary)
                     .frame(width: 20)
 
                 if event.isAllDay {
                     Text("All day · \(event.startDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())")
                         .font(AppTypography.bodySmallText())
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(Color.primary)
                 } else {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(event.startDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())
                             .font(AppTypography.bodySmallText())
-                            .foregroundStyle(AppColors.textPrimary)
+                            .foregroundStyle(Color.primary)
                         Text("\(event.startDate, format: .dateTime.hour().minute()) – \(event.endDate, format: .dateTime.hour().minute())")
                             .font(AppTypography.timeLabel())
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(Color.secondary)
                     }
                 }
             }
@@ -121,11 +121,11 @@ struct CalendarEventDetailSheet: View {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "note.text")
                         .font(.system(size: 16))
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(Color.secondary)
                         .frame(width: 20)
                     Text(notes)
                         .font(AppTypography.bodySmallText())
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(Color.primary)
                 }
             }
 
@@ -134,11 +134,11 @@ struct CalendarEventDetailSheet: View {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "location")
                         .font(.system(size: 16))
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(Color.secondary)
                         .frame(width: 20)
                     Text(location)
                         .font(AppTypography.bodySmallText())
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(Color.primary)
                 }
             }
         }
@@ -154,12 +154,12 @@ struct CalendarEventDetailSheet: View {
             HStack {
                 Text("TODAY OVERRIDES")
                     .font(AppTypography.sectionHeader())
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(Color.secondary)
                     .kerning(0.5)
                 Spacer()
                 Text("Affects Today only")
                     .font(AppTypography.caption())
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(Color.secondary)
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
@@ -171,7 +171,7 @@ struct CalendarEventDetailSheet: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Display title")
                         .font(AppTypography.caption())
-                        .foregroundStyle(AppColors.textTertiary)
+                        .foregroundStyle(Color.secondary)
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
 
@@ -181,7 +181,7 @@ struct CalendarEventDetailSheet: View {
                             .focused($titleFieldFocused)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(AppColors.surfaceSunken)
+                            .background(Color.primary.opacity(0.08))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                             .submitLabel(.done)
                             .onSubmit { saveTitleOverride() }
@@ -192,7 +192,7 @@ struct CalendarEventDetailSheet: View {
                                 saveTitleOverride()
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(AppColors.textTertiary)
+                                    .foregroundStyle(Color.secondary)
                             }
                         }
                     }
@@ -201,7 +201,7 @@ struct CalendarEventDetailSheet: View {
                     if !titleOverride.isEmpty {
                         Button("Save title") { saveTitleOverride() }
                             .font(AppTypography.buttonLabel())
-                            .foregroundStyle(AppColors.accent)
+                            .foregroundStyle(Color.accentColor)
                             .padding(.horizontal, 16)
                             .padding(.bottom, 4)
                     }
@@ -234,14 +234,14 @@ struct CalendarEventDetailSheet: View {
                     toggleComplete(newValue)
                 }
             }
-            .background(AppColors.surface)
+            .background(Color.primary.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .padding(.horizontal, 16)
 
             if let error = errorMessage {
                 Text(error)
                     .font(AppTypography.caption())
-                    .foregroundStyle(AppColors.accentRed)
+                    .foregroundStyle(Color.red)
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
             }
@@ -308,23 +308,23 @@ private struct OverrideToggleRow: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 16))
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(Color.secondary)
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(AppTypography.taskTitle())
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(Color.primary)
                 Text(caption)
                     .font(AppTypography.caption())
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(Color.secondary)
             }
 
             Spacer()
 
             Toggle("", isOn: $isOn)
                 .labelsHidden()
-                .tint(AppColors.accent)
+                .tint(Color.accentColor)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

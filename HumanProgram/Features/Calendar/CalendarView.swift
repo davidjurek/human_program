@@ -1,6 +1,7 @@
 import SwiftUI
 import EventKit
 import SwiftData
+import DSKit
 
 // MARK: - View mode
 
@@ -8,7 +9,7 @@ enum CalendarViewMode: String, CaseIterable {
     case month  = "Month"
     case week   = "Week"
     case day    = "Day"
-    case agenda = "Agenda"
+    case list   = "List"
 }
 
 // MARK: - CalendarView
@@ -16,6 +17,7 @@ enum CalendarViewMode: String, CaseIterable {
 struct CalendarView: View {
 
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @State private var viewMode: CalendarViewMode = .month
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var calendarService = CalendarAdapterService()
@@ -32,10 +34,11 @@ struct CalendarView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        ZStack {
+            SettingsBackground()
             VStack(spacing: 0) {
                 modePickerBar
-                Divider()
+                Divider().opacity(0.4)
                 Group {
                     switch authStatus {
                     case .notDetermined:
@@ -47,48 +50,42 @@ struct CalendarView: View {
                     }
                 }
             }
-            .background(AppColors.background)
-            .navigationTitle("Calendar")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Today") {
-                        let today = Calendar.current.startOfDay(for: Date())
-                        selectedDate = today
-                        displayedMonthStart = CalendarView.monthStart(for: today)
-                        displayedWeekStart = CalendarView.weekStart(for: today)
-                        loadEvents()
-                    }
-                    .font(AppTypography.buttonLabel())
-                    .foregroundStyle(AppColors.accent)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showAddEvent = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .foregroundStyle(AppColors.accent)
-                    }
-                }
-            }
-            .sheet(isPresented: $showEventDetail, onDismiss: loadEvents) {
-                if let event = selectedEvent {
-                    CalendarEventDetailSheet(
-                        event: event,
-                        date: selectedDate,
-                        context: context
-                    )
-                }
-            }
-            .sheet(isPresented: $showAddEvent, onDismiss: loadEvents) {
-                AddCalendarEventSheet(
-                    defaultDate: selectedDate,
-                    calendarService: calendarService,
-                    onSave: loadEvents
-                )
-            }
-            .task { await checkAuthAndLoad() }
         }
+        .safeAreaInset(edge: .top) { topBar }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showEventDetail, onDismiss: loadEvents) {
+            if let event = selectedEvent {
+                CalendarEventDetailSheet(event: event, date: selectedDate, context: context)
+            }
+        }
+        .sheet(isPresented: $showAddEvent, onDismiss: loadEvents) {
+            AddCalendarEventSheet(defaultDate: selectedDate, calendarService: calendarService, onSave: loadEvents)
+        }
+        .task { await checkAuthAndLoad() }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                .onTapGesture { dismiss() }
+            Spacer()
+            Button { goToday() } label: { DSText("Today").dsTextStyle(.subheadline) }.buttonStyle(.plain)
+            Button { showAddEvent = true } label: {
+                Image(systemName: "plus").font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.bottom, 4)
+    }
+
+    private func goToday() {
+        let today = Calendar.current.startOfDay(for: Date())
+        selectedDate = today
+        displayedMonthStart = CalendarView.monthStart(for: today)
+        displayedWeekStart = CalendarView.weekStart(for: today)
+        loadEvents()
     }
 
     // MARK: - Mode picker
@@ -112,13 +109,13 @@ struct CalendarView: View {
             Spacer()
             Image(systemName: "calendar.badge.exclamationmark")
                 .font(.system(size: 48))
-                .foregroundStyle(AppColors.textTertiary)
+                .foregroundStyle(Color.secondary)
             Text("Calendar Access Needed")
                 .font(AppTypography.bodyMediumText())
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(Color.primary)
             Text("Grant access so Human Program can display your calendar events.")
                 .font(AppTypography.bodySmallText())
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(Color.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Button("Grant Calendar Access") {
@@ -129,10 +126,10 @@ struct CalendarView: View {
                 }
             }
             .font(AppTypography.buttonLabel())
-            .foregroundStyle(AppColors.accent)
+            .foregroundStyle(Color.accentColor)
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppColors.accent, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor, lineWidth: 1))
             Spacer()
         }
     }
@@ -142,13 +139,13 @@ struct CalendarView: View {
             Spacer()
             Image(systemName: "calendar.badge.exclamationmark")
                 .font(.system(size: 48))
-                .foregroundStyle(AppColors.textTertiary)
+                .foregroundStyle(Color.secondary)
             Text("Calendar Access Denied")
                 .font(AppTypography.bodyMediumText())
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(Color.primary)
             Text("Open Settings to allow calendar access for Human Program.")
                 .font(AppTypography.bodySmallText())
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(Color.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Button("Open Settings") {
@@ -157,10 +154,10 @@ struct CalendarView: View {
                 }
             }
             .font(AppTypography.buttonLabel())
-            .foregroundStyle(AppColors.accent)
+            .foregroundStyle(Color.accentColor)
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppColors.accent, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor, lineWidth: 1))
             Spacer()
         }
     }
@@ -173,7 +170,7 @@ struct CalendarView: View {
         case .month:  monthView
         case .week:   weekView
         case .day:    dayView
-        case .agenda: agendaView
+        case .list: agendaView
         }
     }
 
@@ -199,12 +196,12 @@ struct CalendarView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(AppTypography.navButton)
-                    .foregroundStyle(AppColors.accent)
+                    .foregroundStyle(Color.accentColor)
             }
             Spacer()
             Text(displayedMonthStart, format: .dateTime.month(.wide).year())
                 .font(AppTypography.dateLabel())
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(Color.primary)
             Spacer()
             Button {
                 displayedMonthStart = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonthStart) ?? displayedMonthStart
@@ -212,7 +209,7 @@ struct CalendarView: View {
             } label: {
                 Image(systemName: "chevron.right")
                     .font(AppTypography.navButton)
-                    .foregroundStyle(AppColors.accent)
+                    .foregroundStyle(Color.accentColor)
             }
         }
         .padding(.horizontal, 16)
@@ -224,7 +221,7 @@ struct CalendarView: View {
             ForEach(["S", "M", "T", "W", "T", "F", "S"], id: \.self) { day in
                 Text(day)
                     .font(AppTypography.sectionHeader())
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(Color.secondary)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -257,7 +254,7 @@ struct CalendarView: View {
                     // Filler cell from adjacent month
                     Text(String(Calendar.current.component(.day, from: day)))
                         .font(AppTypography.taskTitle())
-                        .foregroundStyle(AppColors.textDisabled)
+                        .foregroundStyle(Color.gray.opacity(0.4))
                         .frame(maxWidth: .infinity, minHeight: 40)
                 }
             }
@@ -271,7 +268,7 @@ struct CalendarView: View {
             HStack {
                 Text(selectedDate, format: .dateTime.weekday(.wide).month(.abbreviated).day())
                     .font(AppTypography.bodySmallMedium)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(Color.primary)
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -280,7 +277,7 @@ struct CalendarView: View {
             if dayEvents.isEmpty {
                 Text("No events")
                     .font(AppTypography.bodySmallText())
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(Color.secondary)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
             } else {
@@ -319,13 +316,13 @@ struct CalendarView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(AppTypography.navButton)
-                    .foregroundStyle(AppColors.accent)
+                    .foregroundStyle(Color.accentColor)
             }
             Spacer()
             let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: displayedWeekStart) ?? displayedWeekStart
             Text("\(displayedWeekStart, format: .dateTime.month(.abbreviated).day()) – \(weekEnd, format: .dateTime.month(.abbreviated).day().year())")
                 .font(AppTypography.dateLabel())
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(Color.primary)
             Spacer()
             Button {
                 displayedWeekStart = Calendar.current.date(byAdding: .day, value: 7, to: displayedWeekStart) ?? displayedWeekStart
@@ -333,7 +330,7 @@ struct CalendarView: View {
             } label: {
                 Image(systemName: "chevron.right")
                     .font(AppTypography.navButton)
-                    .foregroundStyle(AppColors.accent)
+                    .foregroundStyle(Color.accentColor)
             }
         }
         .padding(.horizontal, 16)
@@ -358,15 +355,15 @@ struct CalendarView: View {
                     VStack(spacing: 2) {
                         Text(abbrev)
                             .font(AppTypography.sectionHeader())
-                            .foregroundStyle(isToday ? AppColors.accent : AppColors.textTertiary)
+                            .foregroundStyle(isToday ? Color.accentColor : Color.secondary)
                         Text("\(dayNum)")
                             .font(AppTypography.caption())
-                            .foregroundStyle(isToday ? AppColors.accent : AppColors.textPrimary)
+                            .foregroundStyle(isToday ? Color.accentColor : Color.primary)
                             .fontWeight(isToday ? .semibold : .regular)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
-                    .background(isToday ? AppColors.accent.opacity(0.08) : Color.clear)
+                    .background(isToday ? Color.accentColor.opacity(0.08) : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
 
                     // Events
@@ -425,12 +422,12 @@ struct CalendarView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(AppTypography.navButton)
-                    .foregroundStyle(AppColors.accent)
+                    .foregroundStyle(Color.accentColor)
             }
             Spacer()
             Text(selectedDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())
                 .font(AppTypography.dateLabel())
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(Color.primary)
             Spacer()
             Button {
                 selectedDate = Calendar.current.date(byAdding: .day, value: 1, to: selectedDate) ?? selectedDate
@@ -438,7 +435,7 @@ struct CalendarView: View {
             } label: {
                 Image(systemName: "chevron.right")
                     .font(AppTypography.navButton)
-                    .foregroundStyle(AppColors.accent)
+                    .foregroundStyle(Color.accentColor)
             }
         }
         .padding(.horizontal, 16)
@@ -465,7 +462,7 @@ struct CalendarView: View {
                             HStack(alignment: .top, spacing: 8) {
                                 Text(hourLabel(hour))
                                     .font(AppTypography.timeLabel())
-                                    .foregroundStyle(AppColors.textTertiary)
+                                    .foregroundStyle(Color.secondary)
                                     .frame(width: 40, alignment: .trailing)
                                 Divider()
                                 Spacer()
@@ -501,10 +498,10 @@ struct CalendarView: View {
                         let topOffset = CGFloat(nowMinute) / 60.0 * hourHeight
                         HStack(spacing: 0) {
                             Circle()
-                                .fill(AppColors.accentRed)
+                                .fill(Color.red)
                                 .frame(width: 8, height: 8)
                             Rectangle()
-                                .fill(AppColors.accentRed)
+                                .fill(Color.red)
                                 .frame(height: 1)
                         }
                         .offset(x: 52, y: topOffset)
@@ -536,10 +533,10 @@ struct CalendarView: View {
                     Spacer(minLength: 40)
                     Image(systemName: "calendar")
                         .font(.system(size: 40))
-                        .foregroundStyle(AppColors.textTertiary)
+                        .foregroundStyle(Color.secondary)
                     Text("No events in the next 30 days")
                         .font(AppTypography.bodySmallText())
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(Color.secondary)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
@@ -557,7 +554,7 @@ struct CalendarView: View {
                                     Divider().padding(.leading, 16)
                                 }
                             }
-                            .background(AppColors.surface)
+                            .background(Color.primary.opacity(0.06))
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                             .padding(.horizontal, 16)
                             .padding(.bottom, 8)
@@ -565,12 +562,12 @@ struct CalendarView: View {
                             HStack {
                                 Text(day, format: .dateTime.weekday(.wide).month(.abbreviated).day())
                                     .font(AppTypography.bodySmallMedium)
-                                    .foregroundStyle(AppColors.textPrimary)
+                                    .foregroundStyle(Color.primary)
                                 Spacer()
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 6)
-                            .background(AppColors.background)
+                            .background(Color.clear)
                         }
                     }
                 }
@@ -608,7 +605,7 @@ struct CalendarView: View {
         case .day:
             start = cal.startOfDay(for: selectedDate)
             end = cal.date(byAdding: .day, value: 1, to: start) ?? start
-        case .agenda:
+        case .list:
             start = cal.startOfDay(for: Date())
             end = cal.date(byAdding: .day, value: 30, to: start) ?? start
         }
@@ -678,25 +675,25 @@ private struct MonthDayCell: View {
                 ZStack {
                     if isSelected {
                         Circle()
-                            .fill(AppColors.accent)
+                            .fill(Color.accentColor)
                             .frame(width: 30, height: 30)
                     } else if isToday {
                         Circle()
-                            .fill(AppColors.accent.opacity(0.15))
+                            .fill(Color.accentColor.opacity(0.15))
                             .frame(width: 30, height: 30)
                     }
                     Text("\(Calendar.current.component(.day, from: day))")
                         .font(AppTypography.taskTitle())
                         .foregroundStyle(
                             isSelected ? .white :
-                            isToday ? AppColors.accent :
-                            AppColors.textPrimary
+                            isToday ? Color.accentColor :
+                            Color.primary
                         )
                         .fontWeight(isToday ? .semibold : .regular)
                 }
                 if hasEvents {
                     Circle()
-                        .fill(isSelected ? .white : AppColors.accent)
+                        .fill(isSelected ? .white : Color.accentColor)
                         .frame(width: 5, height: 5)
                 } else {
                     Circle()
@@ -727,16 +724,16 @@ private struct EventRowView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(event.title ?? "(No title)")
                         .font(AppTypography.taskTitle())
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(Color.primary)
                         .lineLimit(1)
                     if !event.isAllDay {
                         Text("\(event.startDate, format: .dateTime.hour().minute()) – \(event.endDate, format: .dateTime.hour().minute())")
                             .font(AppTypography.timeLabel())
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(Color.secondary)
                     } else {
                         Text("All day")
                             .font(AppTypography.timeLabel())
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(Color.secondary)
                     }
                 }
 
@@ -744,7 +741,7 @@ private struct EventRowView: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12))
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(Color.secondary)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -857,7 +854,7 @@ struct AddCalendarEventSheet: View {
                 if let error = errorMessage {
                     Section {
                         Text(error)
-                            .foregroundStyle(AppColors.accentRed)
+                            .foregroundStyle(Color.red)
                             .font(AppTypography.caption())
                     }
                 }
@@ -871,7 +868,7 @@ struct AddCalendarEventSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") { saveEvent() }
                         .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .foregroundStyle(AppColors.accent)
+                        .foregroundStyle(Color.accentColor)
                 }
             }
             .onAppear {
