@@ -908,18 +908,17 @@ struct AddCalendarEventView: View {
                     DSText("All-day").dsTextStyle(.body); Spacer()
                     Toggle("", isOn: $allDay).labelsHidden().tint(appToggleTint)
                 }.frame(height: 34)
-                HStack {
+                HStack(spacing: 14) {
                     DSText("Starts").dsTextStyle(.body); Spacer()
-                    DatePicker("", selection: $startDate,
-                               displayedComponents: allDay ? .date : [.date, .hourAndMinute])
-                        .labelsHidden().tint(weekdaySelectedColor)
-                        .onChange(of: startDate) { _, new in if endDate <= new { endDate = new.addingTimeInterval(3600) } }
-                }.frame(height: 34)
-                HStack {
+                    DSDateField(date: $startDate)                       // [#13]
+                    if !allDay { DSTimeField(date: $startDate) }        // [#13]
+                }
+                .frame(height: 34)
+                .onChange(of: startDate) { _, new in if endDate <= new { endDate = new.addingTimeInterval(3600) } }
+                HStack(spacing: 14) {
                     DSText("Ends").dsTextStyle(.body); Spacer()
-                    DatePicker("", selection: $endDate,
-                               displayedComponents: allDay ? .date : [.date, .hourAndMinute])
-                        .labelsHidden().tint(weekdaySelectedColor)
+                    DSDateField(date: $endDate, minDate: startDate)     // [#13]
+                    if !allDay { DSTimeField(date: $endDate) }          // [#13]
                 }.frame(height: 34)
             }
 

@@ -114,3 +114,54 @@ struct DSDateField: View {
         }
     }
 }
+
+/// Card-less time value (app font) that opens an app-font wheel picker. [#13]
+struct DSTimeField: View {
+    @Binding var date: Date
+    @State private var show = false
+    private let cal = Calendar.current
+
+    private var label: String {
+        let is24 = (UserDefaults.standard.string(forKey: "settings.timeFormat") ?? "12h") == "24h"
+        let f = DateFormatter(); f.dateFormat = is24 ? "HH:mm" : "h:mm a"
+        return f.string(from: date)
+    }
+    private var hour: Binding<Int> {
+        Binding(get: { cal.component(.hour, from: date) },
+                set: { date = cal.date(bySettingHour: $0, minute: cal.component(.minute, from: date), second: 0, of: date) ?? date })
+    }
+    private var minute: Binding<Int> {
+        Binding(get: { cal.component(.minute, from: date) },
+                set: { date = cal.date(bySettingHour: cal.component(.hour, from: date), minute: $0, second: 0, of: date) ?? date })
+    }
+
+    var body: some View {
+        Button { show = true } label: {
+            Text(label).font(appFont(17)).foregroundStyle(.primary).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $show) {
+            ZStack {
+                SettingsBackground().ignoresSafeArea()
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button { show = false } label: { DSText("Done").dsTextStyle(.headline) }.buttonStyle(.plain)
+                    }
+                    HStack(spacing: 0) {
+                        Picker("", selection: hour) {
+                            ForEach(0..<24, id: \.self) { Text(String(format: "%02d", $0)).font(appFont(20)).tag($0) }
+                        }.pickerStyle(.wheel).frame(maxWidth: .infinity)
+                        DSText(":").dsTextStyle(.title2)
+                        Picker("", selection: minute) {
+                            ForEach(0..<60, id: \.self) { Text(String(format: "%02d", $0)).font(appFont(20)).tag($0) }
+                        }.pickerStyle(.wheel).frame(maxWidth: .infinity)
+                    }
+                    Spacer()
+                }
+                .padding(20)
+            }
+            .presentationDetents([.height(300)])
+        }
+    }
+}
