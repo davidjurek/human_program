@@ -28,6 +28,7 @@ struct DailyTimeline: View {
     private let timeColW: CGFloat = 44
     private let laneW: CGFloat = 36      // [#1] widened 1.8× (was 20)
     private let laneGap: CGFloat = 7.2   // [#1] widened 1.8× (was 4)
+    private let laneLeadingGap: CGFloat = 8   // small gap between time column and the lanes/lines
 
     /// Fixed light blue for the calendar (right) lane. [#15]
     private static let calendarBlue = Color(red: 0.46, green: 0.67, blue: 0.96).opacity(0.55)
@@ -47,8 +48,8 @@ struct DailyTimeline: View {
 
     @ViewBuilder
     private func content(S: CGFloat) -> some View {
-        let orangeX = timeColW
-        let greenX = timeColW + laneW + laneGap
+        let orangeX = timeColW + laneLeadingGap
+        let greenX = orangeX + laneW + laneGap
         let labelX = greenX + laneW + 10
         let labelW = max(40, S - labelX)
         let placed = placedLabels(S: S)
@@ -72,12 +73,17 @@ struct DailyTimeline: View {
             // top of the blocks so the hour lines stay visible across them.
             ForEach(Array(stride(from: 0, through: 24, by: 3)), id: \.self) { h in
                 let y = CGFloat(h) / 24 * S
-                Rectangle().fill(Color.primary.opacity(0.18))
-                    .frame(width: laneSpan, height: 1)
-                    .offset(x: orangeX, y: min(y, S - 1))
+                // Label is framed to a fixed height and CENTERED on y so it lines
+                // up with its hour line (both centred on the same y). The line
+                // starts at orangeX, leaving the laneLeadingGap after the labels.
                 Text(String(format: "%02d:00", h))
                     .font(appFont(13)).foregroundStyle(.secondary)
-                    .offset(x: 0, y: min(max(0, y - 6), S - 12))
+                    .fixedSize()
+                    .frame(height: 16)
+                    .offset(x: 0, y: min(max(0, y - 8), S - 16))
+                Rectangle().fill(Color.primary.opacity(0.18))
+                    .frame(width: laneSpan, height: 1)
+                    .offset(x: orangeX, y: min(max(0, y), S - 1))
             }
 
             // Item labels in the open space to the right, top-aligned to each
@@ -95,7 +101,7 @@ struct DailyTimeline: View {
                 let y = yFor(currentMinute, S: S)
                 // Stop the line at the right edge of the block column (time column +
                 // both lanes), not the full square width.
-                Rectangle().fill(Color.red).frame(width: timeColW + laneSpan, height: 1)
+                Rectangle().fill(Color.red).frame(width: orangeX + laneSpan, height: 1)
                     .offset(x: 0, y: y)
                 Text(hhmm(currentMinute))
                     .font(appFont(13, bold: true)).foregroundStyle(.white)
