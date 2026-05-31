@@ -25,10 +25,10 @@ struct DailyTimeline: View {
     let showNow: Bool
     let now: Date
 
-    private let timeColW: CGFloat = 44
+    private let timeColW: CGFloat = 52   // fits "00:00" in the pixel font
     private let laneW: CGFloat = 36      // [#1] widened 1.8× (was 20)
     private let laneGap: CGFloat = 7.2   // [#1] widened 1.8× (was 4)
-    private let laneLeadingGap: CGFloat = 8   // small gap between time column and the lanes/lines
+    private let laneLeadingGap: CGFloat = 24  // tripled: gap between time column and lanes/lines
 
     /// Fixed light blue for the calendar (right) lane. [#15]
     private static let calendarBlue = Color(red: 0.46, green: 0.67, blue: 0.96).opacity(0.55)
@@ -76,17 +76,18 @@ struct DailyTimeline: View {
                 // Label is framed to a fixed height and CENTERED on y so it lines
                 // up with its hour line (both centred on the same y). The line
                 // starts at orangeX, leaving the laneLeadingGap after the labels.
-                // The pixel font's digits have no descender, so they sit high in
-                // the text box; nudge the label down so the digits' visual centre
-                // meets the hour line (which sits exactly at y).
+                // Label centred on its line. No end-clamping (clamping the first
+                // and last labels was compressing the top/bottom gaps and making
+                // the spacing look uneven). The -7 centres the pixel-font digits
+                // (which sit high in the box) on the line at y.
                 Text(String(format: "%02d:00", h))
                     .font(appFont(13)).foregroundStyle(.secondary)
                     .fixedSize()
                     .frame(height: 16)
-                    .offset(x: 0, y: min(max(0, y - 4), S - 16))
+                    .offset(x: 0, y: y - 7)
                 Rectangle().fill(Color.primary.opacity(0.18))
                     .frame(width: laneSpan, height: 1)
-                    .offset(x: orangeX, y: min(max(0, y), S - 1))
+                    .offset(x: orangeX, y: y)
             }
 
             // Item labels in the open space to the right, top-aligned to each
