@@ -88,10 +88,14 @@ struct HiddenDocumentView: View {
                     .dsTextStyle(.subheadline)
                 DSText(udhrText)
                     .dsTextStyle(.body)
-                Link("Source: United Nations (un.org)",
-                     destination: URL(string: "https://www.un.org/en/about-us/universal-declaration-of-human-rights")!)
-                    .font(appFont(15))
-                    .padding(.top, 8)
+                VStack(alignment: .leading, spacing: 6) {
+                    DSText("United Nations General Assembly. Universal Declaration of Human Rights. Resolution 217 A (III), Paris, 10 December 1948.")
+                        .dsTextStyle(.footnote)
+                    Link("un.org/en/about-us/universal-declaration-of-human-rights",
+                         destination: URL(string: "https://www.un.org/en/about-us/universal-declaration-of-human-rights")!)
+                        .font(appFont(15))
+                }
+                .padding(.top, 8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

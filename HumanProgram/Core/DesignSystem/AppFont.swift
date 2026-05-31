@@ -92,7 +92,7 @@ enum FontChoice: String, CaseIterable, Identifiable {
         case .lilex:      return FontSpec(psName: "Lilex-Thin", variations: [AXIS_WGHT: 700])
         case .bitcount:   return FontSpec(psName: "BitcountGridSingle-Regular_Thin-Italic",
                                           variations: [AXIS_WGHT: 344, AXIS_SLNT: 0, AXIS_CRSV: 0],
-                                          sizeMultiplier: 1.18)
+                                          sizeMultiplier: 1.0)   // 1.18 clipped titles/nav labels [#54]
         }
     }
 
@@ -104,7 +104,7 @@ enum FontChoice: String, CaseIterable, Identifiable {
         case .lilex:      return FontSpec(psName: "Lilex-Thin", variations: [AXIS_WGHT: 700])
         case .bitcount:   return FontSpec(psName: "BitcountGridSingle-Regular_Thin-Italic",
                                           variations: [AXIS_WGHT: 344, AXIS_SLNT: 0, AXIS_CRSV: 0],
-                                          sizeMultiplier: 1.18)
+                                          sizeMultiplier: 1.0)   // 1.18 clipped titles/nav labels [#54]
         }
     }
 

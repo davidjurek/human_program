@@ -38,6 +38,11 @@ final class ColorPresetStore: ObservableObject {
         guard !presets.contains(h), presets.count < Self.maxPresets else { return }
         presets.append(h); persist()
     }
+    /// Overwrite the swatch at `index` with `hex` (double-tap to replace). [#14]
+    func replace(at index: Int, with hex: String) {
+        guard presets.indices.contains(index) else { return }
+        presets[index] = hex.uppercased(); persist()
+    }
     /// Restore the shipped default swatches. [#14]
     func reset() { presets = BlockColors.swatches; persist() }
     var isFull: Bool { presets.count >= Self.maxPresets }
@@ -75,12 +80,13 @@ struct BlockColorPickerView: View {
                     .buttonStyle(.plain)
             }
 
-            // 18 fixed slots: filled swatches (long-press to delete) + empty
-            // placeholders (tap to store the current custom colour). No "+". [#14]
+            // 18 fixed slots. Filled: tap to use, double-tap to overwrite with
+            // the current colour, long-press to delete. Empty: tap to store the
+            // current colour in the first empty slot. No "+". [#14]
             LazyVGrid(columns: cols, spacing: 10) {
                 ForEach(0..<ColorPresetStore.maxPresets, id: \.self) { i in
                     if i < store.presets.count {
-                        swatch(store.presets[i])
+                        swatch(store.presets[i], at: i)
                     } else {
                         emptySlot
                     }
@@ -131,7 +137,7 @@ struct BlockColorPickerView: View {
 
     // MARK: - Swatch
 
-    private func swatch(_ hex: String) -> some View {
+    private func swatch(_ hex: String, at index: Int) -> some View {
         let isSel = colorHex?.caseInsensitiveCompare(hex) == .orderedSame
         return (Color(hex: hex) ?? .gray)
             .frame(height: 34)
@@ -149,6 +155,11 @@ struct BlockColorPickerView: View {
                 }
             }
             .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                pendingDelete = nil
+                store.replace(at: index, with: currentHex)
+                colorHex = currentHex
+            }
             .onTapGesture {
                 if pendingDelete != nil { pendingDelete = nil; return }
                 colorHex = hex; setWorking(toHex: hex)
