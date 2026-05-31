@@ -54,7 +54,7 @@ final class HprgmBackupRoundTripTests: XCTestCase {
 
         let schedule = ScheduleTemplate(name: "Weekday")
         schedule.assignedWeekdays = [2, 3, 4, 5, 6]
-        schedule.blocks = [ScheduleBlock(title: "Sleep", startMinuteOfDay: 1290, endMinuteOfDay: 330, sortOrder: 0)]
+        schedule.blocks = [ScheduleBlock(title: "Sleep", startMinuteOfDay: 1290, endMinuteOfDay: 330, sortOrder: 0, colorHex: "5B6CF0")]
         src.insert(schedule)
 
         // A past-LOCKED page (the critical fidelity case).
@@ -62,7 +62,7 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         let page = DailyPage(date: pastDate, createdAutomatically: true)
         page.isPastLocked = true
         page.dayComplete = true
-        page.scheduleBlocks = [DailyPageScheduleBlock(title: "Work", startMinuteOfDay: 540, endMinuteOfDay: 1020, sortOrder: 0)]
+        page.scheduleBlocks = [DailyPageScheduleBlock(title: "Work", startMinuteOfDay: 540, endMinuteOfDay: 1020, sortOrder: 0, colorHex: "4F9DF7")]
         src.insert(page)
         let task = DailyPageTask(title: "Snapshot task", sourceType: .manual, sortOrder: 0)
         task.completed = true
@@ -143,6 +143,7 @@ final class HprgmBackupRoundTripTests: XCTestCase {
 
         let schedules = try dst.fetch(FetchDescriptor<ScheduleTemplate>())
         XCTAssertEqual(schedules.first?.blocks.first?.title, "Sleep")
+        XCTAssertEqual(schedules.first?.blocks.first?.colorHex, "5B6CF0", "block colour must survive backup [#20]")
         XCTAssertEqual(schedules.first?.assignedWeekdays, [2, 3, 4, 5, 6])
 
         let pages = try dst.fetch(FetchDescriptor<DailyPage>())
@@ -150,6 +151,7 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         XCTAssertTrue(pages.first?.isPastLocked == true, "locked snapshot restored as locked")
         XCTAssertEqual(pages.first?.tasks.count, 1)
         XCTAssertEqual(pages.first?.tasks.first?.title, "Snapshot task")
+        XCTAssertEqual(pages.first?.scheduleBlocks.first?.colorHex, "4F9DF7", "page block colour must survive backup [#20]")
 
         XCTAssertEqual(try dst.fetch(FetchDescriptor<NotificationReminder>()).first?.fireHour, 14)
 
