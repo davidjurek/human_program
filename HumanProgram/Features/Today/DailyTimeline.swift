@@ -28,7 +28,7 @@ struct DailyTimeline: View {
     private let timeColW: CGFloat = 52   // fits "00:00" in the pixel font
     private let laneW: CGFloat = 36      // [#1] widened 1.8× (was 20)
     private let laneGap: CGFloat = 7.2   // [#1] widened 1.8× (was 4)
-    private let laneLeadingGap: CGFloat = 24  // tripled: gap between time column and lanes/lines
+    private let laneLeadingGap: CGFloat = 18  // gap between time column and lanes/lines [#11]
 
     /// Fixed light blue for the calendar (right) lane. [#15]
     private static let calendarBlue = Color(red: 0.46, green: 0.67, blue: 0.96).opacity(0.55)

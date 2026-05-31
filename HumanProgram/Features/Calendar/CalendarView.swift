@@ -193,7 +193,9 @@ struct CalendarView: View {
                 .horizontalSwipe { changeMonth($0) }   // swipe left = next month [#42]
             Color.clear.frame(height: 16)              // [#29] small gap below grid
             dayEventsListBelow
-                .frame(maxHeight: .infinity)
+                // Top-align so the day section sits just below the grid instead of
+                // being centered in the empty space (that was the big gap). [#3]
+                .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 

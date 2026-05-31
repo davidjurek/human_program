@@ -27,35 +27,38 @@ struct CalendarEventDetailSheet: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationStack {
+        // Custom top bar instead of a NavigationStack toolbar — the toolbar item
+        // forces the iOS-26 glass capsule even with .buttonStyle(.plain), so we
+        // render a plain "Done" ourselves. [#36]
+        ZStack {
+            SettingsBackground().ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Calendar color bar + event header
                     eventHeader
                     Divider()
-
-                    // Event metadata
                     eventMetadata
                     Divider()
-
-                    // Local override section
                     localOverrideSection
                 }
             }
-            .background(SettingsBackground())
-            .navigationTitle("Event")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // Plain text, no glass/pill background. [#36]
-                ToolbarItem(placement: .topBarTrailing) {
+        }
+        .safeAreaInset(edge: .top) {
+            ZStack {
+                Text("Event").font(appFont(17, bold: true)).foregroundStyle(Color.primary)
+                HStack {
+                    Spacer()
                     Button { dismiss() } label: {
                         Text("Done").font(appFont(18)).foregroundStyle(Color.accentColor)
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                 }
             }
-            .task { await loadLocalState() }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .topBarFrost()
         }
+        .task { await loadLocalState() }
     }
 
     // MARK: - Header

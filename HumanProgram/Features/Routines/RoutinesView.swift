@@ -18,7 +18,7 @@ struct RoutinesView: View {
             SettingsBackground()
             ScrollView {
                 if routines.isEmpty {
-                    DSText("No routines yet — tap + to add one")
+                    DSText("No routines yet")
                         .dsTextStyle(.subheadline)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 80)
