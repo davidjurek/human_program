@@ -27,13 +27,31 @@ struct RoutineEditorView: View {
     @FocusState private var titleFocused: Bool
     @State private var keyboardSpacer: CGFloat = 0
     @State private var didLoad = false
+    @State private var showDiscard = false
 
     private let rowHeight: CGFloat = 56
     private let trashWidth: CGFloat = 68
     private var repo: RoutineRepository { RoutineRepository(context: context) }
 
+    private var isDirty: Bool {
+        guard editing else { return false }
+        if let r = routine { return name != r.title || emoji != r.emoji }
+        return !name.trimmingCharacters(in: .whitespaces).isEmpty || !emoji.isEmpty || !items.isEmpty
+    }
+    private func handleBack() {
+        if isDirty { showDiscard = true } else { dismiss() }
+    }
+    private func discardAndDismiss() {
+        showDiscard = false
+        if routine == nil, let r = working { try? repo.delete(r) }   // new → delete
+        working = nil                                                // skip commitOnLeave
+        dismiss()
+    }
+
     var body: some View {
         SettingsScreen(centered: true,
+                       onBack: handleBack,
+                       swipeBackBlocked: { isDirty },
                        scrollDisabled: dragInfo != nil || swipeDragId != nil,
                        manualKeyboardAvoidance: true,
                        trailing: { trailing }) {
@@ -59,6 +77,13 @@ struct RoutineEditorView: View {
             if editing { addRow }
             Color.clear.frame(height: keyboardSpacer)
         }
+        .overlay {
+            if showDiscard {
+                ConfirmPopup(message: "Discard Changes?", confirmTitle: "Discard",
+                             onConfirm: { discardAndDismiss() },
+                             onCancel: { showDiscard = false })
+            }
+        }
         .onChange(of: titleFocused) { _, f in if !f { commitTitleEditing(); editingTitleId = nil } }
         .onAppear(perform: loadIfNeeded)
         .onDisappear(perform: commitOnLeave)
@@ -72,13 +97,17 @@ struct RoutineEditorView: View {
                     .frame(width: 44, height: 44).contentShape(Rectangle())
             }
         }
+        // Save is disabled until there's a non-empty title. [#routines]
+        let titleEmpty = name.trimmingCharacters(in: .whitespaces).isEmpty
         Button {
             if editing { commitNameEmoji() }
             editing.toggle()
         } label: {
-            Text(editing ? "Save" : "Edit").font(appFont(18)).foregroundStyle(.primary)
+            Text(editing ? "Save" : "Edit").font(appFont(18))
+                .foregroundStyle(editing && titleEmpty ? .secondary : .primary)
                 .frame(height: 44).padding(.horizontal, 6)
         }
+        .disabled(editing && titleEmpty)
     }
 
     // MARK: - Steps list
@@ -280,10 +309,11 @@ struct RoutineEditorView: View {
         dismiss()
     }
     private func commitOnLeave() {
+        guard working != nil else { return }   // discarded — nothing to commit
         commitTitleEditing()
         commitNameEmoji()
-        // Clean up a brand-new routine left completely empty.
-        if let r = working, r.title.trimmingCharacters(in: .whitespaces).isEmpty, r.items.isEmpty, r.emoji.isEmpty {
+        // Never persist a titleless routine (no blank "Untitled"). [#routines]
+        if let r = working, r.title.trimmingCharacters(in: .whitespaces).isEmpty {
             try? repo.delete(r)
         }
     }

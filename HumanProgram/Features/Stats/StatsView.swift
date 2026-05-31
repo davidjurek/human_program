@@ -49,6 +49,9 @@ struct StatsView: View {
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
+            Button { withAnimation { weekOffset = 0 } } label: {     // [#] jump to current week
+                DSText("Today").dsTextStyle(.subheadline)
+            }.buttonStyle(.plain).padding(.trailing, 18)
             Image(systemName: "calendar").font(.system(size: 18, weight: .medium))   // [#35]
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
                 .onTapGesture { showWeekPicker = true }
