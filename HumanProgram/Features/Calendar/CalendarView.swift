@@ -188,10 +188,9 @@ struct CalendarView: View {
         VStack(spacing: 0) {
             monthNavHeader
             weekdayHeaderRow
-            Divider()
             monthGrid
                 .horizontalSwipe { changeMonth($0) }   // swipe left = next month [#42]
-            Divider()
+            Color.clear.frame(height: 16)              // [#29] small gap below grid
             dayEventsListBelow
                 .frame(maxHeight: .infinity)
         }
@@ -279,7 +278,6 @@ struct CalendarView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            Divider()
             if dayEvents.isEmpty {
                 Text("No events")
                     .font(appFont(14))
@@ -294,7 +292,6 @@ struct CalendarView: View {
                                 selectedEvent = event
                                 showEventDetail = true
                             }
-                            Divider().padding(.leading, 16)
                         }
                     }
                 }

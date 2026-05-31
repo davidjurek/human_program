@@ -176,9 +176,9 @@ struct StatsView: View {
             .chartXScale(domain: weekDays.map { $0.shortDay })
             .chartYAxis(.hidden)
             .frame(height: 160)
-            .padding(14)
-            .popupGlass(cornerRadius: 16)
-            // Swipe the whole card: left = newer week (capped at current), right = older. [#38]
+            .padding(.vertical, 8)
+            // [#37] no card around the chart.
+            // Swipe: left = newer week (capped at current), right = older. [#38]
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 24)
@@ -281,6 +281,7 @@ private struct StatsWeekPicker: View {
                 DatePicker("", selection: $selected, displayedComponents: .date)
                     .datePickerStyle(.graphical)
                     .tint(weekdaySelectedColor)
+                    .environment(\.font, appFont(16))      // [#40] app font in the popup calendar
                     .padding()
                 Button {
                     onSelect(selected); dismiss()
