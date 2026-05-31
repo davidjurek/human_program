@@ -386,6 +386,7 @@ public enum NotificationSoundMode: String, Codable {
 @Model public final class Routine {
     @Attribute(.unique) public var id: String
     public var title: String
+    public var emoji: String = ""        // single emoji shown on the menu square
     public var notes: String
     public var createdAt: Date
     public var updatedAt: Date
@@ -395,6 +396,7 @@ public enum NotificationSoundMode: String, Codable {
     public init(title: String) {
         self.id = UUID().uuidString
         self.title = title
+        self.emoji = ""
         self.notes = ""
         self.createdAt = Date()
         self.updatedAt = Date()

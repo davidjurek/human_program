@@ -1,453 +1,180 @@
 import SwiftUI
 import Charts
 import SwiftData
+import DSKit
 
-// MARK: - StatsView
-
+// Stats, rebuilt on DSKit. Shows the fully-complete streak and the exercise
+// streak (current + longest), and a week-based bar chart of tasks done per day
+// (Screen-Time style) with prev/next week navigation. Pushed from the hub.
 struct StatsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \DailyPage.date, order: .forward) private var allPages: [DailyPage]
 
-    // Fetch all daily pages, sorted ascending by date
-    @Query(sort: \DailyPage.date, order: .forward)
-    private var allPages: [DailyPage]
+    @State private var weekOffset = 0   // 0 = current week, -1 = last week …
 
-    private var today: Date { Calendar.current.startOfDay(for: Date()) }
+    private var cal: Calendar { Calendar.current }
+    private var today: Date { cal.startOfDay(for: Date()) }
 
-    // MARK: Derived data
-
-    private var last7Days: [DayCell] {
-        let cal = Calendar.current
-        let pageByDate: [Date: DailyPage] = Dictionary(
-            uniqueKeysWithValues: allPages.map { (cal.startOfDay(for: $0.date), $0) }
-        )
-        return (0..<7).reversed().map { offset -> DayCell in
-            let date = cal.date(byAdding: .day, value: -offset, to: today)!
-            let page = pageByDate[date]
-            return DayCell(date: date, page: page)
-        }
+    private var pageByDate: [Date: DailyPage] {
+        Dictionary(allPages.map { (cal.startOfDay(for: $0.date), $0) }, uniquingKeysWith: { a, _ in a })
     }
-
-    private var last30DaysData: [DailyBarDatum] {
-        let cal = Calendar.current
-        let pageByDate: [Date: DailyPage] = Dictionary(
-            uniqueKeysWithValues: allPages.map { (cal.startOfDay(for: $0.date), $0) }
-        )
-        return (0..<30).reversed().map { offset -> DailyBarDatum in
-            let date = cal.date(byAdding: .day, value: -offset, to: today)!
-            let page = pageByDate[date]
-            return DailyBarDatum(date: date, complete: page?.dayComplete ?? false, hasData: page != nil)
-        }
-    }
-
-    private var last8WeeksData: [WeeklyBarDatum] {
-        let cal = Calendar.current
-        var result: [WeeklyBarDatum] = []
-        for weekOffset in (0..<8).reversed() {
-            let weekStart = cal.date(byAdding: .weekOfYear, value: -weekOffset, to: today)!
-            let weekStartNorm = cal.date(
-                from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: weekStart)
-            )!
-            var completedCount = 0
-            var trackedCount = 0
-            for dayOffset in 0..<7 {
-                let day = cal.date(byAdding: .day, value: dayOffset, to: weekStartNorm)!
-                if day > today { break }
-                if let page = allPages.first(where: { cal.startOfDay(for: $0.date) == day }) {
-                    trackedCount += 1
-                    if page.dayComplete { completedCount += 1 }
-                }
-            }
-            result.append(WeeklyBarDatum(weekStart: weekStartNorm, completedDays: completedCount, trackedDays: trackedCount))
-        }
-        return result
-    }
-
-    private var todayPage: DailyPage? {
-        allPages.last(where: { Calendar.current.startOfDay(for: $0.date) == today })
-    }
-
-    private var completionRate: Double {
-        guard appState.streakStats.totalTrackedDays > 0 else { return 0 }
-        return Double(appState.streakStats.totalCompleteDays) / Double(appState.streakStats.totalTrackedDays)
-    }
-
-    // MARK: Body
 
     var body: some View {
         ZStack {
-            AppColors.background.ignoresSafeArea()
+            SettingsBackground()
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-
-                    // 1. Header Cards (2×2 grid)
-                    headerCards
-
-                    // 2. 7-Day Strip
-                    sevenDayStrip
-
-                    // 3. Completion Rate — Last 30 Days
-                    completionRateChart
-
-                    // 4. Weekly Summary
-                    weeklySummaryChart
-
-                    // 5. Task Stats for Today
-                    todayTaskStats
-
+                    streakRow(title: "Completion Streak",
+                              current: appState.streakStats.currentStreak,
+                              longest: appState.streakStats.longestStreak)
+                    streakRow(title: "Exercise Streak",
+                              current: exerciseStreak.current,
+                              longest: exerciseStreak.longest)
+                    weekSection
+                    Color.clear.frame(height: 40)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 32)
+                .padding(.horizontal, 20).padding(.top, 8)
+                .background(ScrollIndicatorInset(right: 7))
             }
         }
-        .navigationTitle("Stats")
-        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .top) { topBar }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
-    // MARK: - Section 1: Header Cards
-
-    private var headerCards: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                StatCardView(
-                    label: "Current Streak",
-                    value: "\(appState.streakStats.currentStreak)",
-                    unit: "days",
-                    color: AppColors.accentGreen
-                )
-                StatCardView(
-                    label: "Longest Streak",
-                    value: "\(appState.streakStats.longestStreak)",
-                    unit: "days",
-                    color: AppColors.accent
-                )
-            }
-            HStack(spacing: 12) {
-                StatCardView(
-                    label: "Complete Days",
-                    value: "\(appState.streakStats.totalCompleteDays)",
-                    unit: "days",
-                    color: AppColors.accentOrange
-                )
-                StatCardView(
-                    label: "Days Tracked",
-                    value: "\(appState.streakStats.totalTrackedDays)",
-                    unit: "days",
-                    color: AppColors.textSecondary
-                )
-            }
+    private var topBar: some View {
+        HStack {
+            Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                .onTapGesture { dismiss() }
+            Spacer()
         }
+        .padding(.horizontal, 12).padding(.bottom, 4)
     }
 
-    // MARK: - Section 2: 7-Day Strip
+    // MARK: - Streak cards
 
-    private var sevenDayStrip: some View {
+    private func streakRow(title: String, current: Int, longest: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeaderLabel(title: "Last 7 Days")
-            HStack(spacing: 0) {
-                ForEach(last7Days) { cell in
-                    DayCellView(cell: cell)
-                        .frame(maxWidth: .infinity)
-                }
+            SettingsSectionLabel(title: title)
+            HStack(spacing: 16) {
+                statCard("Current", current)
+                statCard("Longest", longest)
             }
-            .padding(.vertical, 14)
-            .padding(.horizontal, 8)
-            .background(AppColors.surfaceElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
 
-    // MARK: - Section 3: Completion Rate Chart (30 days)
-
-    private var completionRateChart: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeaderLabel(title: "Completion Rate — Last 30 Days")
-
-            let completedDays = last30DaysData.filter { $0.complete }.count
-            let trackedDays = last30DaysData.filter { $0.hasData }.count
-            let rateText: String = {
-                guard trackedDays > 0 else { return "No data yet" }
-                let pct = Int(Double(completedDays) / Double(trackedDays) * 100)
-                return "\(completedDays) of \(trackedDays) tracked days complete (\(pct)%)"
-            }()
-
-            Text(rateText)
-                .font(AppTypography.caption())
-                .foregroundStyle(AppColors.textTertiary)
-
-            Chart(last30DaysData) { datum in
-                BarMark(
-                    x: .value("Date", datum.date, unit: .day),
-                    y: .value("Complete", datum.hasData ? 1.0 : 0.0)
-                )
-                .foregroundStyle(
-                    datum.complete
-                        ? AppColors.accentGreen
-                        : (datum.hasData ? AppColors.accentRed.opacity(0.4) : AppColors.surfaceSunken)
-                )
-                .cornerRadius(2)
-            }
-            .chartXAxis {
-                AxisMarks(values: .stride(by: .day, count: 7)) { value in
-                    if let date = value.as(Date.self) {
-                        AxisValueLabel {
-                            Text(date, format: .dateTime.month(.abbreviated).day())
-                                .font(AppTypography.timeLabel())
-                                .foregroundStyle(AppColors.textTertiary)
-                        }
-                    }
-                }
-            }
-            .chartYAxis(.hidden)
-            .frame(height: 120)
-            .padding(.vertical, 10)
-            .padding(.horizontal, 12)
-            .background(AppColors.surfaceElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    // MARK: - Section 4: Weekly Summary Chart
-
-    private var weeklySummaryChart: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeaderLabel(title: "Weekly Completion")
-            Text("Complete days per week — last 8 weeks")
-                .font(AppTypography.caption())
-                .foregroundStyle(AppColors.textTertiary)
-
-            Chart(last8WeeksData) { datum in
-                BarMark(
-                    x: .value("Week", datum.weekStart, unit: .weekOfYear),
-                    y: .value("Days", datum.completedDays)
-                )
-                .foregroundStyle(AppColors.accent)
-                .cornerRadius(4)
-            }
-            .chartXAxis {
-                AxisMarks(values: .stride(by: .weekOfYear, count: 1)) { value in
-                    if let date = value.as(Date.self) {
-                        AxisValueLabel {
-                            Text(date, format: .dateTime.month(.abbreviated).day())
-                                .font(AppTypography.timeLabel())
-                                .foregroundStyle(AppColors.textTertiary)
-                        }
-                    }
-                }
-            }
-            .chartYAxis {
-                AxisMarks(values: .stride(by: 1)) { value in
-                    AxisValueLabel {
-                        if let v = value.as(Int.self) {
-                            Text("\(v)")
-                                .font(AppTypography.timeLabel())
-                                .foregroundStyle(AppColors.textTertiary)
-                        }
-                    }
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(AppColors.separator)
-                }
-            }
-            .chartYScale(domain: 0...7)
-            .frame(height: 140)
-            .padding(.vertical, 10)
-            .padding(.horizontal, 12)
-            .background(AppColors.surfaceElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    // MARK: - Section 5: Today's Task Stats
-
-    private var todayTaskStats: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeaderLabel(title: "Today")
-            TodayTaskStatsCard(page: todayPage)
-        }
-    }
-}
-
-// MARK: - Supporting Views
-
-private struct SectionHeaderLabel: View {
-    let title: String
-    var body: some View {
-        Text(title.uppercased())
-            .font(AppTypography.sectionHeader())
-            .foregroundStyle(AppColors.sectionHeader)
-            .tracking(0.6)
-    }
-}
-
-struct StatCardView: View {
-    let label: String
-    let value: String
-    let unit: String
-    let color: Color
-
-    var body: some View {
+    private func statCard(_ label: String, _ value: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(AppTypography.caption())
-                .foregroundStyle(AppColors.textTertiary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            DSText(label).dsTextStyle(.caption1)
             HStack(alignment: .lastTextBaseline, spacing: 4) {
-                Text(value)
-                    .font(.system(size: 36, weight: .bold).monospacedDigit())
-                    .foregroundStyle(color)
-                    .lineLimit(1)
-                Text(unit)
-                    .font(AppTypography.caption())
-                    .foregroundStyle(AppColors.textTertiary)
+                Text("\(value)").font(.system(size: 34, weight: .bold).monospacedDigit())
+                    .foregroundStyle(.primary)
+                DSText(value == 1 ? "day" : "days").dsTextStyle(.caption1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(AppColors.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-// MARK: - Day Cell (7-day strip)
-
-private struct DayCell: Identifiable {
-    let date: Date
-    let page: DailyPage?
-
-    var id: Date { date }
-
-    var dayAbbrev: String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "EEE"
-        return String(fmt.string(from: date).prefix(3))
+        .popupGlass(cornerRadius: 16)
     }
 
-    var dayNumber: String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "d"
-        return fmt.string(from: date)
+    // MARK: - Week section
+
+    private var weekStart: Date {
+        let base = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
+        return cal.date(byAdding: .weekOfYear, value: weekOffset, to: base)!
     }
 
-    var state: CellState {
-        guard let page else { return .noData }
-        return page.dayComplete ? .complete : .incomplete
-    }
-
-    enum CellState {
-        case complete, incomplete, noData
-    }
-
-    var dotColor: Color {
-        switch state {
-        case .complete:   return AppColors.accentGreen
-        case .incomplete: return AppColors.accentRed
-        case .noData:     return AppColors.textTertiary.opacity(0.3)
+    private var weekDays: [WeekBar] {
+        (0..<7).map { off in
+            let day = cal.date(byAdding: .day, value: off, to: weekStart)!
+            let page = pageByDate[cal.startOfDay(for: day)]
+            let done = page?.tasks.filter { $0.completed }.count ?? 0
+            return WeekBar(date: day, count: done, future: day > today)
         }
     }
-}
 
-private struct DayCellView: View {
-    let cell: DayCell
-
-    private var isToday: Bool {
-        Calendar.current.isDateInToday(cell.date)
+    private var weekLabel: String {
+        let f = DateFormatter(); f.dateFormat = "MMM d"
+        let end = cal.date(byAdding: .day, value: 6, to: weekStart)!
+        return "\(f.string(from: weekStart)) – \(f.string(from: end))"
     }
 
-    var body: some View {
-        VStack(spacing: 5) {
-            Text(cell.dayAbbrev)
-                .font(AppTypography.timeLabel())
-                .foregroundStyle(isToday ? AppColors.accent : AppColors.textTertiary)
-            Text(cell.dayNumber)
-                .font(.system(size: 13, weight: isToday ? .semibold : .regular).monospacedDigit())
-                .foregroundStyle(isToday ? AppColors.accent : AppColors.textSecondary)
-            Circle()
-                .fill(cell.dotColor)
-                .frame(width: 8, height: 8)
-        }
-    }
-}
-
-// MARK: - Today Task Stats Card
-
-private struct TodayTaskStatsCard: View {
-    let page: DailyPage?
-
-    private var totalTasks: Int { page?.tasks.count ?? 0 }
-    private var completedTasks: Int { page?.tasks.filter { $0.completed }.count ?? 0 }
-
-    private var statusText: String {
-        guard let page else { return "No page created yet today." }
-        guard !page.tasks.isEmpty else { return "No tasks on today's page." }
-        if page.dayComplete {
-            return "All \(totalTasks) task\(totalTasks == 1 ? "" : "s") complete. Day done."
-        }
-        return "\(completedTasks) of \(totalTasks) task\(totalTasks == 1 ? "" : "s") complete"
-    }
-
-    private var progressFraction: Double {
-        guard totalTasks > 0 else { return 0 }
-        return Double(completedTasks) / Double(totalTasks)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(statusText)
-                        .font(AppTypography.bodySmallMedium)
-                        .foregroundStyle(AppColors.textPrimary)
-
-                    if totalTasks > 0 {
-                        Text("\(Int(progressFraction * 100))% complete")
-                            .font(AppTypography.caption())
-                            .foregroundStyle(AppColors.textTertiary)
-                    }
-                }
-
+    private var weekSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                SettingsSectionLabel(title: "Tasks Done")
                 Spacer()
-
-                if page?.dayComplete == true {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 26))
-                        .foregroundStyle(AppColors.accentGreen)
-                }
+                Button { weekOffset -= 1 } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 14, weight: .semibold)).foregroundStyle(.primary)
+                }.buttonStyle(.plain)
+                DSText(weekLabel).dsTextStyle(.caption1)
+                Button { if weekOffset < 0 { weekOffset += 1 } } label: {
+                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(weekOffset < 0 ? .primary : .secondary)
+                }.buttonStyle(.plain).disabled(weekOffset >= 0)
             }
 
-            if totalTasks > 0 {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(AppColors.surfaceSunken)
-                            .frame(height: 8)
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(page?.dayComplete == true ? AppColors.accentGreen : AppColors.accent)
-                            .frame(width: geo.size.width * progressFraction, height: 8)
-                            .animation(.easeOut(duration: 0.4), value: progressFraction)
+            Chart(weekDays) { bar in
+                BarMark(
+                    x: .value("Day", bar.shortDay),
+                    y: .value("Done", bar.count)
+                )
+                .foregroundStyle(bar.future ? Color.secondary.opacity(0.25) : weekdaySelectedColor)
+                .cornerRadius(4)
+                .annotation(position: .top) {
+                    if bar.count > 0 {
+                        Text("\(bar.count)").font(appFont(11)).foregroundStyle(.secondary)
                     }
                 }
-                .frame(height: 8)
             }
+            .chartXScale(domain: weekDays.map { $0.shortDay })
+            .chartYAxis(.hidden)
+            .frame(height: 160)
+            .padding(14)
+            .popupGlass(cornerRadius: 16)
         }
-        .padding(16)
-        .background(AppColors.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
-// MARK: - Data Models (local to this file)
+// MARK: - Exercise streak
 
-private struct DailyBarDatum: Identifiable {
-    let date: Date
-    let complete: Bool
-    let hasData: Bool
-    var id: Date { date }
+private extension StatsView {
+    var exerciseStreak: (current: Int, longest: Int) {
+        func qualifies(_ page: DailyPage?) -> Bool {
+            guard let page else { return false }
+            return page.tasks.contains { $0.completed && $0.title.lowercased().contains("exercise") }
+        }
+        var current = 0
+        var d = today
+        while qualifies(pageByDate[d]) {
+            current += 1
+            d = cal.date(byAdding: .day, value: -1, to: d)!
+        }
+        let dates = allPages.map { cal.startOfDay(for: $0.date) }.sorted()
+        var longest = 0, run = 0
+        var prev: Date?
+        for date in dates {
+            if qualifies(pageByDate[date]) {
+                if let p = prev, cal.date(byAdding: .day, value: 1, to: p) == date { run += 1 } else { run = 1 }
+                longest = max(longest, run)
+            } else {
+                run = 0
+            }
+            prev = date
+        }
+        return (current, max(longest, current))
+    }
 }
 
-private struct WeeklyBarDatum: Identifiable {
-    let weekStart: Date
-    let completedDays: Int
-    let trackedDays: Int
-    var id: Date { weekStart }
+private struct WeekBar: Identifiable {
+    let date: Date
+    let count: Int
+    let future: Bool
+    var id: Date { date }
+    var shortDay: String {
+        let f = DateFormatter(); f.dateFormat = "EEE"   // Sun…Sat (unique within a week)
+        return f.string(from: date)
+    }
 }
