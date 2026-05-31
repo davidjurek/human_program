@@ -10,7 +10,18 @@ struct ContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var context
     @State private var lockVM = AppLockViewModel()
-    @State private var path: [HubDestination] = [.today]   // launch at Today
+    @State private var path: [HubDestination] = ContentView.initialPath()
+
+    /// Normally launches to Today. A `-startDest <name|hub>` launch argument
+    /// (UserDefaults reads it automatically) overrides the start screen — used
+    /// only for screenshot/QA navigation; inert in normal use.
+    static func initialPath() -> [HubDestination] {
+        if let d = UserDefaults.standard.string(forKey: "startDest") {
+            if d == "hub" { return [] }
+            if let dest = HubDestination(rawValue: d) { return [dest] }
+        }
+        return [.today]
+    }
     @AppStorage("hp.hasLaunched") private var hasLaunched = false
 
     private var showInterstitial: Bool {
@@ -121,23 +132,32 @@ struct HubView: View {
         [.stats, .settings]
     ]
 
+    private let hPad: CGFloat = 20
+    private let colSpacing: CGFloat = 16
+
     var body: some View {
         ZStack {
             SettingsBackground()
-            VStack(spacing: 16) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, pair in
-                    HStack(spacing: 16) {
-                        ForEach(pair, id: \.self) { dest in
-                            NavigationLink(value: dest) {
-                                HubTile(label: dest.label, icon: dest.icon)
+            GeometryReader { geo in
+                // Explicit square side from the available width (aspectRatio alone
+                // didn't constrain the greedy-width tiles). [#44]
+                let side = (geo.size.width - hPad * 2 - colSpacing) / 2
+                VStack(spacing: colSpacing) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, pair in
+                        HStack(spacing: colSpacing) {
+                            ForEach(pair, id: \.self) { dest in
+                                NavigationLink(value: dest) {
+                                    HubTile(label: dest.label, icon: dest.icon)
+                                        .frame(width: side, height: side)   // square
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
+                .padding(.horizontal, hPad)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
@@ -153,9 +173,8 @@ private struct HubTile: View {
             DSImageView(systemName: icon, size: 34, tint: .color(.primary))
             DSText(label).dsTextStyle(.headline)
         }
-        .frame(maxWidth: .infinity)
-        .aspectRatio(1, contentMode: .fit)   // square tiles [#21]
-        .hubTileGlass(cornerRadius: 22)      // clear glass, separate from popups [#22]
+        .frame(maxWidth: .infinity, maxHeight: .infinity)   // fill the square from the parent [#44]
+        .hubTileGlass(cornerRadius: 22)                     // clear glass, separate from popups [#22]
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }

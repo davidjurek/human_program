@@ -18,7 +18,8 @@ struct CalendarView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @State private var viewMode: CalendarViewMode = .month
+    @State private var viewMode: CalendarViewMode =
+        CalendarViewMode(rawValue: UserDefaults.standard.string(forKey: "calMode") ?? "Month") ?? .month
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var calendarService = CalendarAdapterService()
     @State private var events: [EKEvent] = []
