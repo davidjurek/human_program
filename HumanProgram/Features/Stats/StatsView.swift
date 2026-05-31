@@ -12,6 +12,7 @@ struct StatsView: View {
     @Query(sort: \DailyPage.date, order: .forward) private var allPages: [DailyPage]
 
     @State private var weekOffset = 0   // 0 = current week, -1 = last week …
+    @State private var statsPage = 259  // = statsPageCount - 1 (current week) [#5/#38]
     @State private var showWeekPicker = false
 
     private var cal: Calendar { Calendar.current }
@@ -49,7 +50,7 @@ struct StatsView: View {
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
-            Button { withAnimation { weekOffset = 0 } } label: {     // [#] jump to current week
+            Button { withAnimation { statsPage = statsPageIndex(forOffset: 0) } } label: {  // jump to current week
                 DSText("Today").dsTextStyle(.subheadline)
             }.buttonStyle(.plain).padding(.trailing, 18)
             Image(systemName: "calendar").font(.system(size: 18, weight: .medium))   // [#35]
@@ -64,7 +65,7 @@ struct StatsView: View {
         let base = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
         let target = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date))!
         let weeks = cal.dateComponents([.weekOfYear], from: base, to: target).weekOfYear ?? 0
-        weekOffset = min(0, weeks)
+        statsPage = statsPageIndex(forOffset: min(0, weeks))   // onChange syncs weekOffset [#5]
     }
 
     // MARK: - Streak cards
@@ -135,14 +136,16 @@ struct StatsView: View {
 
     // MARK: - Week section
 
-    private var weekStart: Date {
+    private func weekStart(offset: Int) -> Date {
         let base = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
-        return cal.date(byAdding: .weekOfYear, value: weekOffset, to: base)!
+        return cal.date(byAdding: .weekOfYear, value: offset, to: base)!
     }
+    private var weekStart: Date { weekStart(offset: weekOffset) }
 
-    private var weekDays: [WeekBar] {
-        (0..<7).map { off in
-            let day = cal.date(byAdding: .day, value: off, to: weekStart)!
+    private func weekDays(offset: Int) -> [WeekBar] {
+        let ws = weekStart(offset: offset)
+        return (0..<7).map { off in
+            let day = cal.date(byAdding: .day, value: off, to: ws)!
             let page = pageByDate[cal.startOfDay(for: day)]
             let done = page?.tasks.filter { $0.completed }.count ?? 0
             return WeekBar(date: day, count: done, future: day > today)
@@ -155,6 +158,13 @@ struct StatsView: View {
         return "\(f.string(from: weekStart)) – \(f.string(from: end))"
     }
 
+    // Flip-paging: page index 0…(statsPageCount-1) maps to weekOffset (… -2,-1,0). [#5/#38]
+    private let statsPageCount = 260
+    private func offset(forStatsPage i: Int) -> Int { i - (statsPageCount - 1) }
+    private func statsPageIndex(forOffset o: Int) -> Int {
+        min(max(0, o + (statsPageCount - 1)), statsPageCount - 1)
+    }
+
     private var weekSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
@@ -163,11 +173,22 @@ struct StatsView: View {
                 DSText(weekLabel).dsTextStyle(.caption1)
             }
 
-            Chart(weekDays) { bar in
-                BarMark(
-                    x: .value("Day", bar.shortDay),
-                    y: .value("Done", bar.count)
-                )
+            // Finger-tracked flip between weeks (Photos-style paging). [#5/#38]
+            TabView(selection: $statsPage) {
+                ForEach(0..<statsPageCount, id: \.self) { i in
+                    weekChart(offset: offset(forStatsPage: i)).tag(i)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 176)
+            .onChange(of: statsPage) { _, i in weekOffset = offset(forStatsPage: i) }
+        }
+    }
+
+    private func weekChart(offset: Int) -> some View {
+        let bars = weekDays(offset: offset)
+        return Chart(bars) { bar in
+            BarMark(x: .value("Day", bar.shortDay), y: .value("Done", bar.count))
                 .foregroundStyle(bar.future ? Color.secondary.opacity(0.25) : weekdaySelectedColor)
                 .cornerRadius(4)
                 .annotation(position: .top) {
@@ -175,23 +196,10 @@ struct StatsView: View {
                         Text("\(bar.count)").font(appFont(11)).foregroundStyle(.secondary)
                     }
                 }
-            }
-            .chartXScale(domain: weekDays.map { $0.shortDay })
-            .chartYAxis(.hidden)
-            .frame(height: 160)
-            .padding(.vertical, 8)
-            // [#37] no card around the chart.
-            // Swipe: left = newer week (capped at current), right = older. [#38]
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 24)
-                    .onEnded { v in
-                        guard abs(v.translation.width) > abs(v.translation.height) else { return }
-                        if v.translation.width < 0 { if weekOffset < 0 { weekOffset += 1 } }
-                        else { weekOffset -= 1 }
-                    }
-            )
         }
+        .chartXScale(domain: bars.map { $0.shortDay })
+        .chartYAxis(.hidden)
+        .padding(.vertical, 8)   // [#37] no card around the chart
     }
 }
 

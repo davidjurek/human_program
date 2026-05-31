@@ -29,6 +29,15 @@ struct CalendarView: View {
     @State private var showAddEvent = false
     @State private var authStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
     @State private var listScrollTick = 0   // bump to scroll the List back to today [#list]
+    // Finger-tracked flip paging (Photos-style) for Month/Week/Day. [#5]
+    private let monthBase = CalendarView.monthStart(for: Date())
+    private let weekBase = CalendarView.weekStart(for: Date())
+    private let dayBase = Calendar.current.startOfDay(for: Date())
+    private let pageMid = 120
+    private var pageCount: Int { 240 }
+    @State private var monthPage = 120
+    @State private var weekPage = 120
+    @State private var dayPage = 120
 
     private var selectedCalendarIds: [String] {
         UserDefaults.standard.stringArray(forKey: "selectedCalendarIds") ?? []
@@ -90,6 +99,7 @@ struct CalendarView: View {
         displayedWeekStart = CalendarView.weekStart(for: today)
         loadEvents()
         listScrollTick += 1   // scroll the List agenda back to today [#list]
+        withAnimation { monthPage = pageMid; weekPage = pageMid; dayPage = pageMid }   // flip back to today [#5]
     }
 
     // MARK: - Mode picker
@@ -190,14 +200,25 @@ struct CalendarView: View {
         VStack(spacing: 0) {
             monthNavHeader
             weekdayHeaderRow
-            monthGrid
-                .horizontalSwipe { changeMonth($0) }   // swipe left = next month [#42]
+            // Finger-tracked flip between months (Photos-style paging). [#5]
+            TabView(selection: $monthPage) {
+                ForEach(0..<pageCount, id: \.self) { i in
+                    monthGrid(for: monthStart(forPage: i)).tag(i)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 290)
+            .onChange(of: monthPage) { _, i in
+                displayedMonthStart = monthStart(forPage: i); loadEvents()
+            }
             Color.clear.frame(height: 16)              // [#29] small gap below grid
             dayEventsListBelow
-                // Top-align so the day section sits just below the grid instead of
-                // being centered in the empty space (that was the big gap). [#3]
-                .frame(maxHeight: .infinity, alignment: .top)
+                .frame(maxHeight: .infinity, alignment: .top)   // [#3]
         }
+    }
+
+    private func monthStart(forPage i: Int) -> Date {
+        Calendar.current.date(byAdding: .month, value: i - pageMid, to: monthBase) ?? monthBase
     }
 
     private var monthNavHeader: some View {
@@ -238,15 +259,15 @@ struct CalendarView: View {
         .padding(.vertical, 4)
     }
 
-    private var monthGrid: some View {
+    private func monthGrid(for monthStart: Date) -> some View {
         let cal = Calendar.current
-        let days = daysInMonthGrid()
+        let days = daysInMonthGrid(for: monthStart)
         let today = cal.startOfDay(for: Date())
         let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
 
         return LazyVGrid(columns: columns, spacing: 0) {
             ForEach(days, id: \.self) { day in
-                if cal.component(.month, from: day) == cal.component(.month, from: displayedMonthStart) {
+                if cal.component(.month, from: day) == cal.component(.month, from: monthStart) {
                     let hasEvents = events.contains { cal.isDate($0.startDate, inSameDayAs: day) }
                     let isToday = cal.isDate(day, inSameDayAs: today)
                     let isSelected = cal.isDate(day, inSameDayAs: selectedDate)
@@ -306,24 +327,35 @@ struct CalendarView: View {
     // MARK: - Week View
 
     private var weekView: some View {
-        // One outer reader for the column width; headers pinned at top, the time
-        // grid fills the rest. (A reader nested inside the ScrollView was
-        // collapsing and spreading the headers apart.) [#2]
+        // Finger-tracked flip between weeks (Photos-style paging). One outer reader
+        // for the column width (same across pages). [#5]
         GeometryReader { geo in
             let colW = (geo.size.width - weekTimeColW) / 7
-            VStack(spacing: 0) {
-                weekNavHeader
-                weekDayHeaderRow
-                Divider()
-                weekTimeline(colW: colW)
-                    .frame(maxHeight: .infinity)
+            TabView(selection: $weekPage) {
+                ForEach(0..<pageCount, id: \.self) { i in
+                    let ws = weekStart(forPage: i)
+                    VStack(spacing: 0) {
+                        weekNavHeader(weekStart: ws)
+                        weekDayHeaderRow(weekStart: ws)
+                        Divider()
+                        weekTimeline(weekStart: ws, colW: colW).frame(maxHeight: .infinity)
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                    .tag(i)
+                }
             }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .onChange(of: weekPage) { _, i in
+                displayedWeekStart = weekStart(forPage: i); loadEvents()
+            }
         }
-        .horizontalSwipe { changeWeek($0 * 7) }   // swipe left = next week [#42]
     }
 
-    private var weekNavHeader: some View {
+    private func weekStart(forPage i: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: (i - pageMid) * 7, to: weekBase) ?? weekBase
+    }
+
+    private func weekNavHeader(weekStart displayedWeekStart: Date) -> some View {
         let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: displayedWeekStart) ?? displayedWeekStart
         return HStack {
             Spacer()
@@ -337,7 +369,7 @@ struct CalendarView: View {
     }
 
     // Day-of-week + date header aligned over the 7 columns (with a left time gutter).
-    private var weekDayHeaderRow: some View {
+    private func weekDayHeaderRow(weekStart displayedWeekStart: Date) -> some View {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let weekDays = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: displayedWeekStart) }
@@ -366,7 +398,7 @@ struct CalendarView: View {
 
     // 7-day time grid: left time column, 24 hour lines, red now-bar, events placed
     // in their day column by time. [#44]
-    private func weekTimeline(colW: CGFloat) -> some View {
+    private func weekTimeline(weekStart displayedWeekStart: Date, colW: CGFloat) -> some View {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let weekDays = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: displayedWeekStart) }
@@ -432,15 +464,29 @@ struct CalendarView: View {
     // MARK: - Day View
 
     private var dayView: some View {
-        VStack(spacing: 0) {
-            dayNavHeader
-            Divider()
-            dayTimeline
+        // Finger-tracked flip between days (Photos-style paging). [#5]
+        TabView(selection: $dayPage) {
+            ForEach(0..<pageCount, id: \.self) { i in
+                let d = dayStart(forPage: i)
+                VStack(spacing: 0) {
+                    dayNavHeader(day: d)
+                    Divider()
+                    dayTimeline(day: d)
+                }
+                .tag(i)
+            }
         }
-        .horizontalSwipe { changeDay($0) }   // swipe left = next day [#42]
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .onChange(of: dayPage) { _, i in
+            selectedDate = dayStart(forPage: i); loadEvents()
+        }
     }
 
-    private var dayNavHeader: some View {
+    private func dayStart(forPage i: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: i - pageMid, to: dayBase) ?? dayBase
+    }
+
+    private func dayNavHeader(day selectedDate: Date) -> some View {
         HStack {
             Spacer()
             Text(selectedDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())
@@ -452,7 +498,7 @@ struct CalendarView: View {
         .padding(.vertical, 8)
     }
 
-    private var dayTimeline: some View {
+    private func dayTimeline(day selectedDate: Date) -> some View {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let isToday = cal.isDate(selectedDate, inSameDayAs: today)
@@ -637,15 +683,15 @@ struct CalendarView: View {
             .sorted { $0.startDate < $1.startDate }
     }
 
-    private func daysInMonthGrid() -> [Date] {
+    private func daysInMonthGrid(for monthStart: Date) -> [Date] {
         let cal = Calendar.current
-        guard let monthRange = cal.range(of: .day, in: .month, for: displayedMonthStart) else { return [] }
-        let firstWeekday = cal.component(.weekday, from: displayedMonthStart) // 1=Sun
+        guard let monthRange = cal.range(of: .day, in: .month, for: monthStart) else { return [] }
+        let firstWeekday = cal.component(.weekday, from: monthStart) // 1=Sun
         let leadingBlanks = firstWeekday - 1
 
         var days: [Date] = []
         for offset in stride(from: -leadingBlanks, to: monthRange.count + (7 - ((leadingBlanks + monthRange.count) % 7)) % 7, by: 1) {
-            if let day = cal.date(byAdding: .day, value: offset, to: displayedMonthStart) {
+            if let day = cal.date(byAdding: .day, value: offset, to: monthStart) {
                 days.append(day)
             }
         }
