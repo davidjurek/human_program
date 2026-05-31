@@ -305,11 +305,19 @@ struct CalendarView: View {
     // MARK: - Week View
 
     private var weekView: some View {
-        VStack(spacing: 0) {
-            weekNavHeader
-            weekDayHeaderRow
-            Divider()
-            weekTimeline
+        // One outer reader for the column width; headers pinned at top, the time
+        // grid fills the rest. (A reader nested inside the ScrollView was
+        // collapsing and spreading the headers apart.) [#2]
+        GeometryReader { geo in
+            let colW = (geo.size.width - weekTimeColW) / 7
+            VStack(spacing: 0) {
+                weekNavHeader
+                weekDayHeaderRow
+                Divider()
+                weekTimeline(colW: colW)
+                    .frame(maxHeight: .infinity)
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
         }
         .horizontalSwipe { changeWeek($0 * 7) }   // swipe left = next week [#42]
     }
@@ -334,14 +342,17 @@ struct CalendarView: View {
         let weekDays = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: displayedWeekStart) }
         let abbrevs = ["S", "M", "T", "W", "T", "F", "S"]
         return HStack(spacing: 0) {
-            Color.clear.frame(width: weekTimeColW)
+            Color.clear.frame(width: weekTimeColW, height: 1)
             ForEach(Array(weekDays.enumerated()), id: \.offset) { idx, day in
                 let isToday = cal.isDate(day, inSameDayAs: today)
-                VStack(spacing: 1) {
+                VStack(spacing: 2) {
                     Text(abbrevs[idx]).font(appFont(11))
-                        .foregroundStyle(isToday ? Color.red : Color.secondary)
+                        .foregroundStyle(isToday ? Color.accentColor : Color.secondary)
+                    // Today's date is circled (Google/month-view style). [#2]
                     Text("\(cal.component(.day, from: day))").font(appFont(13, bold: isToday))
-                        .foregroundStyle(isToday ? Color.red : Color.primary)
+                        .foregroundStyle(isToday ? Color.white : Color.primary)
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(isToday ? Color.accentColor : Color.clear))
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -354,7 +365,7 @@ struct CalendarView: View {
 
     // 7-day time grid: left time column, 24 hour lines, red now-bar, events placed
     // in their day column by time. [#44]
-    private var weekTimeline: some View {
+    private func weekTimeline(colW: CGFloat) -> some View {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let weekDays = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: displayedWeekStart) }
@@ -362,14 +373,18 @@ struct CalendarView: View {
         let totalH = weekHourHeight * 24
 
         return ScrollView {
-            GeometryReader { geo in
-                let colW = (geo.size.width - weekTimeColW) / 7
                 ZStack(alignment: .topLeading) {
+                    // Vertical day-column gridlines (Google-style). [#2]
+                    ForEach(0...7, id: \.self) { i in
+                        Rectangle().fill(Color.primary.opacity(0.06))
+                            .frame(width: 1, height: totalH)
+                            .offset(x: weekTimeColW + CGFloat(i) * colW)
+                    }
                     // Hour lines + labels.
                     ForEach(0..<24, id: \.self) { hour in
                         let y = CGFloat(hour) * weekHourHeight
                         Rectangle().fill(Color.primary.opacity(0.08))
-                            .frame(height: 1).offset(x: weekTimeColW, y: y)
+                            .frame(width: colW * 7, height: 1).offset(x: weekTimeColW, y: y)
                         Text(hourLabel(hour)).font(appFont(13)).foregroundStyle(.secondary)   // [#28]
                             .fixedSize()
                             .frame(width: weekTimeColW - 4, alignment: .trailing)
@@ -409,9 +424,7 @@ struct CalendarView: View {
                             .offset(x: 0, y: nowY - 11)
                     }
                 }
-                .frame(height: totalH)
-            }
-            .frame(height: totalH)
+                .frame(maxWidth: .infinity, minHeight: totalH, alignment: .topLeading)
         }
     }
 
