@@ -154,8 +154,8 @@ private struct HubTile: View {
             DSText(label).dsTextStyle(.headline)
         }
         .frame(maxWidth: .infinity)
-        .aspectRatio(1, contentMode: .fit)   // square tiles [#16]
-        .popupGlass(cornerRadius: 22)
+        .aspectRatio(1, contentMode: .fit)   // square tiles [#21]
+        .hubTileGlass(cornerRadius: 22)      // clear glass, separate from popups [#22]
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }

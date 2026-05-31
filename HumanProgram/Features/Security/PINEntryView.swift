@@ -67,6 +67,7 @@ struct PINEntryView: View {
                     }
 
                     maskedField
+                        .padding(.top, 18)          // [#45] more gap above the field
                         .offset(x: shakeOffset)
 
                     Text(errorMessage ?? " ")

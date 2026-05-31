@@ -169,6 +169,31 @@ extension View {
             .background(PopupGlassBackground(cornerRadius: cornerRadius))
             .shadow(color: .black.opacity(0.12), radius: 14, y: 4)
     }
+
+    /// Clear liquid glass for the hub tiles. Kept SEPARATE from `popupGlass` so
+    /// the two can be tuned independently. [#22]
+    func hubTileGlass(cornerRadius: CGFloat = 22) -> some View {
+        self
+            .background(HubTileGlassBackground(cornerRadius: cornerRadius))
+            .shadow(color: .black.opacity(0.10), radius: 12, y: 4)
+    }
+}
+
+/// Clear (transparent) liquid glass — no white tint overlay, unlike the frosty
+/// `PopupGlassBackground`. Used only by the hub tiles. [#22]
+struct HubTileGlassBackground: View {
+    let cornerRadius: CGFloat
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        Group {
+            if #available(iOS 26.0, *) {
+                shape.fill(.clear).glassEffect(.clear, in: shape)
+            } else {
+                BlurView(style: .systemUltraThinMaterial).clipShape(shape)
+            }
+        }
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.06)))
+    }
 }
 
 /// Frosty liquid glass (iOS 26 `glassEffect(.regular)`), with a thin-material

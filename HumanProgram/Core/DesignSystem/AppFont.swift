@@ -67,9 +67,10 @@ final class AppFontTypography: DSFontsProtocol {
 
 /// The user-selectable app font. Cardo is the default.
 enum FontChoice: String, CaseIterable, Identifiable {
-    case cardo, libertinus, martelSans, lilex, bitcount
+    // bitcount first so it heads the picker list. [#54]
+    case bitcount, cardo, libertinus, martelSans, lilex
 
-    static let `default`: FontChoice = .cardo
+    static let `default`: FontChoice = .bitcount   // [#54] default for new installs
 
     var id: String { rawValue }
 
