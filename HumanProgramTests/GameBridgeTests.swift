@@ -7,9 +7,10 @@ final class GameBridgeTests: XCTestCase {
 
     // MARK: - Helpers
 
-    var gregorianUTC: Calendar = {
+    // Must match how DailyPage normalizes its date (Calendar.current / local TZ).
+    var localCalendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
+        cal.timeZone = TimeZone.current
         return cal
     }()
 
@@ -21,13 +22,13 @@ final class GameBridgeTests: XCTestCase {
         comps.hour   = 0
         comps.minute = 0
         comps.second = 0
-        return gregorianUTC.date(from: comps)!
+        return localCalendar.date(from: comps)!
     }
 
     var today: Date { makeDate(year: 2025, month: 1, day: 8) }
 
     var yesterday: Date {
-        gregorianUTC.date(byAdding: .day, value: -1, to: today)!
+        localCalendar.date(byAdding: .day, value: -1, to: today)!
     }
 
     @MainActor
@@ -73,7 +74,7 @@ final class GameBridgeTests: XCTestCase {
     // 1. nil page → cannot access
     func test_nilPage_cannotAccess() {
         XCTAssertFalse(
-            accessService.canAccessGame(todayPage: nil, today: today, calendar: gregorianUTC),
+            accessService.canAccessGame(todayPage: nil, today: today, calendar: localCalendar),
             "nil page should prevent game access"
         )
     }
@@ -85,7 +86,7 @@ final class GameBridgeTests: XCTestCase {
         let page = makePage(date: today, dayComplete: false, in: container.mainContext)
 
         XCTAssertFalse(
-            accessService.canAccessGame(todayPage: page, today: today, calendar: gregorianUTC),
+            accessService.canAccessGame(todayPage: page, today: today, calendar: localCalendar),
             "Incomplete day should not grant game access"
         )
     }
@@ -97,7 +98,7 @@ final class GameBridgeTests: XCTestCase {
         let page = makePage(date: today, dayComplete: true, in: container.mainContext)
 
         XCTAssertTrue(
-            accessService.canAccessGame(todayPage: page, today: today, calendar: gregorianUTC),
+            accessService.canAccessGame(todayPage: page, today: today, calendar: localCalendar),
             "Complete page for today should grant game access"
         )
     }
@@ -109,7 +110,7 @@ final class GameBridgeTests: XCTestCase {
         let page = makePage(date: yesterday, dayComplete: true, in: container.mainContext)
 
         XCTAssertFalse(
-            accessService.canAccessGame(todayPage: page, today: today, calendar: gregorianUTC),
+            accessService.canAccessGame(todayPage: page, today: today, calendar: localCalendar),
             "Complete page from yesterday should not grant today's game access"
         )
     }
@@ -125,7 +126,7 @@ final class GameBridgeTests: XCTestCase {
         let page = makePage(date: yesterday, dayComplete: true, in: container.mainContext)
 
         let reason = accessService.lockReason(
-            todayPage: page, today: today, calendar: gregorianUTC
+            todayPage: page, today: today, calendar: localCalendar
         ).lowercased()
 
         XCTAssertFalse(reason.contains("game"),
@@ -139,7 +140,7 @@ final class GameBridgeTests: XCTestCase {
     // 6. lockReason with nil page returns a non-empty string
     func test_lockReason_whenNilPage() {
         let reason = accessService.lockReason(
-            todayPage: nil, today: today, calendar: gregorianUTC
+            todayPage: nil, today: today, calendar: localCalendar
         )
         XCTAssertFalse(reason.isEmpty,
                        "lockReason with nil page should return a non-empty string")
@@ -154,7 +155,7 @@ final class GameBridgeTests: XCTestCase {
     // 7. nil page → gate hidden
     func test_nilPage_gateHidden() {
         XCTAssertFalse(
-            gateService.shouldRevealGate(todayPage: nil, today: today, calendar: gregorianUTC),
+            gateService.shouldRevealGate(todayPage: nil, today: today, calendar: localCalendar),
             "nil page should hide the gate"
         )
     }
@@ -166,7 +167,7 @@ final class GameBridgeTests: XCTestCase {
         let page = makePage(date: today, dayComplete: false, in: container.mainContext)
 
         XCTAssertFalse(
-            gateService.shouldRevealGate(todayPage: page, today: today, calendar: gregorianUTC),
+            gateService.shouldRevealGate(todayPage: page, today: today, calendar: localCalendar),
             "Incomplete page should hide the gate"
         )
     }
@@ -178,7 +179,7 @@ final class GameBridgeTests: XCTestCase {
         let page = makePage(date: today, dayComplete: true, in: container.mainContext)
 
         XCTAssertTrue(
-            gateService.shouldRevealGate(todayPage: page, today: today, calendar: gregorianUTC),
+            gateService.shouldRevealGate(todayPage: page, today: today, calendar: localCalendar),
             "Complete page for today should reveal the gate"
         )
     }
@@ -190,7 +191,7 @@ final class GameBridgeTests: XCTestCase {
         let page = makePage(date: yesterday, dayComplete: true, in: container.mainContext)
 
         XCTAssertFalse(
-            gateService.shouldRevealGate(todayPage: page, today: today, calendar: gregorianUTC),
+            gateService.shouldRevealGate(todayPage: page, today: today, calendar: localCalendar),
             "Complete page from a past date should not reveal the gate"
         )
     }

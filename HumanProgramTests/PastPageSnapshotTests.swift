@@ -10,9 +10,11 @@ final class PastPageSnapshotTests: XCTestCase {
 
     // MARK: - Helpers
 
-    var gregorianUTC: Calendar = {
+    // Must match how DailyPage normalizes its date (Calendar.current / local TZ),
+    // otherwise UTC-built dates get shifted to a different local day on store/fetch.
+    var localCalendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
+        cal.timeZone = TimeZone.current
         return cal
     }()
 
@@ -24,7 +26,7 @@ final class PastPageSnapshotTests: XCTestCase {
         comps.hour   = 0
         comps.minute = 0
         comps.second = 0
-        return gregorianUTC.date(from: comps)!
+        return localCalendar.date(from: comps)!
     }
 
     /// A fixed "today" for all tests: Wednesday 2025-05-21 (weekday 4).
@@ -69,7 +71,8 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [originalTemplate],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         // Verify the page was created with task A.
@@ -89,11 +92,12 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [changedTemplate],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         // Re-fetch yesterday's page and assert it is untouched.
-        let fetchedYesterday = try repo.fetch(date: yesterday)
+        let fetchedYesterday = try repo.fetch(date: yesterday, calendar: localCalendar)
         XCTAssertNotNil(fetchedYesterday, "Yesterday's page should still exist.")
         let tasks = fetchedYesterday!.tasks
         XCTAssertEqual(tasks.count, 1, "Yesterday's page should still have exactly one task.")
@@ -125,7 +129,8 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [originalTemplate],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         XCTAssertEqual(firstPage.tasks.count, 1)
@@ -144,7 +149,8 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [differentTemplate],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         // Must be the same page object (same id).
@@ -180,7 +186,8 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [t1],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         XCTAssertEqual(yesterdayPage.tasks.count, 1)
@@ -192,7 +199,8 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [t1],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         XCTAssertEqual(todayPage.tasks.count, 1)
@@ -205,18 +213,19 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [t1, t2],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         // Today's page should now have both tasks.
-        let refreshedToday = try repo.fetch(date: today)!
+        let refreshedToday = try repo.fetch(date: today, calendar: localCalendar)!
         let todayTitles = Set(refreshedToday.tasks.map { $0.title })
         XCTAssertTrue(todayTitles.contains("Daily Task"), "Today's page must retain the original task.")
         XCTAssertTrue(todayTitles.contains("New Wednesday Task"), "Today's page must gain the new template task after refresh.")
         XCTAssertEqual(refreshedToday.tasks.count, 2, "Today's page must have exactly 2 tasks.")
 
         // Yesterday's page must not have gained the new task.
-        let fetchedYesterday = try repo.fetch(date: yesterday)!
+        let fetchedYesterday = try repo.fetch(date: yesterday, calendar: localCalendar)!
         XCTAssertEqual(fetchedYesterday.tasks.count, 1, "Yesterday's page must remain unchanged.")
         XCTAssertEqual(fetchedYesterday.tasks.first?.title, "Daily Task", "Yesterday's task must not have changed.")
     }
@@ -242,11 +251,12 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [t1],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         // Fetch today's page and add a manual task.
-        let page = try repo.fetch(date: today)!
+        let page = try repo.fetch(date: today, calendar: localCalendar)!
         try repo.addManualTask(title: "My Manual Task", to: page)
 
         // Verify both tasks are present before refresh.
@@ -257,11 +267,12 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [t1],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         // The manual task must survive.
-        let refreshed = try repo.fetch(date: today)!
+        let refreshed = try repo.fetch(date: today, calendar: localCalendar)!
         let titles = refreshed.tasks.map { $0.title }
         XCTAssertTrue(titles.contains("My Manual Task"), "Manual task must survive refreshTodayAndFuture.")
         XCTAssertTrue(titles.contains("Recurring Task"), "Recurring task must still be present after refresh.")
@@ -289,7 +300,8 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [t1],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         XCTAssertEqual(page.tasks.count, 1)
@@ -305,11 +317,12 @@ final class PastPageSnapshotTests: XCTestCase {
             today: today,
             recurringTemplates: [t1],
             backlogItems: [],
-            scheduleTemplates: []
+            scheduleTemplates: [],
+            calendar: localCalendar
         )
 
         // The task with the same sourceId must still be marked complete.
-        let refreshed = try repo.fetch(date: today)!
+        let refreshed = try repo.fetch(date: today, calendar: localCalendar)!
         let refreshedTask = refreshed.tasks.first { $0.sourceId == tId }
         XCTAssertNotNil(refreshedTask, "The recurring task must still exist after refresh.")
         XCTAssertTrue(refreshedTask!.completed, "Completion state must be preserved after refreshTodayAndFuture.")

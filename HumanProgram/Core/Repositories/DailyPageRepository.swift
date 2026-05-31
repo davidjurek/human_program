@@ -87,9 +87,9 @@ public final class DailyPageRepository {
         today: Date,
         recurringTemplates: [RecurringTaskInput],
         backlogItems: [BacklogTaskInput],
-        scheduleTemplates: [ScheduleBlockInput]
+        scheduleTemplates: [ScheduleBlockInput],
+        calendar: Calendar = .current
     ) throws {
-        let calendar = Calendar.current
         let normalizedToday = calendar.startOfDay(for: today)
 
         let descriptor = FetchDescriptor<DailyPage>()

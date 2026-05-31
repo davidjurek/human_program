@@ -1,8 +1,12 @@
 import SwiftUI
 import EventKit
+import DSKit
 
-/// Settings screen for choosing which device calendars feed Today.
-/// Selected calendar IDs are persisted in UserDefaults under "selectedCalendarIds".
+/// Settings → Calendar. Chooses which device calendars feed Today.
+/// Built on the shared Settings convention (SettingsScreen + SettingsGroup +
+/// open rows). Shows a permission-request state before access is granted, and a
+/// grouped, selectable list of calendars afterward.
+/// Selected calendar IDs persist in UserDefaults under "selectedCalendarIds".
 struct CalendarSourceSettingsView: View {
 
     @State private var calendarService = CalendarAdapterService()
@@ -13,129 +17,69 @@ struct CalendarSourceSettingsView: View {
     private let selectedIdsKey = "selectedCalendarIds"
 
     var body: some View {
-        Group {
+        SettingsScreen(centered: true) {
             switch authStatus {
             case .notDetermined:
-                permissionRequestView
+                CalendarMessageState(
+                    icon: "calendar.badge.exclamationmark",
+                    title: "Calendar Access Needed",
+                    message: "Grant access so Human Program can show your calendar events in Today.",
+                    actionTitle: "Grant Calendar Access",
+                    action: { Task { await requestAccess() } }
+                )
             case .denied, .restricted:
-                permissionDeniedView
+                CalendarMessageState(
+                    icon: "calendar.badge.exclamationmark",
+                    title: "Calendar Access Denied",
+                    message: "To show calendar events in Today, open Settings and allow calendar access for Human Program.",
+                    actionTitle: "Open Settings",
+                    action: openSystemSettings
+                )
             default:
                 if allCalendars.isEmpty {
-                    emptyCalendarsView
+                    CalendarMessageState(
+                        icon: "calendar",
+                        title: "No Calendars Found",
+                        message: "There are no calendars on this device to choose from.",
+                        actionTitle: nil,
+                        action: {}
+                    )
                 } else {
-                    calendarListView
+                    calendarList
                 }
             }
         }
-        .navigationTitle("Calendar Sources")
-        .navigationBarTitleDisplayMode(.inline)
-        .background(AppColors.background)
         .task { await loadCalendars() }
     }
 
-    // MARK: - States
+    // MARK: - Calendar list
 
-    private var permissionRequestView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "calendar.badge.exclamationmark")
-                .font(.system(size: 48))
-                .foregroundStyle(AppColors.textTertiary)
-            Text("Calendar Access Needed")
-                .font(AppTypography.bodyMediumText())
-                .foregroundStyle(AppColors.textPrimary)
-            Text("Grant access so Human Program can show your calendar events in Today.")
-                .font(AppTypography.bodySmallText())
-                .foregroundStyle(AppColors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button("Grant Calendar Access") {
-                Task { await requestAccess() }
-            }
-            .font(AppTypography.buttonLabel())
-            .foregroundStyle(AppColors.accent)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(AppColors.accent, lineWidth: 1)
-            )
+    @ViewBuilder
+    private var calendarList: some View {
+        HStack(spacing: 24) {
+            Button("Select All") { selectedIds = Set(allCalendars.map { $0.calendarIdentifier }); saveSelection() }
+                .buttonStyle(.plain)
+            Button("Deselect All") { selectedIds = []; saveSelection() }
+                .buttonStyle(.plain)
+            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppColors.background)
-    }
+        .font(appFont(16))
+        .foregroundStyle(.primary)
 
-    private var permissionDeniedView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "calendar.badge.exclamationmark")
-                .font(.system(size: 48))
-                .foregroundStyle(AppColors.textTertiary)
-            Text("Calendar Access Denied")
-                .font(AppTypography.bodyMediumText())
-                .foregroundStyle(AppColors.textPrimary)
-            Text("To show calendar events in Today, open Settings and allow calendar access for Human Program.")
-                .font(AppTypography.bodySmallText())
-                .foregroundStyle(AppColors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            }
-            .font(AppTypography.buttonLabel())
-            .foregroundStyle(AppColors.accent)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(AppColors.accent, lineWidth: 1)
-            )
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppColors.background)
-    }
-
-    private var emptyCalendarsView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "calendar")
-                .font(.system(size: 48))
-                .foregroundStyle(AppColors.textTertiary)
-            Text("No calendars found on device.")
-                .font(AppTypography.bodySmallText())
-                .foregroundStyle(AppColors.textSecondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppColors.background)
-    }
-
-    private var calendarListView: some View {
-        VStack(spacing: 0) {
-            // Toolbar buttons
-            HStack {
-                Button("Select All") { selectedIds = Set(allCalendars.map { $0.calendarIdentifier }) }
-                    .font(AppTypography.buttonLabel())
-                    .foregroundStyle(AppColors.accent)
-                Spacer()
-                Button("Deselect All") { selectedIds = [] }
-                    .font(AppTypography.buttonLabel())
-                    .foregroundStyle(AppColors.accent)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(groupedCalendars, id: \.source) { group in
-                        sourceSection(group)
+        ForEach(groupedCalendars, id: \.source) { group in
+            SettingsGroup(title: group.source) {
+                ForEach(group.calendars, id: \.calendarIdentifier) { cal in
+                    CalendarSelectRow(
+                        title: cal.title,
+                        color: Color(cgColor: cal.cgColor),
+                        isSelected: selectedIds.contains(cal.calendarIdentifier)
+                    ) {
+                        toggleCalendar(cal)
                     }
                 }
             }
         }
     }
-
-    // MARK: - Source section
 
     private struct CalendarGroup {
         let source: String
@@ -151,38 +95,6 @@ struct CalendarSourceSettingsView: View {
         return map.keys.sorted().map { key in
             CalendarGroup(source: key, calendars: map[key]!.sorted { $0.title < $1.title })
         }
-    }
-
-    @ViewBuilder
-    private func sourceSection(_ group: CalendarGroup) -> some View {
-        // Section header
-        HStack {
-            Text(group.source.uppercased())
-                .font(AppTypography.sectionHeader())
-                .foregroundStyle(AppColors.textTertiary)
-                .kerning(0.5)
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 6)
-
-        VStack(spacing: 0) {
-            ForEach(group.calendars, id: \.calendarIdentifier) { cal in
-                CalendarRowView(
-                    calendar: cal,
-                    isSelected: selectedIds.contains(cal.calendarIdentifier)
-                ) {
-                    toggleCalendar(cal)
-                }
-                if cal.calendarIdentifier != group.calendars.last?.calendarIdentifier {
-                    Divider().padding(.leading, 44)
-                }
-            }
-        }
-        .background(AppColors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .padding(.horizontal, 16)
     }
 
     // MARK: - Helpers
@@ -221,38 +133,71 @@ struct CalendarSourceSettingsView: View {
             loadSelection()
         }
     }
+
+    private func openSystemSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+    }
 }
 
-// MARK: - Calendar row
+// MARK: - Calendar select row (colored dot + title + checkmark)
 
-private struct CalendarRowView: View {
-    let calendar: EKCalendar
+/// A multi-select calendar row, matching `SettingsSelectRow` but with a leading
+/// dot in the calendar's color.
+private struct CalendarSelectRow: View {
+    let title: String
+    let color: Color
     let isSelected: Bool
-    let onToggle: () -> Void
+    let action: () -> Void
 
     var body: some View {
-        Button(action: onToggle) {
-            HStack(spacing: 12) {
-                // Colored circle matching calendar color
-                Circle()
-                    .fill(Color(cgColor: calendar.cgColor))
-                    .frame(width: 14, height: 14)
-
-                Text(calendar.title)
-                    .font(AppTypography.taskTitle())
-                    .foregroundStyle(AppColors.textPrimary)
-
-                Spacer()
-
-                // Checkbox
-                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 20))
-                    .foregroundStyle(isSelected ? AppColors.accent : AppColors.checkboxBorder)
+        Button(action: action) {
+            HStack(spacing: 16) {
+                Circle().fill(color).frame(width: 14, height: 14)
+                DSText(title).dsTextStyle(.title3)
+                Spacer(minLength: 8)
+                if isSelected {
+                    DSImageView(systemName: "checkmark", size: .font(.body), tint: .color(.primary))
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .frame(height: 34)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Centered message state (permission / empty)
+
+/// A centered icon + title + message with an optional capsule action button.
+/// Reused for the calendar permission-request, denied, and empty states.
+private struct CalendarMessageState: View {
+    let icon: String
+    let title: String
+    let message: String
+    let actionTitle: String?
+    let action: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            DSImageView(systemName: icon, size: 48, tint: .color(.secondary))
+            DSText(title).dsTextStyle(.title3)
+            DSText(message)
+                .dsTextStyle(.subheadline)
+                .multilineTextAlignment(.center)
+            if let actionTitle {
+                Button(action: action) {
+                    DSText(actionTitle).dsTextStyle(.headline)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(Color.primary.opacity(0.08), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 60)
     }
 }

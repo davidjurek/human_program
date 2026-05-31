@@ -33,9 +33,11 @@ public final class ExerciseRepository {
 
         for weekday in 1...7 {
             guard !existingWeekdays.contains(weekday) else { continue }
-            let name = weekdayNames[weekday] ?? "Day \(weekday)"
+            // Seed with a BLANK name — the weekday header comes from the rule, and
+            // the routine name is an optional custom label the user fills in.
+            _ = weekdayNames   // (kept for reference; names are no longer seeded)
             let rule = RecurrenceRule.on([weekday])
-            let routine = ExerciseRoutine(name: name, rule: rule)
+            let routine = ExerciseRoutine(name: "", rule: rule)
             context.insert(routine)
         }
 
@@ -143,6 +145,18 @@ public final class ExerciseRepository {
         if let sets = sets { item.sets = sets }
         if let reps = reps { item.reps = reps }
         if let notes = notes { item.notes = notes }
+        try context.save()
+    }
+
+    // MARK: - setItemCounts
+
+    /// Set an item's sets/reps EXPLICITLY, where `nil` clears the value (means
+    /// "not specified"). Unlike `updateItem` — where `nil` means "leave unchanged"
+    /// — this is how the editor turns a count off.
+    public func setItemCounts(_ item: ExerciseRoutineItem, sets: Int?, reps: Int?) throws {
+        item.sets = sets
+        item.reps = reps
+        item.routine?.updatedAt = Date()
         try context.save()
     }
 }

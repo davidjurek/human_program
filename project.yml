@@ -72,9 +72,11 @@ targets:
       - path: HumanProgramTests
     dependencies:
       - target: HumanProgram
+    # Host-based unit tests: the bundle loads its symbols (and DSKit + its
+    # transitive modules) from the HumanProgram app. Without a host, the bundle
+    # tried to statically link an application target and failed to resolve both
+    # DSKit's SDWebImage and the app's own model symbols.
     settings:
-      TEST_HOST: ""
-      BUNDLE_LOADER: ""
       GENERATE_INFOPLIST_FILE: YES
 
 schemes:

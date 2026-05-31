@@ -126,6 +126,7 @@ Every Settings-area screen is composed from the shared components in `Features/S
     - **Non-menu screens** (editors, list screens, etc. — pass `centered: true`) — **left 20, right 20** (symmetric).
   - **Swipe-back is re-enabled here.** Hiding the nav bar kills iOS's leading-edge swipe-back gesture, so `SettingsScreen` re-installs it (a recognizer that re-asserts on every (re)appear, so it doesn't go stale after visiting another screen). Editors pass `onBack`/`swipeBackBlocked`: when there are unsaved changes the swipe (and the back button) route through the **discard-changes guard** instead of popping. Toolbar icon buttons (back, `+`, trash, Save) get `.contentShape(Rectangle())` so the whole 44×44 is tappable.
   - A faint **gradient frost** sits behind the top bar so the back/Save buttons stay legible over scrolling content.
+  - **Scroll indicator inset (standard DSKit behavior, app-wide):** the vertical scroll indicator is pulled ~7pt inboard from the trailing edge (via `ScrollIndicatorInset`) so the FULL bar is always visible instead of being half-clipped at the screen edge. This is indicator-only — it never moves content. Any scrolling surface in the app should match this (don't let the scroll bar hug/clip the edge).
 - `SettingsGroup(title:) { rows }` — a section. Optional uppercase label, then rows. Spacing: **18pt** label→first row, **38pt** between rows. Top-level groups are spaced **28pt** apart. Every section that should read as its own block needs a `title` (an untitled group collapses to the smaller 28pt gap and looks inconsistent — give it a header).
 - `SettingsRowContent` / `SettingsNavRow` — **open, card-less rows**: icon + `.title3` label, **no chevron**, full-width tap target. `SettingsNavRow` pushes a destination.
 - Row look: leading SF Symbol icon (`DSImageView(systemName:size:.font(.title3),tint:.color(.primary))`) + `DSText(label).dsTextStyle(.title3)`, optional trailing value.
@@ -142,7 +143,7 @@ Every Settings-area screen is composed from the shared components in `Features/S
 
 ### Planning editors (Schedule / Recurring / Reminder) — interaction patterns learned the hard way
 
-The Schedule editor is the reference implementation; the wheel/keypad/popup pieces are meant to roll out to the other editors next. Patterns that took many iterations to get right — reuse them, don't re-derive:
+The Schedule editor is the reference implementation. The hold-to-reorder + swipe-to-delete recognizers, the keyboard-scroll nudge, the `GlassKeypad`, and the `SteppedWheel`/`CountWheel` pickers now live in **`Features/Settings/Components/EditorRowInteractions.swift`** (generic over the row's `Hashable` id) and are SHARED — the Exercise editor reuses them. Build new editable-row editors on these, don't re-derive. Patterns that took many iterations to get right — reuse them, don't re-derive:
 
 - **Toolbar icon buttons need `.contentShape(Rectangle())`** on their 44×44 frame, or only the opaque glyph is tappable and taps near it miss (hit the `+`, trash, etc.). Use the shared `AddNavButton`.
 - **Popups all share `popupGlass()`** — one modifier (clear iOS-26 `glassEffect`, blur fallback) used by every popup (confirm dialogs, Repeat dropdown, wheel popups). Change the glass in that one place.

@@ -1,19 +1,14 @@
 import SwiftUI
 import SwiftData
+import DSKit
 
+// Exercise routines list (Settings → Exercise). One routine per weekday
+// (1=Sun … 7=Sat), always present. Built on the shared Settings convention:
+// SettingsScreen container, open card-less rows, each pushing the routine editor.
 struct ExerciseSettingsView: View {
     @Environment(\.modelContext) private var context
     @Query private var allRoutines: [ExerciseRoutine]
 
-    @State private var selectedRoutine: ExerciseRoutine? = nil
-
-    // Short weekday abbreviation for display
-    private static let shortWeekdayName: [Int: String] = [
-        1: "Sun", 2: "Mon", 3: "Tue", 4: "Wed",
-        5: "Thu", 6: "Fri", 7: "Sat"
-    ]
-
-    // Full weekday name for the sheet title
     private static let fullWeekdayName: [Int: String] = [
         1: "Sunday", 2: "Monday", 3: "Tuesday", 4: "Wednesday",
         5: "Thursday", 6: "Friday", 7: "Saturday"
@@ -27,88 +22,60 @@ struct ExerciseSettingsView: View {
     }
 
     var body: some View {
-        ZStack {
-            AppColors.background.ignoresSafeArea()
-
+        SettingsScreen(centered: true) {
             if allRoutines.isEmpty {
-                ProgressView()
-                    .tint(AppColors.textTertiary)
+                DSText("Setting up routines…")
+                    .dsTextStyle(.subheadline)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 60)
             } else {
-                routineList
-            }
-        }
-        .navigationTitle("Exercise")
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $selectedRoutine) { routine in
-            ExerciseRoutineEditorView(routine: routine)
-        }
-        .onAppear {
-            ensureRoutines()
-        }
-    }
-
-    // MARK: - List
-
-    private var routineList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
                 ForEach(sortedRoutines) { routine in
-                    routineRow(routine)
-                    Divider()
-                        .padding(.leading, 64)
+                    ExerciseRoutineRow(routine: routine, weekdayName: weekdayName(routine))
                 }
             }
-            .padding(.top, 8)
         }
+        .onAppear(perform: ensureRoutines)
     }
 
-    @ViewBuilder
-    private func routineRow(_ routine: ExerciseRoutine) -> some View {
-        Button {
-            selectedRoutine = routine
-        } label: {
-            HStack(spacing: 12) {
-                // Left: short weekday abbreviation
-                let weekday = routine.recurrenceRule.weekdays.first ?? 0
-                Text(Self.shortWeekdayName[weekday] ?? "—")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(AppColors.textTertiary)
-                    .frame(width: 36, alignment: .leading)
-                    .padding(.leading, 16)
-
-                // Middle: name + item count
-                VStack(alignment: .leading, spacing: 2) {
-                    let displayName = routine.name.trimmingCharacters(in: .whitespaces)
-                    Text(displayName.isEmpty ? "Rest day" : displayName)
-                        .font(AppTypography.taskTitle())
-                        .foregroundStyle(AppColors.textPrimary)
-
-                    let count = routine.items.count
-                    let countLabel = count == 0
-                        ? "No exercises"
-                        : count == 1 ? "1 exercise" : "\(count) exercises"
-                    Text(countLabel)
-                        .font(AppTypography.taskMeta())
-                        .foregroundStyle(AppColors.textTertiary)
-                }
-
-                Spacer()
-
-                // Right: chevron
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(AppColors.textTertiary)
-                    .padding(.trailing, 16)
-            }
-            .padding(.vertical, 12)
-        }
-        .buttonStyle(.plain)
+    private func weekdayName(_ routine: ExerciseRoutine) -> String {
+        let weekday = routine.recurrenceRule.weekdays.first ?? 0
+        return Self.fullWeekdayName[weekday] ?? "Exercise"
     }
-
-    // MARK: - Setup
 
     private func ensureRoutines() {
         let repo = ExerciseRepository(context: context)
         try? repo.ensureSevenWeekdayRoutines()
+    }
+}
+
+/// One routine row: weekday as the title, the routine name + exercise count as
+/// the subtitle. Pushes the editor. (Same open-row look as the planning lists.)
+private struct ExerciseRoutineRow: View {
+    let routine: ExerciseRoutine
+    let weekdayName: String
+
+    private var subtitle: String {
+        let raw = routine.name.trimmingCharacters(in: .whitespaces)
+        // A name equal to the weekday default counts as "no custom name".
+        let custom = (raw == weekdayName) ? "" : raw
+        let count = routine.items.count
+        let countLabel = count == 1 ? "1 exercise" : "\(count) exercises"
+        let namePart = custom.isEmpty ? "Empty" : custom
+        return "\(namePart) · \(countLabel)"
+    }
+
+    var body: some View {
+        NavigationLink {
+            ExerciseRoutineEditorView(routine: routine)
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                DSText(weekdayName).dsTextStyle(.title3)
+                DSText(subtitle).dsTextStyle(.subheadline)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: 52)
     }
 }

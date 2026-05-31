@@ -2,8 +2,6 @@ import SwiftUI
 import DSKit
 
 struct SettingsView: View {
-    @State private var showReset = false
-
     var body: some View {
         SettingsScreen {
             SettingsGroup(title: "General") {
@@ -30,13 +28,10 @@ struct SettingsView: View {
             }
 
             SettingsGroup(title: "Danger Zone") {
-                SettingsButtonRow(label: "Factory Reset", systemImage: "trash", destructive: true) {
-                    showReset = true
+                SettingsNavRow(label: "Factory Reset", systemImage: "trash", destructive: true) {
+                    FactoryResetView()
                 }
             }
-        }
-        .sheet(isPresented: $showReset) {
-            ResetConfirmationView()
         }
     }
 }

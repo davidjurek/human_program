@@ -53,10 +53,15 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
                     content()
                 }
                 .padding(.leading, centered ? 20 : 42)
-                .padding(.trailing, centered ? 20 : 14)
+                .padding(.trailing, centered ? 20 : 8)
                 .padding(.top, 28)
                 .padding(.bottom, 32)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // Pull the vertical scroll indicator a few points inboard so the
+                // FULL bar is visible — without it the indicator hugs (and gets
+                // half-clipped by) the screen's trailing edge. Indicator-only; it
+                // moves no content. This is the standard DSKit scroll behavior.
+                .background(ScrollIndicatorInset(right: 7))
             }
             .scrollDismissesKeyboard(.interactively)
             .scrollDisabled(scrollDisabled)
@@ -199,6 +204,34 @@ extension SettingsScreen where Trailing == EmptyView {
     }
 }
 
+/// Reaches the enclosing `UIScrollView` and insets the vertical scroll indicator
+/// inboard from the trailing edge, so the full bar is always visible instead of
+/// being half-clipped at the screen edge. Keeps `automaticallyAdjustsScrollIndicatorInsets`
+/// on (so the top safe-area inset still applies) and only adds a right inset.
+/// Indicator-only — it never moves content.
+struct ScrollIndicatorInset: UIViewRepresentable {
+    var right: CGFloat
+
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView()
+        v.isUserInteractionEnabled = false
+        return v
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            var view: UIView? = uiView
+            while let cur = view, !(cur is UIScrollView) { view = cur.superview }
+            guard let scroll = view as? UIScrollView else { return }
+            scroll.showsVerticalScrollIndicator = true
+            let insets = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: right)
+            if scroll.verticalScrollIndicatorInsets != insets {
+                scroll.verticalScrollIndicatorInsets = insets
+            }
+        }
+    }
+}
+
 /// Conditionally opts a view out of keyboard safe-area avoidance.
 private struct IgnoreKeyboardSafeArea: ViewModifier {
     let active: Bool
@@ -282,10 +315,13 @@ struct SettingsRowContent<Trailing: View>: View {
             }
             if destructive {
                 DSText(label).dsTextStyle(.title3, Color.red)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 DSText(label).dsTextStyle(.title3)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer(minLength: 8)
             if let value {
                 DSText(value).dsTextStyle(.subheadline)
             }
@@ -298,14 +334,20 @@ struct SettingsRowContent<Trailing: View>: View {
 }
 
 /// A settings row that pushes a destination when tapped (icon + label, no chevron).
+/// Optionally shows a trailing value and/or renders in the destructive (red) style.
 struct SettingsNavRow<Destination: View>: View {
     let label: String
     var systemImage: String? = nil
+    var value: String? = nil
+    var destructive: Bool = false
     @ViewBuilder var destination: () -> Destination
 
-    init(label: String, systemImage: String? = nil, @ViewBuilder destination: @escaping () -> Destination) {
+    init(label: String, systemImage: String? = nil, value: String? = nil,
+         destructive: Bool = false, @ViewBuilder destination: @escaping () -> Destination) {
         self.label = label
         self.systemImage = systemImage
+        self.value = value
+        self.destructive = destructive
         self.destination = destination
     }
 
@@ -313,9 +355,26 @@ struct SettingsNavRow<Destination: View>: View {
         NavigationLink {
             destination()
         } label: {
-            SettingsRowContent(label: label, systemImage: systemImage) { EmptyView() }
+            SettingsRowContent(label: label, systemImage: systemImage,
+                               value: value, destructive: destructive) { EmptyView() }
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// A settings row carrying a trailing native Toggle (icon + label + switch).
+/// Used wherever a setting is a simple on/off (App Lock, biometrics, etc.).
+struct SettingsToggleRow: View {
+    let label: String
+    var systemImage: String? = nil
+    @Binding var isOn: Bool
+
+    var body: some View {
+        SettingsRowContent(label: label, systemImage: systemImage) {
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .tint(appToggleTint)
+        }
     }
 }
 
