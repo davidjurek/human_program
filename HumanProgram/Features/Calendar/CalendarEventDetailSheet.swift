@@ -20,7 +20,6 @@ struct CalendarEventDetailSheet: View {
     @State private var localState: CalendarEventLocalState? = nil
     @State private var titleOverride: String = ""
     @State private var isHidden: Bool = false
-    @State private var isComplete: Bool = false
     @State private var errorMessage: String? = nil
     @State private var isEditingTitle: Bool = false
     @FocusState private var titleFieldFocused: Bool
@@ -47,9 +46,12 @@ struct CalendarEventDetailSheet: View {
             .navigationTitle("Event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .foregroundStyle(Color.accentColor)
+                // Plain text, no glass/pill background. [#36]
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { dismiss() } label: {
+                        Text("Done").font(appFont(18)).foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .task { await loadLocalState() }
@@ -76,7 +78,7 @@ struct CalendarEventDetailSheet: View {
                         .foregroundStyle(Color.primary)
 
                     Text(event.calendar.title)
-                        .font(appFont(12))
+                        .font(appFont(14))
                         .foregroundStyle(Color(cgColor: event.calendar.cgColor))
                 }
 
@@ -95,21 +97,21 @@ struct CalendarEventDetailSheet: View {
             // Date / time
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "clock")
-                    .font(.system(size: 16))
+                    .font(.system(size: 18))
                     .foregroundStyle(Color.secondary)
                     .frame(width: 20)
 
                 if event.isAllDay {
                     Text("All day · \(event.startDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())")
-                        .font(appFont(14))
+                        .font(appFont(17))
                         .foregroundStyle(Color.primary)
                 } else {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(event.startDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())
-                            .font(appFont(14))
+                            .font(appFont(17))
                             .foregroundStyle(Color.primary)
                         Text("\(event.startDate, format: .dateTime.hour().minute()) – \(event.endDate, format: .dateTime.hour().minute())")
-                            .font(appFont(11))
+                            .font(appFont(14))
                             .foregroundStyle(Color.secondary)
                     }
                 }
@@ -120,11 +122,11 @@ struct CalendarEventDetailSheet: View {
             if let notes = notes, !notes.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "note.text")
-                        .font(.system(size: 16))
+                        .font(.system(size: 18))
                         .foregroundStyle(Color.secondary)
                         .frame(width: 20)
                     Text(notes)
-                        .font(appFont(14))
+                        .font(appFont(17))
                         .foregroundStyle(Color.primary)
                 }
             }
@@ -133,11 +135,11 @@ struct CalendarEventDetailSheet: View {
             if let location = event.location, !location.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "location")
-                        .font(.system(size: 16))
+                        .font(.system(size: 18))
                         .foregroundStyle(Color.secondary)
                         .frame(width: 20)
                     Text(location)
-                        .font(appFont(14))
+                        .font(appFont(17))
                         .foregroundStyle(Color.primary)
                 }
             }
@@ -149,40 +151,29 @@ struct CalendarEventDetailSheet: View {
     // MARK: - Local override section
 
     private var localOverrideSection: some View {
+        // Card-less section (matches the Add-event editor look). [#31/#32/#34/#35]
         VStack(alignment: .leading, spacing: 0) {
-            // Section header
-            HStack {
-                Text("TODAY OVERRIDES")
-                    .font(appFont(13, bold: true))
-                    .foregroundStyle(Color.secondary)
-                    .kerning(0.5)
-                Spacer()
-                Text("Affects Today only")
-                    .font(appFont(12))
-                    .foregroundStyle(Color.secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
+            // Section header — "OVERRIDES" only (no "Affects Today only").
+            Text("OVERRIDES")
+                .font(appFont(13, bold: true))
+                .foregroundStyle(Color.secondary)
+                .kerning(0.5)
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 10)
 
             VStack(spacing: 0) {
 
-                // Override title row
-                VStack(alignment: .leading, spacing: 6) {
+                // Display title override — card-less plain field. [#33/#34]
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Display title")
-                        .font(appFont(12))
+                        .font(appFont(15))
                         .foregroundStyle(Color.secondary)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
 
                     HStack(spacing: 8) {
                         TextField("Same as event title", text: $titleOverride)
-                            .font(appFont(17))
+                            .font(appFont(20))
                             .focused($titleFieldFocused)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.primary.opacity(0.08))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
                             .submitLabel(.done)
                             .onSubmit { saveTitleOverride() }
 
@@ -196,19 +187,15 @@ struct CalendarEventDetailSheet: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
 
                     if !titleOverride.isEmpty {
                         Button("Save title") { saveTitleOverride() }
-                            .font(appFont(16))
+                            .font(appFont(17))
                             .foregroundStyle(Color.accentColor)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 4)
                     }
                 }
-                .padding(.bottom, 12)
-
-                Divider().padding(.leading, 16)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
 
                 // Hide from Today
                 OverrideToggleRow(
@@ -220,29 +207,13 @@ struct CalendarEventDetailSheet: View {
                 .onChange(of: isHidden) { _, newValue in
                     toggleHidden(newValue)
                 }
-
-                Divider().padding(.leading, 16)
-
-                // Mark complete in Today
-                OverrideToggleRow(
-                    icon: "checkmark.circle",
-                    label: "Mark complete in Today",
-                    caption: "Counts toward day completion",
-                    isOn: $isComplete
-                )
-                .onChange(of: isComplete) { _, newValue in
-                    toggleComplete(newValue)
-                }
             }
-            .background(Color.primary.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(.horizontal, 16)
 
             if let error = errorMessage {
                 Text(error)
-                    .font(appFont(12))
+                    .font(appFont(14))
                     .foregroundStyle(Color.red)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 20)
                     .padding(.top, 8)
             }
 
@@ -258,7 +229,6 @@ struct CalendarEventDetailSheet: View {
             localState = state
             titleOverride = state.titleOverride ?? ""
             isHidden = state.hidden
-            isComplete = state.completed
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -286,14 +256,6 @@ struct CalendarEventDetailSheet: View {
         }
     }
 
-    private func toggleComplete(_ complete: Bool) {
-        do {
-            try stateRepo.toggleCompletion(eventId: event.eventIdentifier, date: date)
-            localState?.completed = complete
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
 }
 
 // MARK: - Reusable toggle row
@@ -307,7 +269,7 @@ private struct OverrideToggleRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 16))
+                .font(.system(size: 18))
                 .foregroundStyle(Color.secondary)
                 .frame(width: 20)
 
@@ -316,7 +278,7 @@ private struct OverrideToggleRow: View {
                     .font(appFont(17))
                     .foregroundStyle(Color.primary)
                 Text(caption)
-                    .font(appFont(12))
+                    .font(appFont(14))
                     .foregroundStyle(Color.secondary)
             }
 

@@ -91,7 +91,7 @@ struct FontSettingsView: View {
     @AppStorage("settings.fontSizeStep") private var sizeStep: Int = FontSizeStep.defaultIndex
 
     var body: some View {
-        SettingsScreen {
+        SettingsScreen(centered: true) {       // [#55] option screen → 20/20 margins
             SettingsGroup(title: "Font") {
                 ForEach(FontChoice.allCases) { choice in
                     FontOptionRow(choice: choice, isSelected: fontChoice == choice.rawValue) {
@@ -100,10 +100,7 @@ struct FontSettingsView: View {
                 }
             }
             SettingsGroup(title: "Font Size") {
-                // Cancel the screen's asymmetric leading inset (44 vs 20) so the
-                // slider sits centered in the screen.
                 FontSizeSlider(step: $sizeStep)
-                    .padding(.leading, -24)
             }
         }
     }
@@ -211,7 +208,7 @@ struct AppearanceSettingsView: View {
     @AppStorage("settings.appearanceMode") private var mode: String = AppearanceMode.system.rawValue
 
     var body: some View {
-        SettingsScreen {
+        SettingsScreen(centered: true) {       // [#55] option screen → 20/20 margins
             SettingsGroup(title: "Appearance") {
                 ForEach(AppearanceMode.allCases) { option in
                     SettingsSelectRow(label: option.label, isSelected: mode == option.rawValue) {

@@ -31,7 +31,7 @@ struct DateFormatView: View {
     ]
 
     var body: some View {
-        SettingsScreen {
+        SettingsScreen(centered: true) {       // [#55] option screen → 20/20 margins
             SettingsGroup(title: "Date Format") {
                 ForEach(options, id: \.1) { option in
                     SettingsSelectRow(label: option.0, isSelected: format == option.1) {
@@ -49,7 +49,7 @@ struct TimeFormatView: View {
     @AppStorage("settings.timeFormat") private var format: String = "12h"
 
     var body: some View {
-        SettingsScreen {
+        SettingsScreen(centered: true) {       // [#55] option screen → 20/20 margins
             SettingsGroup(title: "Time Format") {
                 SettingsSelectRow(label: "12-hour (12:34 PM)", isSelected: format == "12h") {
                     format = "12h"
