@@ -101,6 +101,12 @@ struct CalendarView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .onChange(of: viewMode) { _, _ in loadEvents() }
+        .onAppear {
+            // Apply the app font to the native segmented control. [#24]
+            let attrs: [NSAttributedString.Key: Any] = [.font: appUIFont(15)]
+            UISegmentedControl.appearance().setTitleTextAttributes(attrs, for: .normal)
+            UISegmentedControl.appearance().setTitleTextAttributes(attrs, for: .selected)
+        }
     }
 
     // MARK: - Auth states
@@ -342,7 +348,7 @@ struct CalendarView: View {
         .padding(.vertical, 4)
     }
 
-    private let weekTimeColW: CGFloat = 38
+    private let weekTimeColW: CGFloat = 48   // wide enough for 00:00 [#23/#25]
     private let weekHourHeight: CGFloat = 44
 
     // 7-day time grid: left time column, 24 hour lines, red now-bar, events placed
@@ -363,9 +369,10 @@ struct CalendarView: View {
                         let y = CGFloat(hour) * weekHourHeight
                         Rectangle().fill(Color.primary.opacity(0.08))
                             .frame(height: 1).offset(x: weekTimeColW, y: y)
-                        Text(hourLabel(hour)).font(appFont(10)).foregroundStyle(.secondary)
+                        Text(hourLabel(hour)).font(appFont(13)).foregroundStyle(.secondary)   // [#28]
+                            .fixedSize()
                             .frame(width: weekTimeColW - 4, alignment: .trailing)
-                            .offset(x: 0, y: max(0, y - 5))
+                            .offset(x: 0, y: max(0, y - 7))
                     }
                     // Events per day column.
                     ForEach(Array(weekDays.enumerated()), id: \.offset) { idx, day in
@@ -440,9 +447,9 @@ struct CalendarView: View {
                         ForEach(0..<24, id: \.self) { hour in
                             HStack(alignment: .top, spacing: 8) {
                                 Text(hourLabel(hour))
-                                    .font(appFont(11))
+                                    .font(appFont(13))                        // [#28]
                                     .foregroundStyle(Color.secondary)
-                                    .frame(width: 40, alignment: .trailing)
+                                    .frame(width: 48, alignment: .trailing)
                                 Rectangle().fill(Color.primary.opacity(0.08))
                                     .frame(height: 1)
                                     .padding(.top, 7)
@@ -622,6 +629,9 @@ struct CalendarView: View {
     }
 
     private func hourLabel(_ hour: Int) -> String {
+        // Honor the Format setting: 24h → 00:00 … 23:00, else 12a/1a style. [#23/#25]
+        let is24 = (UserDefaults.standard.string(forKey: "settings.timeFormat") ?? "12h") == "24h"
+        if is24 { return String(format: "%02d:00", hour) }
         let h = hour % 12 == 0 ? 12 : hour % 12
         let suffix = hour < 12 ? "a" : "p"
         return "\(h)\(suffix)"
