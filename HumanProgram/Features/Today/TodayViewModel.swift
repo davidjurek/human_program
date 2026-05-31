@@ -16,10 +16,21 @@ public final class TodayViewModel {
     public var viewingDate: Date {
         get { _viewingDate }
         set {
+            relockCurrentIfPast()   // leaving this day re-locks it
             _viewingDate = Calendar.current.startOfDay(for: newValue)
             Task { await loadPage() }
         }
     }
+
+    /// Re-lock the currently-loaded page if it's an unlocked past day. Used when
+    /// navigating to another day or leaving the Today screen.
+    private func relockCurrentIfPast() {
+        guard let p = page, !p.isPastLocked else { return }
+        let today = Calendar.current.startOfDay(for: Date())
+        if p.date < today { try? pageRepo.lockPastPage(p) }
+    }
+
+    public func relockOnLeave() { relockCurrentIfPast() }
 
     private let pageRepo: DailyPageRepository
     private let backlogRepo: BacklogRepository
@@ -123,6 +134,42 @@ public final class TodayViewModel {
         } catch {
             print("[TodayViewModel] unlockPastDay error: \(error)")
         }
+    }
+
+    public func relockPastDay() async {
+        guard let p = page else { return }
+        do {
+            try pageRepo.lockPastPage(p)
+        } catch {
+            print("[TodayViewModel] relockPastDay error: \(error)")
+        }
+    }
+
+    public func updateTask(_ task: DailyPageTask, title: String?, notes: String?) async {
+        guard let p = page else { return }
+        do {
+            try pageRepo.updateTask(task, title: title, notes: notes, on: p)
+            await loadPage()
+        } catch {
+            print("[TodayViewModel] updateTask error: \(error)")
+        }
+    }
+
+    /// Human-readable source label for a task.
+    public func sourceLabel(for task: DailyPageTask) -> String {
+        switch task.sourceType {
+        case .recurring: return "Recurring"
+        case .backlog:   return "Backlog"
+        case .manual:    return "Manual"
+        case .calendar:  return "Calendar"
+        }
+    }
+
+    /// Project name for a backlog-sourced task ("None" otherwise / if unassigned).
+    public func projectName(for task: DailyPageTask) -> String {
+        guard task.sourceType == .backlog, let sid = task.sourceId else { return "None" }
+        let items = (try? context.fetch(FetchDescriptor<BacklogItem>())) ?? []
+        return items.first(where: { $0.id == sid })?.project?.name ?? "None"
     }
 
     // MARK: - Private template fetching

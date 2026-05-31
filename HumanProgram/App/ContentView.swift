@@ -1,27 +1,22 @@
 import SwiftUI
 import SwiftData
+import DSKit
 
 // ── Root view ─────────────────────────────────────────────────────────────────
-// Today is the root. A hamburger button in the top-left toolbar pushes to
-// ProgramView inside the same NavigationStack — no sheet, no TabView.
+// The HUB (top-level menu) is the navigation root. On launch the app deep-links
+// straight to Today (pushed on top of the hub), so Today's back arrow returns to
+// the hub. Every section is pushed from the hub the same way. No tab bar.
 struct ContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var context
     @State private var lockVM = AppLockViewModel()
+    @State private var path: [HubDestination] = [.today]   // launch at Today
 
     var body: some View {
-        NavigationStack {
-            TodayView(context: context)
-                .navigationTitle("")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        NavigationLink(destination: ProgramView()) {
-                            Image(systemName: "square.grid.2x2")
-                                .foregroundStyle(AppColors.textPrimary)
-                        }
-                        .accessibilityLabel("Open Program menu")
-                    }
+        NavigationStack(path: $path) {
+            HubView()
+                .navigationDestination(for: HubDestination.self) { dest in
+                    dest.view(context: context)
                 }
         }
         .fullScreenCover(isPresented: Binding(
@@ -31,9 +26,7 @@ struct ContentView: View {
             LockScreenView(vm: lockVM)
         }
         .onReceive(
-            NotificationCenter.default.publisher(
-                for: UIApplication.willEnterForegroundNotification
-            )
+            NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
         ) { _ in
             lockVM.checkLockOnForeground()
         }
@@ -47,88 +40,91 @@ struct ContentView: View {
     }
 }
 
-// ── Program view ──────────────────────────────────────────────────────────────
-// Full-screen push page. 2-column grid of tiles navigating to each section.
-struct ProgramView: View {
-    private struct Destination: Identifiable {
-        let id: String
-        let label: String
-        let icon: String
-        let view: AnyView
+// ── Hub destinations ────────────────────────────────────────────────────────────
+enum HubDestination: String, Hashable, CaseIterable {
+    case today, backlog, calendar, routines, stats, settings
+
+    var label: String {
+        switch self {
+        case .today:    return "Today"
+        case .backlog:  return "Backlog"
+        case .calendar: return "Calendar"
+        case .routines: return "Routines"
+        case .stats:    return "Stats"
+        case .settings: return "Settings"
+        }
     }
 
-    private let destinations: [Destination] = [
-        Destination(id: "backlog",   label: "Backlog",   icon: "tray.full",      view: AnyView(BacklogView())),
-        Destination(id: "calendar",  label: "Calendar",  icon: "calendar",       view: AnyView(CalendarPlaceholderView())),
-        Destination(id: "routines",  label: "Routines",  icon: "repeat",         view: AnyView(RoutinesView())),
-        Destination(id: "stats",     label: "Stats",     icon: "chart.bar",      view: AnyView(StatsView())),
-        Destination(id: "settings",  label: "Settings",  icon: "gear",           view: AnyView(SettingsView())),
-    ]
-
-    var body: some View {
-        ScrollView {
-            LazyVGrid(
-                columns: [GridItem(.flexible()), GridItem(.flexible())],
-                spacing: 16
-            ) {
-                ForEach(destinations) { dest in
-                    NavigationLink(destination: dest.view) {
-                        ProgramTileView(label: dest.label, icon: dest.icon)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(24)
+    var icon: String {
+        switch self {
+        case .today:    return "sun.max"
+        case .backlog:  return "tray.full"
+        case .calendar: return "calendar"
+        case .routines: return "repeat"
+        case .stats:    return "chart.bar"
+        case .settings: return "gearshape"
         }
-        .background(AppColors.background)
-        .navigationTitle("Program")
-        .navigationBarTitleDisplayMode(.large)
+    }
+
+    @ViewBuilder
+    func view(context: ModelContext) -> some View {
+        switch self {
+        case .today:    TodayView(context: context)
+        case .backlog:  BacklogView()
+        case .calendar: CalendarView()
+        case .routines: RoutinesView()
+        case .stats:    StatsView()
+        case .settings: SettingsView()
+        }
     }
 }
 
-// ── Program tile ──────────────────────────────────────────────────────────────
-struct ProgramTileView: View {
+// ── Hub (top-level menu) ─────────────────────────────────────────────────────────
+// Static (no scroll), centered both ways, 2-across glass tiles, ~42 side margins,
+// no title and no back arrow (it's the root).
+struct HubView: View {
+    // Row-pairs in the requested order.
+    private let rows: [[HubDestination]] = [
+        [.today, .backlog],
+        [.calendar, .routines],
+        [.stats, .settings]
+    ]
+
+    var body: some View {
+        ZStack {
+            SettingsBackground()
+            VStack(spacing: 16) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, pair in
+                    HStack(spacing: 16) {
+                        ForEach(pair, id: \.self) { dest in
+                            NavigationLink(value: dest) {
+                                HubTile(label: dest.label, icon: dest.icon)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 42)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+private struct HubTile: View {
     let label: String
     let icon: String
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 32, weight: .light))
-                .foregroundStyle(AppColors.accent)
-            Text(label)
-                .font(AppTypography.bodyText())
-                .foregroundStyle(AppColors.textPrimary)
+            DSImageView(systemName: icon, size: 30, tint: .color(.primary))
+            DSText(label).dsTextStyle(.headline)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 120)
-        .background(AppColors.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(AppColors.border, lineWidth: 0.5)
-        )
-    }
-}
-
-// ── Calendar placeholder ──────────────────────────────────────────────────────
-struct CalendarPlaceholderView: View {
-    var body: some View {
-        ZStack {
-            AppColors.background.ignoresSafeArea()
-            VStack(spacing: 16) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 48, weight: .ultraLight))
-                    .foregroundStyle(AppColors.textTertiary)
-                Text("Calendar")
-                    .font(AppTypography.pageTitle())
-                    .foregroundStyle(AppColors.textPrimary)
-                Text("Coming soon")
-                    .font(AppTypography.bodySmallText())
-                    .foregroundStyle(AppColors.textSecondary)
-            }
-        }
-        .navigationTitle("Calendar")
-        .navigationBarTitleDisplayMode(.inline)
+        .popupGlass(cornerRadius: 22)
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }

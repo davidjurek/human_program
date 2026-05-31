@@ -156,6 +156,17 @@ public final class DailyPageRepository {
         try context.save()
     }
 
+    // MARK: - updateTask
+
+    /// Update a task's title/notes (pass nil to leave unchanged). Used by the
+    /// task-detail editor.
+    public func updateTask(_ task: DailyPageTask, title: String? = nil, notes: String? = nil, on page: DailyPage) throws {
+        if let title { task.title = title }
+        if let notes { task.notes = notes }
+        page.updatedAt = Date()
+        try context.save()
+    }
+
     // MARK: - unlockPastPage
 
     /// Unlock a past page for editing. Sets isPastLocked=false.
