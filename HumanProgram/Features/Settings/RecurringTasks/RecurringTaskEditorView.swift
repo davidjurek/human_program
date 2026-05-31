@@ -72,7 +72,7 @@ struct RecurringTaskEditorView: View {
             }
 
             // Note — at the bottom so it can grow without moving the controls above.
-            AppTextField(text: $notes, placeholder: "Note", fontSize: 20, multiline: true)
+            AppTextField(text: $notes, placeholder: "Note", fontSize: appScaledSize(18), multiline: true)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .overlay {

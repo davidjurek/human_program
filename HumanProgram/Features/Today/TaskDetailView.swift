@@ -43,7 +43,7 @@ struct TaskDetailView: View {
 
             SettingsSectionLabel(title: "Note")
             if editing {
-                AppTextField(text: $notes, placeholder: "Note", fontSize: 18, multiline: true)
+                AppTextField(text: $notes, placeholder: "Note", fontSize: appScaledSize(17), multiline: true)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             } else {
                 DSText(notes).dsTextStyle(.body)   // blank when empty

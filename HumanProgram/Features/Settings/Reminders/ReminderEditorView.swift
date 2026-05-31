@@ -98,7 +98,7 @@ struct ReminderEditorView: View {
 
             // Message / note — at the bottom so it can grow without moving
             // the controls above it. Multiline, expands to fit.
-            AppTextField(text: $message, placeholder: "Message", fontSize: 20, multiline: true)
+            AppTextField(text: $message, placeholder: "Message", fontSize: appScaledSize(18), multiline: true)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .overlay {
