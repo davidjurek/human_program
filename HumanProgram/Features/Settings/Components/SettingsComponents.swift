@@ -105,7 +105,16 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
-        .background(alignment: .top) {
+        .topBarFrost()
+    }
+}
+
+extension View {
+    /// Faint gradient frost behind a top bar so the buttons stay legible when
+    /// content scrolls up under them. Shared so EVERY screen's bar matches
+    /// (Settings + Today/Backlog/Calendar/Routines/Stats). [#47]
+    func topBarFrost() -> some View {
+        background(alignment: .top) {
             Rectangle()
                 .fill(.ultraThinMaterial)
                 .mask(

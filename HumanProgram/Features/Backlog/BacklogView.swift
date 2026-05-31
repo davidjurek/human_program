@@ -194,6 +194,7 @@ struct BacklogView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 4)
+        .topBarFrost()                                       // [#47]
     }
 
     private func iconButton(_ icon: String, tint: Color = .primary, _ action: @escaping () -> Void) -> some View {
@@ -421,6 +422,7 @@ struct BacklogFolderView: View {
             }
         }
         .padding(.horizontal, 12).padding(.bottom, 4)
+        .topBarFrost()                                       // [#47]
     }
 
     private func toggle(_ id: String) { if selected.contains(id) { selected.remove(id) } else { selected.insert(id) } }

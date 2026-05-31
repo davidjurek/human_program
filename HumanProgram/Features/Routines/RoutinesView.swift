@@ -58,6 +58,7 @@ struct RoutinesView: View {
             }.buttonStyle(.plain)
         }
         .padding(.horizontal, 12).padding(.bottom, 4)
+        .topBarFrost()                                       // [#47]
     }
 }
 

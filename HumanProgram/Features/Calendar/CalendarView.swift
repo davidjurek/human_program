@@ -79,6 +79,7 @@ struct CalendarView: View {
             }.buttonStyle(.plain)
         }
         .padding(.horizontal, 12).padding(.bottom, 4)
+        .topBarFrost()                                       // [#47]
     }
 
     private func goToday() {

@@ -117,6 +117,7 @@ struct TodayView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 4)
+        .topBarFrost()                                       // [#47]
     }
 
     private func navButton(_ icon: String, size: CGFloat = 16, _ action: @escaping () -> Void) -> some View {

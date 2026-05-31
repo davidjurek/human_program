@@ -54,6 +54,7 @@ struct StatsView: View {
                 .onTapGesture { showWeekPicker = true }
         }
         .padding(.horizontal, 12).padding(.bottom, 4)
+        .topBarFrost()                                       // [#47]
     }
 
     private func setWeek(containing date: Date) {
