@@ -154,6 +154,36 @@ func appUIFont(_ size: CGFloat, bold: Bool = false) -> UIFont {
     return (bold ? choice.boldSpec : choice.regularSpec).uiFont(size)
 }
 
+// MARK: - Clock time formatting (12h / 24h)
+
+/// Reads the app's time-format setting (`settings.timeFormat`, default "12h").
+enum TimeFormatSetting {
+    static var is24Hour: Bool {
+        (UserDefaults.standard.string(forKey: "settings.timeFormat") ?? "12h") == "24h"
+    }
+}
+
+/// Formats a minutes-of-day value as a clock time, honoring the 12h/24h setting:
+/// 12h → "8:00 PM", 24h → "20:00". For DISPLAYED clock times only — not durations
+/// (use a "##h ##m" formatter for those) and not the calendar/Today gutter (those
+/// are intentionally fixed 24h).
+func clockString(minutesOfDay: Int) -> String {
+    let m = ((minutesOfDay % 1440) + 1440) % 1440
+    let h = m / 60, min = m % 60
+    if TimeFormatSetting.is24Hour {
+        return String(format: "%02d:%02d", h, min)
+    }
+    let period = h < 12 ? "AM" : "PM"
+    let h12 = (h % 12 == 0) ? 12 : h % 12
+    return String(format: "%d:%02d %@", h12, min, period)
+}
+
+/// Same as `clockString(minutesOfDay:)` but takes a `Date` (uses its hour/minute).
+func clockString(date: Date) -> String {
+    let cal = Calendar.current
+    return clockString(minutesOfDay: cal.component(.hour, from: date) * 60 + cal.component(.minute, from: date))
+}
+
 /// Soft-green toggle "on" color (#CDEBC5), used app-wide.
 let appToggleTint = Color(red: 205.0/255, green: 235.0/255, blue: 197.0/255)
 

@@ -86,18 +86,16 @@ private struct ReminderRow: View {
 // MARK: - Recurrence summary helpers
 
 func recurrenceSummary(for reminder: NotificationReminder) -> String {
-    func hhmm(_ minutesOfDay: Int) -> String {
-        String(format: "%02d:%02d", minutesOfDay / 60, minutesOfDay % 60)
-    }
-    let fireTime = String(format: "%02d:%02d", reminder.fireHour, reminder.fireMinute)
+    // Clock times honor the app's 12h/24h setting (shared helper).
+    let fireTime = clockString(minutesOfDay: reminder.fireHour * 60 + reminder.fireMinute)
     switch reminder.recurrenceMode {
     case .everyNMinutes:
         let every = reminder.intervalMinutes % 60 == 0 && reminder.intervalMinutes >= 60
             ? "\(reminder.intervalMinutes / 60) hr"
             : "\(reminder.intervalMinutes) min"
-        return "Every \(every), \(hhmm(reminder.windowStartMinute))-\(hhmm(reminder.windowEndMinute))"
+        return "Every \(every), \(clockString(minutesOfDay: reminder.windowStartMinute))-\(clockString(minutesOfDay: reminder.windowEndMinute))"
     case .hourlyWindow:
-        return "Hourly \(hhmm(reminder.windowStartMinute))-\(hhmm(reminder.windowEndMinute))"
+        return "Hourly \(clockString(minutesOfDay: reminder.windowStartMinute))-\(clockString(minutesOfDay: reminder.windowEndMinute))"
     case .daily, .weekdays, .selectedWeekdays:
         return "Once a day \(fireTime)"
     }

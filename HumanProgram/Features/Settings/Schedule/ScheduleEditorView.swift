@@ -99,6 +99,9 @@ struct ScheduleEditorView: View {
     private var repeatTitle: String {
         repeatOptions.first { $0.value == repeatMode }?.title ?? ""
     }
+    /// Time popups widen in 12-hour mode to fit the extra AM/PM wheel column.
+    /// (Duration popups don't have an AM/PM column, so they stay 210.)
+    private var timePopupWidth: CGFloat { TimeFormatSetting.is24Hour ? 210 : 250 }
 
     /// Anchor-frame id for the active picker (matches the `.anchorFrame(...)` tag).
     private func anchorId(for picker: ActivePicker) -> String {
@@ -312,12 +315,12 @@ struct ScheduleEditorView: View {
                     repeatOptionList
                 }
             case .sleepFrom:
-                AnchoredPopup(anchor: rect, width: 210, estimatedHeight: 185,
+                AnchoredPopup(anchor: rect, width: timePopupWidth, estimatedHeight: 185,
                               alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
                     SteppedWheel(minutes: $sleepStart, mode: .time, onRequestKeypad: showKeypad)
                 }
             case .sleepTo:
-                AnchoredPopup(anchor: rect, width: 210, estimatedHeight: 185,
+                AnchoredPopup(anchor: rect, width: timePopupWidth, estimatedHeight: 185,
                               alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
                     SteppedWheel(minutes: $sleepEnd, mode: .time, onRequestKeypad: showKeypad)
                 }
@@ -916,9 +919,11 @@ struct ScheduleEditorView: View {
 
     // MARK: - Formatting
 
+    /// Clock time honoring the app's 12h/24h setting (shared helper). Used for the
+    /// sleep/block start–end ranges. Durations use `durationPadded`, the running
+    /// total uses `totalString` — both stay fixed-format, independent of this.
     private func hhmm(_ minutes: Int) -> String {
-        let m = ((minutes % 1440) + 1440) % 1440
-        return String(format: "%02d:%02d", m / 60, m % 60)
+        clockString(minutesOfDay: minutes)
     }
     /// Zero-padded "##h ##m" duration label.
     private func durationPadded(_ minutes: Int) -> String {

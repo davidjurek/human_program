@@ -121,11 +121,7 @@ struct DSTimeField: View {
     @State private var show = false
     private let cal = Calendar.current
 
-    private var label: String {
-        let is24 = (UserDefaults.standard.string(forKey: "settings.timeFormat") ?? "12h") == "24h"
-        let f = DateFormatter(); f.dateFormat = is24 ? "HH:mm" : "h:mm a"
-        return f.string(from: date)
-    }
+    private var label: String { clockString(date: date) }
     private var hour: Binding<Int> {
         Binding(get: { cal.component(.hour, from: date) },
                 set: { date = cal.date(bySettingHour: $0, minute: cal.component(.minute, from: date), second: 0, of: date) ?? date })
