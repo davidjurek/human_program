@@ -72,11 +72,11 @@ struct CalendarEventDetailSheet: View {
                     // Title: use override if set, otherwise event title
                     let displayTitle = titleOverride.isEmpty ? (event.title ?? "(No title)") : titleOverride
                     Text(displayTitle)
-                        .font(AppTypography.pageTitle())
+                        .font(appFont(24, bold: true))
                         .foregroundStyle(Color.primary)
 
                     Text(event.calendar.title)
-                        .font(AppTypography.caption())
+                        .font(appFont(12))
                         .foregroundStyle(Color(cgColor: event.calendar.cgColor))
                 }
 
@@ -101,15 +101,15 @@ struct CalendarEventDetailSheet: View {
 
                 if event.isAllDay {
                     Text("All day · \(event.startDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())")
-                        .font(AppTypography.bodySmallText())
+                        .font(appFont(14))
                         .foregroundStyle(Color.primary)
                 } else {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(event.startDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())
-                            .font(AppTypography.bodySmallText())
+                            .font(appFont(14))
                             .foregroundStyle(Color.primary)
                         Text("\(event.startDate, format: .dateTime.hour().minute()) – \(event.endDate, format: .dateTime.hour().minute())")
-                            .font(AppTypography.timeLabel())
+                            .font(appFont(11))
                             .foregroundStyle(Color.secondary)
                     }
                 }
@@ -124,7 +124,7 @@ struct CalendarEventDetailSheet: View {
                         .foregroundStyle(Color.secondary)
                         .frame(width: 20)
                     Text(notes)
-                        .font(AppTypography.bodySmallText())
+                        .font(appFont(14))
                         .foregroundStyle(Color.primary)
                 }
             }
@@ -137,7 +137,7 @@ struct CalendarEventDetailSheet: View {
                         .foregroundStyle(Color.secondary)
                         .frame(width: 20)
                     Text(location)
-                        .font(AppTypography.bodySmallText())
+                        .font(appFont(14))
                         .foregroundStyle(Color.primary)
                 }
             }
@@ -153,12 +153,12 @@ struct CalendarEventDetailSheet: View {
             // Section header
             HStack {
                 Text("TODAY OVERRIDES")
-                    .font(AppTypography.sectionHeader())
+                    .font(appFont(13, bold: true))
                     .foregroundStyle(Color.secondary)
                     .kerning(0.5)
                 Spacer()
                 Text("Affects Today only")
-                    .font(AppTypography.caption())
+                    .font(appFont(12))
                     .foregroundStyle(Color.secondary)
             }
             .padding(.horizontal, 16)
@@ -170,14 +170,14 @@ struct CalendarEventDetailSheet: View {
                 // Override title row
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Display title")
-                        .font(AppTypography.caption())
+                        .font(appFont(12))
                         .foregroundStyle(Color.secondary)
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
 
                     HStack(spacing: 8) {
                         TextField("Same as event title", text: $titleOverride)
-                            .font(AppTypography.taskTitle())
+                            .font(appFont(17))
                             .focused($titleFieldFocused)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -200,7 +200,7 @@ struct CalendarEventDetailSheet: View {
 
                     if !titleOverride.isEmpty {
                         Button("Save title") { saveTitleOverride() }
-                            .font(AppTypography.buttonLabel())
+                            .font(appFont(16))
                             .foregroundStyle(Color.accentColor)
                             .padding(.horizontal, 16)
                             .padding(.bottom, 4)
@@ -240,7 +240,7 @@ struct CalendarEventDetailSheet: View {
 
             if let error = errorMessage {
                 Text(error)
-                    .font(AppTypography.caption())
+                    .font(appFont(12))
                     .foregroundStyle(Color.red)
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
@@ -313,10 +313,10 @@ private struct OverrideToggleRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(AppTypography.taskTitle())
+                    .font(appFont(17))
                     .foregroundStyle(Color.primary)
                 Text(caption)
-                    .font(AppTypography.caption())
+                    .font(appFont(12))
                     .foregroundStyle(Color.secondary)
             }
 

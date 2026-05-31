@@ -84,6 +84,32 @@ public final class CalendarAdapterService {
         return event.eventIdentifier
     }
 
+    /// Create a fully-specified event (title, location, all-day, repeat, alert,
+    /// notes, URL) and save it straight into Apple Calendar.
+    @discardableResult
+    public func createEvent(_ spec: NewEventSpec) throws -> String {
+        let event = EKEvent(eventStore: store)
+        event.title = spec.title
+        event.location = (spec.location?.isEmpty == false) ? spec.location : nil
+        event.isAllDay = spec.isAllDay
+        event.startDate = spec.start
+        event.endDate = spec.end
+        event.notes = (spec.notes?.isEmpty == false) ? spec.notes : nil
+        event.url = spec.url
+        if let rule = spec.recurrence { event.addRecurrenceRule(rule) }
+        if let minutes = spec.alarmMinutesBefore {
+            event.addAlarm(EKAlarm(relativeOffset: TimeInterval(-minutes * 60)))
+        }
+        if let calendarId = spec.calendarId,
+           let cal = store.calendars(for: .event).first(where: { $0.calendarIdentifier == calendarId }) {
+            event.calendar = cal
+        } else {
+            event.calendar = store.defaultCalendarForNewEvents
+        }
+        try store.save(event, span: .thisEvent)
+        return event.eventIdentifier
+    }
+
     /// Delete the event with the given identifier (all future spans).
     /// Throws if the event is not found or cannot be deleted.
     public func deleteEvent(id: String) throws {
@@ -91,6 +117,33 @@ public final class CalendarAdapterService {
             throw CalendarAdapterError.eventNotFound(id)
         }
         try store.remove(event, span: .thisEvent)
+    }
+}
+
+// MARK: - New event spec
+
+/// Everything the expanded event editor can set on a new Apple Calendar event.
+/// (Invitees and Travel Time are intentionally absent — EventKit can't set them.)
+public struct NewEventSpec {
+    public var title: String
+    public var location: String?
+    public var isAllDay: Bool
+    public var start: Date
+    public var end: Date
+    public var calendarId: String?
+    public var recurrence: EKRecurrenceRule?
+    public var alarmMinutesBefore: Int?
+    public var notes: String?
+    public var url: URL?
+
+    public init(title: String, location: String? = nil, isAllDay: Bool = false,
+                start: Date, end: Date, calendarId: String? = nil,
+                recurrence: EKRecurrenceRule? = nil, alarmMinutesBefore: Int? = nil,
+                notes: String? = nil, url: URL? = nil) {
+        self.title = title; self.location = location; self.isAllDay = isAllDay
+        self.start = start; self.end = end; self.calendarId = calendarId
+        self.recurrence = recurrence; self.alarmMinutesBefore = alarmMinutesBefore
+        self.notes = notes; self.url = url
     }
 }
 
