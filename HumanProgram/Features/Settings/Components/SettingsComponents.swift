@@ -1,6 +1,17 @@
 import SwiftUI
 import DSKit
 
+/// True on menu screens (asymmetric 42-left inset). Lets rows know to pull their
+/// TRAILING accessory (toggle / value) inboard to the 20 margin while titles are
+/// free to run out to the 8 margin. False on centered editor/list screens.
+private struct SettingsIsMenuKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var settingsIsMenu: Bool {
+        get { self[SettingsIsMenuKey.self] }
+        set { self[SettingsIsMenuKey.self] = newValue }
+    }
+}
+
 // Shared DSKit building blocks for the Settings area.
 //
 // Every Settings screen is composed from these so the look stays consistent
@@ -57,11 +68,7 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
                 .padding(.top, 28)
                 .padding(.bottom, 32)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // Pull the vertical scroll indicator a few points inboard so the
-                // FULL bar is visible — without it the indicator hugs (and gets
-                // half-clipped by) the screen's trailing edge. Indicator-only; it
-                // moves no content. This is the standard DSKit scroll behavior.
-                .background(ScrollIndicatorInset(right: 7))
+                .environment(\.settingsIsMenu, !centered)
             }
             .scrollDismissesKeyboard(.interactively)
             .scrollDisabled(scrollDisabled)
@@ -204,34 +211,6 @@ extension SettingsScreen where Trailing == EmptyView {
     }
 }
 
-/// Reaches the enclosing `UIScrollView` and insets the vertical scroll indicator
-/// inboard from the trailing edge, so the full bar is always visible instead of
-/// being half-clipped at the screen edge. Keeps `automaticallyAdjustsScrollIndicatorInsets`
-/// on (so the top safe-area inset still applies) and only adds a right inset.
-/// Indicator-only — it never moves content.
-struct ScrollIndicatorInset: UIViewRepresentable {
-    var right: CGFloat
-
-    func makeUIView(context: Context) -> UIView {
-        let v = UIView()
-        v.isUserInteractionEnabled = false
-        return v
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        DispatchQueue.main.async {
-            var view: UIView? = uiView
-            while let cur = view, !(cur is UIScrollView) { view = cur.superview }
-            guard let scroll = view as? UIScrollView else { return }
-            scroll.showsVerticalScrollIndicator = true
-            let insets = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: right)
-            if scroll.verticalScrollIndicatorInsets != insets {
-                scroll.verticalScrollIndicatorInsets = insets
-            }
-        }
-    }
-}
-
 /// Conditionally opts a view out of keyboard safe-area avoidance.
 private struct IgnoreKeyboardSafeArea: ViewModifier {
     let active: Bool
@@ -305,9 +284,17 @@ struct SettingsRowContent<Trailing: View>: View {
     var value: String? = nil
     /// Renders the icon + label in red (e.g. Factory Reset).
     var destructive: Bool = false
+    /// Set when `trailing` carries an accessory (toggle, picker) so that, on a
+    /// menu screen, it gets pulled in to the 20 margin like a trailing value.
+    var hasTrailingAccessory: Bool = false
     @ViewBuilder var trailing: () -> Trailing
 
+    @Environment(\.settingsIsMenu) private var isMenu
+
     var body: some View {
+        // On menu screens, titles run to the 8 margin but trailing accessories
+        // (value text, toggle) are pulled in 12pt → the 20 margin.
+        let pull: CGFloat = (isMenu && (value != nil || hasTrailingAccessory)) ? 12 : 0
         HStack(spacing: 16) {
             if let systemImage {
                 DSImageView(systemName: systemImage, size: .font(.title3),
@@ -322,10 +309,13 @@ struct SettingsRowContent<Trailing: View>: View {
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let value {
-                DSText(value).dsTextStyle(.subheadline)
+            HStack(spacing: 16) {
+                if let value {
+                    DSText(value).dsTextStyle(.subheadline)
+                }
+                trailing()
             }
-            trailing()
+            .padding(.trailing, pull)
         }
         .frame(height: 34)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -370,7 +360,8 @@ struct SettingsToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        SettingsRowContent(label: label, systemImage: systemImage) {
+        SettingsRowContent(label: label, systemImage: systemImage,
+                           hasTrailingAccessory: true) {
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .tint(appToggleTint)

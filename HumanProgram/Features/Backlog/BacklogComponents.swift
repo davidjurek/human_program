@@ -61,9 +61,7 @@ struct BacklogRow<Destination: View>: View {
     private var faceContent: some View {
         HStack(spacing: 12) {
             if selecting {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundStyle(isSelected ? Color.green : Color.secondary)
+                SelectionCircle(isOn: isSelected)
             }
             VStack(alignment: .leading, spacing: 2) {
                 DSText(title).dsTextStyle(.title3).lineLimit(2)

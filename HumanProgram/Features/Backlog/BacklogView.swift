@@ -61,7 +61,6 @@ struct BacklogView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .background(ScrollIndicatorInset(right: 7))
         }
     }
 
@@ -373,7 +372,6 @@ struct BacklogFolderView: View {
                     Color.clear.frame(height: 40)
                 }
                 .padding(.horizontal, 20).padding(.top, 8)
-                .background(ScrollIndicatorInset(right: 7))
             }
         }
         .safeAreaInset(edge: .top) { topBar }

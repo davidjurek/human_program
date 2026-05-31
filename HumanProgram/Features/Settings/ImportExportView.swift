@@ -7,24 +7,60 @@ import UniformTypeIdentifiers
 // (text backlog, CSV backlog, restore .hprgm); Export offers one (.hprgm full
 // backup). Every step is a real pushed page.
 
+// MARK: - Import flow coordinator
+
+/// Drives the text/CSV import push stack from one place so "Done" on the final
+/// summary page can pop ALL the way back to the Import menu in one tap.
+@Observable final class ImportFlow {
+    enum Mode { case text, csv }
+    var mode: Mode? = nil
+    var showSelection = false
+    var showSummary = false
+    var rows: [ParsedBacklogRow] = []
+    var skipped = 0
+    var summary: ImportSummary? = nil
+
+    func openSelection(rows: [ParsedBacklogRow], skipped: Int) {
+        self.rows = rows; self.skipped = skipped; showSelection = true
+    }
+    func openSummary(_ summary: ImportSummary) {
+        self.summary = summary; showSummary = true
+    }
+    /// Pops summary + selection + importer in one shot, back to the menu.
+    func backToMenu() { showSummary = false; showSelection = false; mode = nil }
+}
+
 // MARK: - Import menu
 
 struct ImportView: View {
+    @State private var flow = ImportFlow()
+
     var body: some View {
+        @Bindable var flow = flow
         SettingsScreen {
             SettingsGroup(title: "Backlog") {
-                SettingsNavRow(label: "Import from Text", systemImage: "text.alignleft") {
-                    TextBacklogImportView()
+                SettingsButtonRow(label: "Import from Text", systemImage: "text.alignleft") {
+                    flow.mode = .text
                 }
-                SettingsNavRow(label: "Import from CSV", systemImage: "tablecells") {
-                    CSVBacklogImportView()
+                SettingsButtonRow(label: "Import from CSV", systemImage: "tablecells") {
+                    flow.mode = .csv
                 }
             }
             SettingsGroup(title: "Full Backup") {
                 SettingsNavRow(label: "Restore from .hprgm", systemImage: "arrow.down.doc") {
-                    HprgmRestoreView()
+                    HprgmRestoreChooseView()
                 }
             }
+        }
+        .environment(flow)
+        .navigationDestination(isPresented: Binding(
+            get: { flow.mode != nil },
+            set: { if !$0 { flow.mode = nil } })) {
+                switch flow.mode {
+                case .text: TextBacklogImportView()
+                case .csv:  CSVBacklogImportView()
+                case .none: EmptyView()
+                }
         }
     }
 }
@@ -39,11 +75,11 @@ struct ExportView: View {
     var body: some View {
         SettingsScreen {
             SettingsGroup(title: "Full Backup") {
-                SettingsButtonRow(label: "Export .hprgm", systemImage: "square.and.arrow.up") {
+                SettingsButtonRow(label: "Export Backup", systemImage: "square.and.arrow.up") {
                     exportBackup()
                 }
             }
-            DSText("Exports your full app state — backlog, schedules, recurring tasks, exercise, daily pages, settings — except the game and your PIN/Face ID.")
+            DSText("Export a full app state.")
                 .dsTextStyle(.subheadline)
             if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
         }
@@ -62,12 +98,19 @@ struct ExportView: View {
 // MARK: - Text backlog import (input → select → summary)
 
 struct TextBacklogImportView: View {
+    @Environment(ImportFlow.self) private var flow
     @State private var text = ""
-    @State private var rows: [ParsedBacklogRow] = []
-    @State private var pushSelect = false
 
     var body: some View {
-        SettingsScreen(centered: true) {
+        @Bindable var flow = flow
+        SettingsScreen(centered: true, trailing: {
+            Button {
+                let rows = BacklogImportParser.parseText(text)
+                if !rows.isEmpty { flow.openSelection(rows: rows, skipped: 0) }
+            } label: {
+                Text("Load").font(appFont(18)).foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
+            }
+        }) {
             SettingsSectionLabel(title: "Paste titles — one per line")
             TextEditor(text: $text)
                 .font(appFont(17))
@@ -75,13 +118,9 @@ struct TextBacklogImportView: View {
                 .frame(height: 280)
                 .padding(8)
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-            SettingsButtonRow(label: "Load", systemImage: "arrow.right.circle") {
-                rows = BacklogImportParser.parseText(text)
-                if !rows.isEmpty { pushSelect = true }
-            }
         }
-        .navigationDestination(isPresented: $pushSelect) {
-            ImportSelectionView(rows: rows, skippedNoTitle: 0)
+        .navigationDestination(isPresented: $flow.showSelection) {
+            ImportSelectionView()
         }
     }
 }
@@ -89,14 +128,13 @@ struct TextBacklogImportView: View {
 // MARK: - CSV backlog import
 
 struct CSVBacklogImportView: View {
-    @State private var rows: [ParsedBacklogRow] = []
-    @State private var skipped = 0
-    @State private var pushSelect = false
+    @Environment(ImportFlow.self) private var flow
     @State private var error: String?
     @State private var showPicker = false
     @State private var shareTemplate: URL?
 
     var body: some View {
+        @Bindable var flow = flow
         SettingsScreen(centered: true) {
             SettingsGroup(title: "CSV") {
                 SettingsButtonRow(label: "Download template", systemImage: "arrow.down.doc") {
@@ -106,7 +144,7 @@ struct CSVBacklogImportView: View {
                     showPicker = true
                 }
             }
-            DSText("The file must be headerless: columns are title, project, date (YYYY-MM-DD), notes. Rows with no title are skipped; a bad date or wrong column count rejects the whole file.")
+            DSText("Requirements:\n•  Date must be formatted YYYY-MM-DD with padded zeroes\n•  Each row must have the title")
                 .dsTextStyle(.subheadline)
             if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
         }
@@ -114,8 +152,8 @@ struct CSVBacklogImportView: View {
         .fileImporter(isPresented: $showPicker, allowedContentTypes: [.commaSeparatedText, .text, .plainText]) { result in
             handle(result)
         }
-        .navigationDestination(isPresented: $pushSelect) {
-            ImportSelectionView(rows: rows, skippedNoTitle: skipped)
+        .navigationDestination(isPresented: $flow.showSelection) {
+            ImportSelectionView()
         }
     }
 
@@ -137,8 +175,8 @@ struct CSVBacklogImportView: View {
         case .rejected(let reason):
             error = "Import rejected: \(reason)"
         case .parsed(let parsed, let skippedNoTitle):
-            rows = parsed; skipped = skippedNoTitle
-            if rows.isEmpty { error = "No valid rows found." } else { pushSelect = true }
+            if parsed.isEmpty { error = "No valid rows found." }
+            else { flow.openSelection(rows: parsed, skipped: skippedNoTitle) }
         }
     }
 }
@@ -146,28 +184,24 @@ struct CSVBacklogImportView: View {
 // MARK: - Selection page (all selected, deselect, import)
 
 struct ImportSelectionView: View {
-    let rows: [ParsedBacklogRow]
-    let skippedNoTitle: Int
+    @Environment(ImportFlow.self) private var flow
     @Environment(\.modelContext) private var context
-
     @State private var selected: Set<UUID> = []
-    @State private var summary: ImportSummary?
-    @State private var pushSummary = false
 
     var body: some View {
+        @Bindable var flow = flow
         SettingsScreen(centered: true, trailing: {
             Button { runImport() } label: {
                 Text("Import").font(appFont(18)).foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
             }
         }) {
-            SettingsSectionLabel(title: "\(selected.count) of \(rows.count) selected")
-            ForEach(rows) { row in
+            SettingsSectionLabel(title: "\(selected.count) of \(flow.rows.count) selected")
+            ForEach(flow.rows) { row in
                 Button {
                     if selected.contains(row.id) { selected.remove(row.id) } else { selected.insert(row.id) }
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: selected.contains(row.id) ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 20)).foregroundStyle(selected.contains(row.id) ? Color.green : Color.secondary)
+                        SelectionCircle(isOn: selected.contains(row.id))
                         VStack(alignment: .leading, spacing: 2) {
                             DSText(row.title).dsTextStyle(.body).lineLimit(1)
                             if let sub = subtitle(row) { DSText(sub).dsTextStyle(.subheadline) }
@@ -178,9 +212,9 @@ struct ImportSelectionView: View {
                 }.buttonStyle(.plain)
             }
         }
-        .onAppear { if selected.isEmpty { selected = Set(rows.map { $0.id }) } }
-        .navigationDestination(isPresented: $pushSummary) {
-            if let summary { ImportSummaryView(summary: summary) }
+        .onAppear { if selected.isEmpty { selected = Set(flow.rows.map { $0.id }) } }
+        .navigationDestination(isPresented: $flow.showSummary) {
+            ImportSummaryView()
         }
     }
 
@@ -192,22 +226,27 @@ struct ImportSelectionView: View {
     }
 
     private func runImport() {
-        summary = BacklogImporter.run(rows: rows, selected: selected, skippedNoTitle: skippedNoTitle, context: context)
-        pushSummary = true
+        let result = BacklogImporter.run(rows: flow.rows, selected: selected,
+                                         skippedNoTitle: flow.skipped, context: context)
+        flow.openSummary(result)
     }
 }
 
 // MARK: - Summary page (expandable categories)
 
 struct ImportSummaryView: View {
-    let summary: ImportSummary
+    @Environment(ImportFlow.self) private var flow
 
     var body: some View {
-        SettingsScreen(centered: true) {
+        SettingsScreen(centered: true, trailing: {
+            Button { flow.backToMenu() } label: {
+                Text("Done").font(appFont(18)).foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
+            }
+        }) {
             SettingsSectionLabel(title: "Import complete")
-            disclosure("Imported", summary.imported, color: .green)
-            disclosure("Not imported", summary.notImported, color: .secondary)
-            disclosure("Rejected", summary.rejected, color: .red)
+            disclosure("Imported", flow.summary?.imported ?? [], color: .green)
+            disclosure("Not imported", flow.summary?.notImported ?? [], color: .secondary)
+            disclosure("Rejected", flow.summary?.rejected ?? [], color: .red)
         }
     }
 
@@ -229,40 +268,61 @@ struct ImportSummaryView: View {
     }
 }
 
-// MARK: - hprgm restore
+// MARK: - hprgm restore (choose file → confirm)
 
-struct HprgmRestoreView: View {
-    @Environment(\.modelContext) private var context
-    @Environment(AppState.self) private var appState
+/// Step 1: pick the .hprgm file. Choosing one auto-advances to the warning screen.
+struct HprgmRestoreChooseView: View {
     @State private var showPicker = false
     @State private var pickedURL: URL?
-    @State private var confirm = ""
-    @State private var error: String?
-    @State private var done = false
-
-    private var canRestore: Bool { pickedURL != nil && confirm.uppercased() == "RESET" }
+    @State private var push = false
 
     var body: some View {
         SettingsScreen(centered: true) {
-            VStack(spacing: 16) {
+            SettingsGroup(title: "Restore") {
+                SettingsButtonRow(label: "Choose .hprgm file", systemImage: "folder") {
+                    showPicker = true
+                }
+            }
+        }
+        .fileImporter(isPresented: $showPicker,
+                      allowedContentTypes: [UTType(filenameExtension: "hprgm") ?? .data, .json, .data]) { result in
+            if case .success(let url) = result { pickedURL = url; push = true }
+        }
+        .navigationDestination(isPresented: $push) {
+            if let pickedURL { HprgmRestoreConfirmView(url: pickedURL) }
+        }
+    }
+}
+
+/// Step 2: warning + type RESTORE to confirm.
+struct HprgmRestoreConfirmView: View {
+    let url: URL
+    @Environment(\.modelContext) private var context
+    @Environment(AppState.self) private var appState
+    @State private var confirm = ""
+    @State private var error: String?
+
+    private var canRestore: Bool { confirm.uppercased() == "RESTORE" }
+
+    var body: some View {
+        // Manual keyboard avoidance + upper-anchored block so the keyboard never
+        // covers the red button.
+        SettingsScreen(centered: true, manualKeyboardAvoidance: true) {
+            VStack(spacing: 14) {
                 DSImageView(systemName: "exclamationmark.triangle.fill", size: 48, tint: .color(.red))
-                    .padding(.top, 12)
+                    .padding(.top, 8)
                 DSText("Restore Backup").dsTextStyle(.title2)
                 DSText("Restoring REPLACES all current data with the backup. This cannot be undone. Your PIN and Face ID stay as they are.")
                     .dsTextStyle(.body).multilineTextAlignment(.center)
 
-                SettingsButtonRow(label: pickedURL == nil ? "Choose .hprgm file" : "File selected ✓",
-                                  systemImage: "folder") { showPicker = true }
-
-                DSText("Type RESET to confirm").dsTextStyle(.subheadline).padding(.top, 8)
-                TextField("", text: $confirm, prompt: Text("RESET").foregroundStyle(.tertiary))
+                DSText("Type RESTORE to confirm").dsTextStyle(.subheadline).padding(.top, 8)
+                TextField("", text: $confirm, prompt: Text("RESTORE").foregroundStyle(.tertiary))
                     .autocorrectionDisabled().textInputAutocapitalization(.characters)
                     .font(appFont(18)).multilineTextAlignment(.center)
                     .padding(.vertical, 14).padding(.horizontal, 20)
                     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
 
                 if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
-                if done { DSText("Restore complete.").dsTextStyle(.subheadline, Color.green) }
 
                 Button { restore() } label: {
                     Text("Restore Everything").font(appFont(18)).foregroundStyle(.white)
@@ -272,14 +332,10 @@ struct HprgmRestoreView: View {
             }
             .frame(maxWidth: .infinity).padding(.horizontal, 8)
         }
-        .fileImporter(isPresented: $showPicker,
-                      allowedContentTypes: [UTType(filenameExtension: "hprgm") ?? .data, .json, .data]) { result in
-            if case .success(let url) = result { pickedURL = url; error = nil }
-        }
     }
 
     private func restore() {
-        guard let url = pickedURL, canRestore else { return }
+        guard canRestore else { return }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         do {

@@ -37,7 +37,6 @@ struct TodayView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
-                .background(ScrollIndicatorInset(right: 7))
             }
         }
         .safeAreaInset(edge: .top) { topBar }
@@ -265,9 +264,7 @@ private struct TodayTaskRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Button(action: onToggle) {
-                Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22))
-                    .foregroundStyle(task.completed ? Color.green : Color.secondary)
+                SelectionCircle(isOn: task.completed)
             }.buttonStyle(.plain)
 
             NavigationLink {

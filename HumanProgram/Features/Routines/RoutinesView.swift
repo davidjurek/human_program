@@ -36,7 +36,6 @@ struct RoutinesView: View {
                 }
                 Color.clear.frame(height: 40)
             }
-            .background(ScrollIndicatorInset(right: 7))
         }
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
@@ -84,7 +83,7 @@ struct EmojiField: View {
 
     var body: some View {
         ZStack {
-            Text(emoji.isEmpty ? "Tap to choose" : emoji)
+            Text(emoji.isEmpty ? "Select" : emoji)
                 .font(emoji.isEmpty ? appFont(16) : .system(size: 30))
                 .foregroundStyle(emoji.isEmpty ? .secondary : .primary)
             TextField("", text: $emoji)

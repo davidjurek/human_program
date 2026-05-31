@@ -38,7 +38,8 @@ struct RoutineEditorView: View {
                        manualKeyboardAvoidance: true,
                        trailing: { trailing }) {
             if editing {
-                AppTextField(text: $name, placeholder: "Routine name", fontSize: 20)
+                // Match read mode's .title2 size so the title doesn't reflow.
+                AppTextField(text: $name, placeholder: "Routine name", fontSize: appScaledSize(22))
                 HStack {
                     DSText("Emoji").dsTextStyle(.title3)
                     Spacer()
@@ -49,7 +50,7 @@ struct RoutineEditorView: View {
                 HStack {
                     DSText("Emoji").dsTextStyle(.title3)
                     Spacer()
-                    Text(emoji.isEmpty ? "—" : emoji).font(.system(size: 28))
+                    Text(emoji).font(.system(size: 28))
                 }
             }
 
@@ -75,7 +76,7 @@ struct RoutineEditorView: View {
             if editing { commitNameEmoji() }
             editing.toggle()
         } label: {
-            Text(editing ? "Done" : "Edit").font(appFont(18)).foregroundStyle(.primary)
+            Text(editing ? "Save" : "Edit").font(appFont(18)).foregroundStyle(.primary)
                 .frame(height: 44).padding(.horizontal, 6)
         }
     }
@@ -85,8 +86,7 @@ struct RoutineEditorView: View {
     private var stepsList: some View {
         VStack(spacing: 0) {
             if items.isEmpty {
-                DSText("No steps yet").dsTextStyle(.subheadline)
-                    .frame(maxWidth: .infinity, alignment: .leading).frame(height: 44)
+                EmptyView()
             } else {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, it in
                     row(it: it, index: index)

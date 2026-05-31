@@ -30,8 +30,9 @@ struct PINEntryView: View {
         ZStack {
             SettingsBackground()
 
-            VStack(spacing: 0) {
-                if showsBack {
+            // Back chevron pinned top-left.
+            if showsBack {
+                VStack {
                     HStack {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 18, weight: .semibold))
@@ -42,43 +43,52 @@ struct PINEntryView: View {
                         Spacer()
                     }
                     .padding(.horizontal, 16)
+                    Spacer()
                 }
+            }
 
-                Spacer()
-
-                if let title {
-                    DSTextTitle(title)
-                        .padding(.bottom, 6)
-                }
-                if let subtitle {
-                    Text(subtitle)
-                        .font(appFont(15))
-                        .foregroundStyle(.secondary)
-                        .padding(.bottom, 18)
-                }
-
-                maskedField
-                    .offset(x: shakeOffset)
-
-                Text(errorMessage ?? " ")
-                    .font(appFont(14))
-                    .foregroundStyle(.red)
-                    .frame(height: 20)
-                    .padding(.top, 10)
-
-                if showsBiometric {
-                    Button { onBiometric?() } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "faceid").font(.system(size: 20, weight: .light))
-                            Text("Use Face ID").font(appFont(16))
-                        }
+            // Padlock → text → field block, centered at ~2/5 of the screen height.
+            GeometryReader { geo in
+                VStack(spacing: 0) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 40, weight: .regular))
                         .foregroundStyle(.primary)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 18)
-                }
+                        .padding(.bottom, 22)
 
-                Spacer()
+                    if let title {
+                        DSTextTitle(title)
+                            .padding(.bottom, 6)
+                    }
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(appFont(15))
+                            .foregroundStyle(.secondary)
+                            .padding(.bottom, 18)
+                    }
+
+                    maskedField
+                        .offset(x: shakeOffset)
+
+                    Text(errorMessage ?? " ")
+                        .font(appFont(14))
+                        .foregroundStyle(.red)
+                        .frame(height: 20)
+                        .padding(.top, 10)
+
+                    if showsBiometric {
+                        Button { onBiometric?() } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "faceid").font(.system(size: 20, weight: .light))
+                                Text("Use Face ID").font(appFont(16))
+                            }
+                            .foregroundStyle(.primary)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 18)
+                    }
+                }
+                .frame(width: geo.size.width)
+                .position(x: geo.size.width / 2, y: geo.size.height * 0.4)
             }
 
             VStack(spacing: 0) {

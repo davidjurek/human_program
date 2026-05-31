@@ -122,7 +122,7 @@ Every Settings-area screen is composed from the shared components in `Features/S
 
 - `SettingsScreen { ... }` — themed scroll container. Soft lavender→blue→peach **gradient** background (`SettingsBackground`, Settings screens only), **no nav title** (titles are hidden app-wide; back button stays). Top inset 28.
   - **Side margins depend on screen type, set by the `centered` flag:**
-    - **Menu screens** (the default, `centered: false`) — **left 42, right 14** (intentional right-shifted asymmetry).
+    - **Menu screens** (the default, `centered: false`) — **left 42, right 8** (intentional right-shifted asymmetry).
     - **Non-menu screens** (editors, list screens, etc. — pass `centered: true`) — **left 20, right 20** (symmetric).
   - **Swipe-back is re-enabled here.** Hiding the nav bar kills iOS's leading-edge swipe-back gesture, so `SettingsScreen` re-installs it (a recognizer that re-asserts on every (re)appear, so it doesn't go stale after visiting another screen). Editors pass `onBack`/`swipeBackBlocked`: when there are unsaved changes the swipe (and the back button) route through the **discard-changes guard** instead of popping. Toolbar icon buttons (back, `+`, trash, Save) get `.contentShape(Rectangle())` so the whole 44×44 is tappable.
   - A faint **gradient frost** sits behind the top bar so the back/Save buttons stay legible over scrolling content.

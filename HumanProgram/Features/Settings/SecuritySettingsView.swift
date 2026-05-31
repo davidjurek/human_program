@@ -9,8 +9,53 @@ import LocalAuthentication
 struct SecuritySettingsView: View {
     @State private var lockVM = AppLockViewModel()
     @State private var hasPIN = false
+    /// When a PIN is set, the Security screen itself is gated: the menu only
+    /// appears after the PIN is entered.
+    @State private var unlocked = false
+    @State private var gateError: String?
+    @State private var gateShake = 0
+    @Environment(\.dismiss) private var dismiss
+
+    init() {
+        let vm = AppLockViewModel()
+        _lockVM = State(initialValue: vm)
+        _hasPIN = State(initialValue: vm.repo.hasPIN())
+    }
 
     var body: some View {
+        Group {
+            if hasPIN && !unlocked {
+                PINEntryView(
+                    title: "Enter PIN",
+                    subtitle: nil,
+                    minLength: lockVM.minPINLength,
+                    maxLength: lockVM.maxPINLength,
+                    showsBack: true,
+                    onBack: { dismiss() },
+                    errorMessage: gateError,
+                    shakeToken: gateShake,
+                    onSubmit: verifyGate
+                )
+                .navigationBarBackButtonHidden(true)
+                .toolbar(.hidden, for: .navigationBar)
+            } else {
+                menu
+            }
+        }
+        .onAppear { hasPIN = lockVM.repo.hasPIN() }
+    }
+
+    private func verifyGate(_ pin: String) {
+        if lockVM.repo.verifyPIN(pin) {
+            gateError = nil
+            unlocked = true
+        } else {
+            gateError = "Incorrect PIN."
+            gateShake += 1
+        }
+    }
+
+    private var menu: some View {
         SettingsScreen {
             SettingsGroup {
                 SettingsNavRow(label: "PIN", systemImage: "key") {
@@ -33,7 +78,6 @@ struct SecuritySettingsView: View {
                 }
             }
         }
-        .onAppear { hasPIN = lockVM.repo.hasPIN() }
     }
 
     private var biometryLabel: String { BiometryInfo.label }
@@ -70,16 +114,31 @@ private struct CreateOrChangePINView: View {
     let isChange: Bool
     @Environment(\.dismiss) private var dismiss
 
-    @State private var step: Step = .enter
+    @State private var step: Step
     @State private var firstEntry = ""
     @State private var error: String?
     @State private var shake = 0
 
-    private enum Step: Hashable { case enter, confirm }
+    init(vm: AppLockViewModel, isChange: Bool) {
+        self.vm = vm
+        self.isChange = isChange
+        // Changing an existing PIN starts by verifying the current one.
+        _step = State(initialValue: isChange ? .verifyOld : .enter)
+    }
+
+    private enum Step: Hashable { case verifyOld, enter, confirm }
+
+    private var title: String {
+        switch step {
+        case .verifyOld: return "Enter current PIN"
+        case .enter:     return isChange ? "Enter new PIN" : "Create a PIN"
+        case .confirm:   return "Confirm PIN"
+        }
+    }
 
     var body: some View {
         PINEntryView(
-            title: step == .enter ? (isChange ? "Enter new PIN" : "Create a PIN") : "Confirm PIN",
+            title: title,
             subtitle: step == .enter ? "Digits only · 4–20 digits" : nil,
             minLength: vm.minPINLength,
             maxLength: vm.maxPINLength,
@@ -96,6 +155,14 @@ private struct CreateOrChangePINView: View {
 
     private func handle(_ pin: String) {
         switch step {
+        case .verifyOld:
+            if vm.repo.verifyPIN(pin) {
+                error = nil
+                step = .enter
+            } else {
+                error = "Incorrect PIN."
+                shake += 1
+            }
         case .enter:
             firstEntry = pin
             error = nil
@@ -235,8 +302,6 @@ private struct FaceIDSetupView: View {
                                   systemImage: BiometryInfo.icon,
                                   isOn: binding)
             }
-            DSText("Use \(BiometryInfo.label) to unlock instead of typing your PIN. Your PIN still works as a fallback.")
-                .dsTextStyle(.subheadline)
         }
         .onAppear { isOn = vm.repo.isBiometricEnabled }
     }

@@ -136,6 +136,16 @@ func appFont(_ size: CGFloat, bold: Bool = false) -> Font {
     return FontChoice.from(raw).font(size: size, bold: bold)
 }
 
+/// The on-screen point size for a DSKit text-style base size at the current
+/// global font scale. Use this so a plain `Text`/`TextField`/`AppTextField` that
+/// must line up with a `DSText(...).dsTextStyle(...)` matches its size (DSKit text
+/// styles apply the global FontSizeStep scale; `appFont`/`appUIFont` do not).
+/// e.g. `.title2` → `appScaledSize(22)`, `.title3` → `appScaledSize(20)`.
+func appScaledSize(_ base: CGFloat) -> CGFloat {
+    let step = UserDefaults.standard.object(forKey: "settings.fontSizeStep") as? Int ?? FontSizeStep.defaultIndex
+    return base * FontSizeStep.scale(for: step)
+}
+
 /// The currently-selected app font as a UIFont (for UIKit-backed views).
 func appUIFont(_ size: CGFloat, bold: Bool = false) -> UIFont {
     let raw = UserDefaults.standard.string(forKey: "settings.fontChoice") ?? FontChoice.default.rawValue

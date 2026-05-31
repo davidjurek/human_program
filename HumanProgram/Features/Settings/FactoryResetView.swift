@@ -67,11 +67,13 @@ struct FactoryResetView: View {
         "This cannot be undone."
 
     var body: some View {
-        SettingsScreen(centered: true) {
-            VStack(spacing: 16) {
+        // Keep our own keyboard avoidance off and anchor the block in the upper
+        // portion so the system keyboard never covers the red button.
+        SettingsScreen(centered: true, manualKeyboardAvoidance: true) {
+            VStack(spacing: 14) {
                 DSImageView(systemName: "exclamationmark.triangle.fill",
                             size: 56, tint: .color(.red))
-                    .padding(.top, 24)
+                    .padding(.top, 8)
 
                 DSText("Reset App").dsTextStyle(.title2)
 
@@ -110,7 +112,7 @@ struct FactoryResetView: View {
                 if isResetting {
                     ProgressView().tint(.white)
                 } else {
-                    Text("Reset Everything").font(appFont(18)).foregroundStyle(.white)
+                    Text("Factory Reset").font(appFont(18)).foregroundStyle(.white)
                 }
             }
             .frame(maxWidth: .infinity)

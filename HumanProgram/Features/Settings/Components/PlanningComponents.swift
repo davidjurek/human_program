@@ -171,18 +171,22 @@ extension View {
     }
 }
 
-/// Clear liquid glass (iOS 26 `glassEffect`), with an ultra-thin blur fallback.
+/// Frosty liquid glass (iOS 26 `glassEffect(.regular)`), with a thin-material
+/// blur fallback. A translucent white tint sits over the glass so content behind
+/// is muted rather than bleeding through (the old `.clear`/ultra-thin look read
+/// as confusing). One place — every popup picks up the frost.
 struct PopupGlassBackground: View {
     let cornerRadius: CGFloat
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         Group {
             if #available(iOS 26.0, *) {
-                shape.fill(.clear).glassEffect(.clear, in: shape)
+                shape.fill(.clear).glassEffect(.regular, in: shape)
             } else {
-                BlurView(style: .systemUltraThinMaterial).clipShape(shape)
+                BlurView(style: .systemThinMaterial).clipShape(shape)
             }
         }
+        .overlay(shape.fill(Color.white.opacity(0.6)))
         .overlay(shape.strokeBorder(Color.primary.opacity(0.08)))
     }
 }
