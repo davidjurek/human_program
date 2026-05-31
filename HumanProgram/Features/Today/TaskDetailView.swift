@@ -11,23 +11,32 @@ struct TaskDetailView: View {
     /// (title, notes) — called on Done.
     let onSave: (String, String) -> Void
 
+    @Environment(\.dismiss) private var dismiss
     @State private var editing = false
     @State private var title = ""
     @State private var notes = ""
     @State private var didLoad = false
+    @State private var showDiscard = false
+
+    private var isDirty: Bool { title != task.title || notes != task.notes }
 
     var body: some View {
-        SettingsScreen(centered: true, trailing: { editButton }) {
+        // Same read/edit layout as the Backlog task detail; the only extra is the
+        // read-only Source row. [#45]
+        SettingsScreen(centered: true,
+                       onBack: handleBack,
+                       swipeBackBlocked: { editing && isDirty },
+                       trailing: { editButton }) {
             SettingsSectionLabel(title: "Task")
             if editing {
-                AppTextField(text: $title, placeholder: "Title", fontSize: 20)
+                AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20))
             } else {
                 DSText(title.isEmpty ? "Untitled" : title).dsTextStyle(.title3)
                     .frame(minHeight: 34, alignment: .leading)
             }
 
             SettingsGroup(title: "Details") {
-                detailRow("Source", sourceLabel)
+                detailRow("Source", sourceLabel)   // read-only, both modes
                 detailRow("Project", projectName)
             }
 
@@ -36,9 +45,17 @@ struct TaskDetailView: View {
                 AppTextField(text: $notes, placeholder: "Note", fontSize: 18, multiline: true)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             } else {
-                DSText(notes.isEmpty ? "—" : notes).dsTextStyle(.body)
+                DSText(notes).dsTextStyle(.body)   // blank when empty
                     .frame(minHeight: 34, alignment: .topLeading)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .overlay {
+            if showDiscard {
+                ConfirmPopup(message: "Discard changes?",
+                             confirmTitle: "Discard",
+                             onConfirm: { showDiscard = false; dismiss() },
+                             onCancel: { showDiscard = false })
             }
         }
         .onAppear {
@@ -49,12 +66,16 @@ struct TaskDetailView: View {
         }
     }
 
+    private func handleBack() {
+        if editing && isDirty { showDiscard = true } else { dismiss() }
+    }
+
     private var editButton: some View {
         Button {
             if editing { onSave(title.trimmingCharacters(in: .whitespaces).isEmpty ? task.title : title, notes) }
             editing.toggle()
         } label: {
-            Text(editing ? "Done" : "Edit").font(appFont(18))
+            Text(editing ? "Save" : "Edit").font(appFont(18))
                 .foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
         }
     }

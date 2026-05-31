@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import DSKit
 import UIKit
+import EventKit
 
 // The Today screen, rebuilt on DSKit (DailyOS-inspired): date nav + padlock,
 // a Daily Schedule hour-timeline (the Settings schedule flows in) with a red
@@ -16,8 +17,15 @@ struct TodayView: View {
     @State private var newTask = ""
     @FocusState private var addFocused: Bool
     @State private var now = Date()
+    @State private var calendarService = CalendarAdapterService()
+    @State private var calendarItems: [TimelineItem] = []
 
-    private let ticker = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    // Live "now" line moves while the page stays open.
+    private let ticker = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
+
+    private var selectedCalendarIds: [String] {
+        UserDefaults.standard.stringArray(forKey: "selectedCalendarIds") ?? []
+    }
 
     init(context: ModelContext) {
         _vm = State(initialValue: TodayViewModel(context: context))
@@ -42,11 +50,45 @@ struct TodayView: View {
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
-        .task { await vm.loadPage() }
+        .task { await vm.loadPage(); await loadCalendarItems() }
         .onReceive(ticker) { now = $0 }
+        .onChange(of: vm.viewingDate) { _, _ in Task { await loadCalendarItems() } }
         .onDisappear { vm.relockOnLeave() }
         .sheet(isPresented: $showDatePicker) {
             TodayDatePicker(date: vm.viewingDate) { vm.jumpTo(date: $0) }
+        }
+    }
+
+    // MARK: - Calendar events for the green lane
+
+    private func loadCalendarItems() async {
+        let start = Calendar.current.startOfDay(for: vm.viewingDate)
+        guard !selectedCalendarIds.isEmpty else { calendarItems = []; return }
+        if calendarService.authorizationStatus != .fullAccess {
+            _ = await calendarService.requestAccess()
+        }
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start
+        let events = calendarService.fetchEvents(from: start, to: end, calendarIds: selectedCalendarIds)
+        calendarItems = events.map { ev in
+            TimelineItem(id: ev.eventIdentifier ?? UUID().uuidString,
+                         title: ev.title ?? "(no title)",
+                         startMin: minutesOfDay(ev.startDate, dayStart: start),
+                         endMin: minutesOfDay(ev.endDate, dayStart: start),
+                         isCalendar: true)
+        }
+    }
+
+    private func minutesOfDay(_ date: Date?, dayStart: Date) -> Int {
+        guard let date else { return 0 }
+        let secs = date.timeIntervalSince(dayStart)
+        return Int(max(0, min(1440, secs / 60)))
+    }
+
+    private var scheduleItems: [TimelineItem] {
+        (vm.page?.scheduleBlocks ?? []).sorted { $0.sortOrder < $1.sortOrder }.map { b in
+            let end = b.endMinuteOfDay <= b.startMinuteOfDay ? 1440 : b.endMinuteOfDay
+            return TimelineItem(id: "blk-\(b.id)", title: b.title,
+                                startMin: b.startMinuteOfDay, endMin: end, isCalendar: false)
         }
     }
 
@@ -62,8 +104,8 @@ struct TodayView: View {
                 .onTapGesture { vm.relockOnLeave(); dismiss() }
             Spacer()
             HStack(spacing: 18) {
-                navButton("chevron.left") { vm.goToPreviousDay() }
-                navButton("chevron.right") { vm.goToNextDay() }
+                navButton("arrow.left") { vm.goToPreviousDay() }
+                navButton("arrow.right") { vm.goToNextDay() }
                 Button { vm.goToToday() } label: {
                     DSText("Today").dsTextStyle(.subheadline)
                 }.buttonStyle(.plain)
@@ -71,7 +113,6 @@ struct TodayView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .popupGlass(cornerRadius: 20)
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 4)
@@ -115,9 +156,9 @@ struct TodayView: View {
 
     private var scheduleSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DSText("Daily Schedule").dsTextStyle(.headline)
+            DSText("Schedule").dsTextStyle(.headline)
             DailyTimeline(
-                blocks: (vm.page?.scheduleBlocks ?? []).sorted { $0.sortOrder < $1.sortOrder },
+                items: scheduleItems + calendarItems,
                 showNow: vm.isToday,
                 now: now
             )
@@ -128,35 +169,16 @@ struct TodayView: View {
 
     private var tasksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                DSText("Today's Tasks").dsTextStyle(.headline)
-                if !vm.isPastLocked {
-                    Button {
-                        addingTask = true
-                        DispatchQueue.main.async { addFocused = true }
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 18)).foregroundStyle(.primary)
-                    }.buttonStyle(.plain)
-                }
-                Spacer()
-            }
+            DSText("Tasks").dsTextStyle(.headline)
 
-            if vm.sortedTasks.isEmpty && !addingTask {
-                DSText("Press + to add a manual task")
-                    .dsTextStyle(.subheadline)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 16)
-            } else {
-                ForEach(vm.sortedTasks) { task in
-                    TodayTaskRow(
-                        task: task,
-                        sourceLabel: vm.sourceLabel(for: task),
-                        projectName: vm.projectName(for: task),
-                        onToggle: { Task { await vm.toggleTask(task) } },
-                        onSave: { title, notes in Task { await vm.updateTask(task, title: title, notes: notes) } }
-                    )
-                }
+            ForEach(vm.sortedTasks) { task in
+                TodayTaskRow(
+                    task: task,
+                    sourceLabel: vm.sourceLabel(for: task),
+                    projectName: vm.projectName(for: task),
+                    onToggle: { Task { await vm.toggleTask(task) } },
+                    onSave: { title, notes in Task { await vm.updateTask(task, title: title, notes: notes) } }
+                )
             }
 
             if addingTask {
@@ -167,11 +189,27 @@ struct TodayView: View {
                         .submitLabel(.done)
                         .onSubmit(commitAdd)
                     Button(action: commitAdd) {
-                        Image(systemName: "checkmark.circle.fill").font(.system(size: 20))
-                            .foregroundStyle(newTask.trimmingCharacters(in: .whitespaces).isEmpty ? .secondary : .primary)
+                        SelectionCircle(isOn: !newTask.trimmingCharacters(in: .whitespaces).isEmpty)
                     }.buttonStyle(.plain).disabled(newTask.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 .frame(height: 40)
+            }
+
+            // Centered, padded liquid-glass "Add Task" under the last task.
+            if !vm.isPastLocked && !addingTask {
+                HStack {
+                    Spacer()
+                    Button {
+                        addingTask = true
+                        DispatchQueue.main.async { addFocused = true }
+                    } label: {
+                        DSText("Add Task").dsTextStyle(.headline)
+                            .padding(.horizontal, 28).padding(.vertical, 12)
+                            .popupGlass(cornerRadius: 18)
+                    }.buttonStyle(.plain)
+                    Spacer()
+                }
+                .padding(.top, 4)
             }
         }
     }
@@ -213,9 +251,7 @@ struct TodayView: View {
                         .padding(.vertical, 8)
                 }
             }
-            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .popupGlass(cornerRadius: 16)
         }
     }
 
@@ -240,7 +276,7 @@ struct PastLockButton: View {
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.white)
         }
-        .scaleEffect(pressing ? 0.9 : 1)
+        .scaleEffect(pressing ? 1.15 : 1)   // expand on press-and-hold [#17]
         .animation(.easeOut(duration: 0.15), value: pressing)
         .contentShape(Circle())
         .onLongPressGesture(minimumDuration: 0.6, pressing: { p in
