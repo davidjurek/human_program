@@ -7,6 +7,11 @@ public final class DailyPageRepository {
     private let generator = DailyPageGenerator()
     private let completionService = CompletionService()
 
+    /// New calendar tasks get sortOrder = this base + event start-minute, placing the
+    /// calendar group after recurring/backlog (small indices) and ordering it by
+    /// start time on a freshly generated page. Manual tasks append after (max+1).
+    static let calendarSortBase = 10_000
+
     public init(context: ModelContext) {
         self.context = context
     }
@@ -145,6 +150,20 @@ public final class DailyPageRepository {
         try context.save()
     }
 
+    // MARK: - reorderTasks
+
+    /// Persist a user-defined top-to-bottom order: each task's sortOrder becomes its
+    /// index in `ordered`. The flat sort in the view then reproduces this order.
+    @discardableResult
+    public func reorderTasks(_ ordered: [DailyPageTask], on page: DailyPage) throws -> DailyPage {
+        for (index, task) in ordered.enumerated() {
+            if task.sortOrder != index { task.sortOrder = index }
+        }
+        page.updatedAt = Date()
+        try context.save()
+        return page
+    }
+
     // MARK: - deleteTask
 
     /// Delete a task from a page.
@@ -154,6 +173,67 @@ public final class DailyPageRepository {
         page.updatedAt = Date()
         completionService.recalculate(page: page)
         try context.save()
+    }
+
+    // MARK: - syncCalendarTasks
+
+    /// Materialize the selected-calendar events for this page's date as `.calendar`
+    /// tasks, so chosen calendar events flow into the Tasks list (and count toward
+    /// completion). Idempotent: inserts tasks for new events, removes tasks whose
+    /// event is gone (deleted, or its calendar deselected), and updates titles in
+    /// place (completion state preserved). Calendar tasks sort within their group by
+    /// event start time (sortOrder = start minute-of-day), so the Tasks list reads
+    /// recurring → calendar (earliest→latest) → manual. Never touches past pages.
+    @discardableResult
+    public func syncCalendarTasks(_ events: [CalendarTaskInput], on page: DailyPage) throws -> DailyPage {
+        guard !page.isPastLocked else { return page }
+
+        var changed = false
+        let incomingById = Dictionary(events.map { ($0.eventId, $0) }, uniquingKeysWith: { first, _ in first })
+        let incomingIds = Set(incomingById.keys)
+
+        // Remove calendar tasks whose event is no longer present.
+        for task in page.tasks where task.sourceType == .calendar {
+            let stillPresent = task.sourceId.map { incomingIds.contains($0) } ?? false
+            if !stillPresent {
+                page.tasks.removeAll { $0.id == task.id }
+                context.delete(task)
+                changed = true
+            }
+        }
+
+        // Update titles of calendar tasks still present. Do NOT touch sortOrder here:
+        // start time only SEEDS the order at creation; after that the user may have
+        // hold-dragged tasks into a custom order, which must survive re-syncs.
+        var existingIds = Set<String>()
+        for task in page.tasks where task.sourceType == .calendar {
+            guard let sid = task.sourceId, let ev = incomingById[sid] else { continue }
+            existingIds.insert(sid)
+            if task.title != ev.title { task.title = ev.title; changed = true }
+        }
+
+        // Insert tasks for newly-appeared events. Seed sortOrder in the "calendar
+        // zone" (after recurring's small indices) ordered by start time, so a fresh
+        // page reads recurring → calendar(earliest→latest) → manual.
+        for ev in events where !existingIds.contains(ev.eventId) {
+            let task = DailyPageTask(
+                title: ev.title,
+                sourceType: .calendar,
+                sourceId: ev.eventId,
+                sortOrder: Self.calendarSortBase + ev.startMinuteOfDay
+            )
+            task.page = page
+            page.tasks.append(task)
+            context.insert(task)
+            changed = true
+        }
+
+        if changed {
+            page.updatedAt = Date()
+            completionService.recalculate(page: page)
+            try context.save()
+        }
+        return page
     }
 
     // MARK: - severPastTasks

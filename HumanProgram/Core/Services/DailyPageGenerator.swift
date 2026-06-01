@@ -68,6 +68,20 @@ public struct BacklogTaskInput: Sendable {
     }
 }
 
+/// One selected-calendar event, flattened for materializing into `.calendar`
+/// page-tasks. `startMinuteOfDay` drives ordering within the calendar group.
+public struct CalendarTaskInput: Sendable {
+    public let eventId: String
+    public let title: String
+    public let startMinuteOfDay: Int
+
+    public init(eventId: String, title: String, startMinuteOfDay: Int) {
+        self.eventId = eventId
+        self.title = title
+        self.startMinuteOfDay = startMinuteOfDay
+    }
+}
+
 public struct ScheduleBlockInput: Sendable {
     public let id: String
     public let title: String

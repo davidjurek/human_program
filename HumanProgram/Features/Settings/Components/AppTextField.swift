@@ -12,9 +12,14 @@ struct AppTextField: UIViewRepresentable {
     var placeholder: String
     var fontSize: CGFloat = 20
     var multiline: Bool = false
+    /// Single-line fields: vertically center the text within the field's height so it
+    /// matches the read-mode `DSText` (which SwiftUI centers in the same frame) — no
+    /// vertical jump between read and edit. Leave false for multiline (top-anchored). [#41]
+    var verticallyCentered: Bool = false
 
-    func makeUIView(context: Context) -> UITextView {
-        let tv = UITextView()
+    func makeUIView(context: Context) -> VCenterTextView {
+        let tv = VCenterTextView()
+        tv.verticallyCenter = verticallyCentered
         tv.backgroundColor = .clear
         tv.delegate = context.coordinator
         tv.isScrollEnabled = false
@@ -34,7 +39,11 @@ struct AppTextField: UIViewRepresentable {
         ph.translatesAutoresizingMaskIntoConstraints = false
         tv.addSubview(ph)
         NSLayoutConstraint.activate([
-            ph.topAnchor.constraint(equalTo: tv.topAnchor),
+            // Centered single-line fields pin the placeholder to centerY so it tracks
+            // the centered text; multiline/top fields pin it to the top.
+            verticallyCentered
+                ? ph.centerYAnchor.constraint(equalTo: tv.centerYAnchor)
+                : ph.topAnchor.constraint(equalTo: tv.topAnchor),
             ph.leadingAnchor.constraint(equalTo: tv.leadingAnchor),
             ph.trailingAnchor.constraint(lessThanOrEqualTo: tv.trailingAnchor)
         ])
@@ -47,8 +56,9 @@ struct AppTextField: UIViewRepresentable {
         return tv
     }
 
-    func updateUIView(_ uiView: UITextView, context: Context) {
+    func updateUIView(_ uiView: VCenterTextView, context: Context) {
         context.coordinator.parent = self   // keep the latest binding/text
+        uiView.verticallyCenter = verticallyCentered
         uiView.font = appUIFont(fontSize)
         context.coordinator.placeholderLabel?.font = appUIFont(fontSize)
         context.coordinator.placeholderLabel?.text = placeholder
@@ -58,7 +68,7 @@ struct AppTextField: UIViewRepresentable {
 
     /// Constrain to the proposed width so the text wraps and the field reports
     /// a correct height (otherwise UITextView lays out as one giant line).
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: VCenterTextView, context: Context) -> CGSize? {
         let width = proposal.width ?? 300
         let fitted = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
         return CGSize(width: width, height: max(34, ceil(fitted.height)))
@@ -84,6 +94,23 @@ struct AppTextField: UIViewRepresentable {
                 return false
             }
             return true
+        }
+    }
+}
+
+/// UITextView that can vertically center its (single-line) text within its bounds by
+/// padding the top inset — used so an editable title sits at the same vertical center
+/// as the read-mode `DSText`, which SwiftUI centers in the same frame.
+final class VCenterTextView: UITextView {
+    var verticallyCenter = false
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard verticallyCenter else { return }
+        let used = layoutManager.usedRect(for: textContainer).height
+        let top = max(0, (bounds.height - used) / 2)
+        if abs(textContainerInset.top - top) > 0.5 {
+            textContainerInset = UIEdgeInsets(top: top, left: 0, bottom: 0, right: 0)
         }
     }
 }

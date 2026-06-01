@@ -29,7 +29,7 @@ struct TaskDetailView: View {
                        trailing: { editButton }) {
             SettingsSectionLabel(title: "Task")
             if editing {
-                AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20))
+                AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20), verticallyCentered: true)
                     .frame(minHeight: 34, alignment: .leading)   // match read mode → no reflow [#41]
             } else {
                 DSText(title.isEmpty ? "Untitled" : title).dsTextStyle(.title3)

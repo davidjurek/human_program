@@ -53,7 +53,7 @@ struct BacklogTaskDetailView: View {
             if editing {
                 // Match read mode's .title3 size AND min-height so the title
                 // doesn't change size or shift position in edit mode. [#41]
-                AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20))
+                AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20), verticallyCentered: true)
                     .frame(minHeight: 34, alignment: .leading)
             } else {
                 DSText(title.isEmpty ? "Untitled" : title).dsTextStyle(.title3)

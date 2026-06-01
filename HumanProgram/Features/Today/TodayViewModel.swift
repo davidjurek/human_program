@@ -55,19 +55,27 @@ public final class TodayViewModel {
         page?.dayComplete ?? false
     }
 
-    // Default order: recurring → calendar → backlog → manual (newest appended).
-    // Within a group, by sortOrder (append/creation order). [#11]
+    // Flat display order: purely by sortOrder. Generation SEEDS this order
+    // (recurring → calendar by start time → manual via zoned sortOrders assigned at
+    // creation), but after that the user can hold-drag to reorder anything and that
+    // custom order is authoritative — so nothing re-sorts by source group here. [#11]
     public var sortedTasks: [DailyPageTask] {
-        func rank(_ t: DailyPageTask) -> Int {
-            switch t.sourceType {
-            case .recurring: return 0
-            case .calendar:  return 1
-            case .backlog:   return 2
-            case .manual:    return 3
-            }
+        (page?.tasks ?? []).sorted {
+            $0.sortOrder != $1.sortOrder ? $0.sortOrder < $1.sortOrder
+                                         : $0.title.localizedCompare($1.title) == .orderedAscending
         }
-        return (page?.tasks ?? []).sorted {
-            rank($0) != rank($1) ? rank($0) < rank($1) : $0.sortOrder < $1.sortOrder
+    }
+
+    /// Persist a new top-to-bottom order after a hold-drag reorder. Reindexes every
+    /// task's sortOrder to its position in `ordered` (0-based) so the custom order
+    /// sticks and the flat sort reproduces it. Synchronous so the list updates in the
+    /// same animation transaction as the drag release (no snap-back flash).
+    public func reorderTasks(_ ordered: [DailyPageTask]) {
+        guard let p = page else { return }
+        do {
+            page = try pageRepo.reorderTasks(ordered, on: p)
+        } catch {
+            print("[TodayViewModel] reorderTasks error: \(error)")
         }
     }
 
@@ -90,6 +98,19 @@ public final class TodayViewModel {
             exerciseRoutine = try exerciseRepo.fetchRoutine(for: viewingDate)
         } catch {
             print("[TodayViewModel] loadPage error: \(error)")
+        }
+    }
+
+    /// Sync the chosen-calendar events for the viewing day into the Tasks list as
+    /// `.calendar` tasks. Only today/future — past pages stay frozen snapshots.
+    public func syncCalendarTasks(_ events: [CalendarTaskInput]) async {
+        guard let p = page else { return }
+        let today = Calendar.current.startOfDay(for: Date())
+        guard p.date >= today else { return }
+        do {
+            page = try pageRepo.syncCalendarTasks(events, on: p)
+        } catch {
+            print("[TodayViewModel] syncCalendarTasks error: \(error)")
         }
     }
 

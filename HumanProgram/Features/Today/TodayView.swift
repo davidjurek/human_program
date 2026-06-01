@@ -20,6 +20,20 @@ struct TodayView: View {
     @State private var calendarService = CalendarAdapterService()
     @State private var calendarItems: [TimelineItem] = []
 
+    // Hold-to-reorder (vertical) + swipe-to-delete (horizontal) for the task rows,
+    // mirroring the Schedule editor's block list. Both are UIKit recognizers
+    // installed on the enclosing scroll view (see EditorRowInteractions). Tapping a
+    // row opens its detail; a vertical drag scrolls the page.
+    @State private var dragInfo: TaskDragInfo?
+    @State private var reorderRowFrames: [String: CGRect] = [:]   // window coords
+    @State private var swipeOpenId: String?
+    @State private var swipeDragId: String?
+    @State private var swipeDragX: CGFloat = 0
+    @State private var navTask: DailyPageTask?
+
+    private let taskRowHeight: CGFloat = 52
+    private let trashWidth: CGFloat = 72
+
     // Live "now" line moves while the page stays open.
     private let ticker = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
@@ -46,6 +60,15 @@ struct TodayView: View {
                 .padding(.top, 28)                             // [#41] top inset
             }
             .scrollDismissesKeyboard(.interactively)           // [#46] drag-to-dismiss
+            // Suspend native scrolling while a row is being dragged-to-reorder or
+            // swiped, so the gesture owns the touch (Schedule does the same).
+            .scrollDisabled(dragInfo != nil || swipeDragId != nil)
+            .navigationDestination(item: $navTask) { task in
+                TaskDetailView(task: task,
+                               sourceLabel: vm.sourceLabel(for: task),
+                               projectName: vm.projectName(for: task),
+                               onSave: { title, notes in Task { await vm.updateTask(task, title: title, notes: notes) } })
+            }
             // Past-day lock/unlock pill: fixed top-right, just under the top bar (it
             // does NOT scroll with the content and never affects layout). [#16]
             .overlay(alignment: .topTrailing) {
@@ -80,12 +103,16 @@ struct TodayView: View {
 
     private func loadCalendarItems() async {
         let start = Calendar.current.startOfDay(for: vm.viewingDate)
-        guard !selectedCalendarIds.isEmpty else { calendarItems = []; return }
-        if calendarService.authorizationStatus != .fullAccess {
-            _ = await calendarService.requestAccess()
-        }
         let end = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start
-        let events = calendarService.fetchEvents(from: start, to: end, calendarIds: selectedCalendarIds)
+
+        var events: [EKEvent] = []
+        if !selectedCalendarIds.isEmpty {
+            if calendarService.authorizationStatus != .fullAccess {
+                _ = await calendarService.requestAccess()
+            }
+            events = calendarService.fetchEvents(from: start, to: end, calendarIds: selectedCalendarIds)
+        }
+
         calendarItems = events.map { ev in
             TimelineItem(id: ev.eventIdentifier ?? UUID().uuidString,
                          title: ev.title ?? "(no title)",
@@ -93,6 +120,17 @@ struct TodayView: View {
                          endMin: minutesOfDay(ev.endDate, dayStart: start),
                          isCalendar: true)
         }
+
+        // Flow chosen-calendar events into the Tasks list (only events with a stable
+        // identifier; sorted into the calendar group by start time). An empty
+        // selection syncs an empty list, which clears any prior calendar tasks.
+        let taskInputs: [CalendarTaskInput] = events.compactMap { ev in
+            guard let id = ev.eventIdentifier else { return nil }
+            return CalendarTaskInput(eventId: id,
+                                     title: ev.title ?? "(no title)",
+                                     startMinuteOfDay: minutesOfDay(ev.startDate, dayStart: start))
+        }
+        await vm.syncCalendarTasks(taskInputs)
     }
 
     private func minutesOfDay(_ date: Date?, dayStart: Date) -> Int {
@@ -195,15 +233,7 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 12) {
             DSText("Tasks").dsTextStyle(.headline)
 
-            ForEach(vm.sortedTasks) { task in
-                TodayTaskRow(
-                    task: task,
-                    sourceLabel: vm.sourceLabel(for: task),
-                    projectName: vm.projectName(for: task),
-                    onToggle: { Task { await vm.toggleTask(task) } },
-                    onSave: { title, notes in Task { await vm.updateTask(task, title: title, notes: notes) } }
-                )
-            }
+            taskList
 
             if addingTask {
                 HStack(spacing: 10) {
@@ -242,6 +272,190 @@ struct TodayView: View {
             }
         }
         .frame(minHeight: vm.sortedTasks.isEmpty ? 126 : 0, alignment: .top)   // [#4]
+    }
+
+    // Custom row list with hold-to-reorder + swipe-to-delete. The two UIKit
+    // recognizers (installed on the enclosing scroll view) read each row's window
+    // frame to hit-test which row a gesture began on. [reuse: EditorRowInteractions]
+    private var taskList: some View {
+        VStack(spacing: 0) {
+            ForEach(vm.sortedTasks, id: \.id) { task in
+                taskRow(task)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: RowFrameKey<String>.self,
+                                                   value: [task.id: proxy.frame(in: .global)])
+                        }
+                    )
+            }
+        }
+        .onPreferenceChange(RowFrameKey<String>.self) { reorderRowFrames = $0 }
+        .background(
+            ReorderRecognizer(
+                rowFrames: reorderRowFrames,
+                onBegan: beginReorder,
+                onChanged: { dy in dragInfo?.dy = dy },
+                onEnded: endReorder,
+                onCancelled: { dragInfo = nil }
+            )
+        )
+        .background(
+            SwipePanRecognizer(
+                rowFrames: reorderRowFrames,
+                canStart: { dragInfo == nil && !vm.isPastLocked },
+                onBegan: swipeBegan,
+                onChanged: swipeChanged,
+                onEnded: swipeEnded
+            )
+        )
+    }
+
+    private func taskRow(_ task: DailyPageTask) -> some View {
+        let isDragging = dragInfo?.id == task.id
+        let index = vm.sortedTasks.firstIndex(where: { $0.id == task.id }) ?? 0
+        let shiftY = shiftOffset(forIndex: index)
+
+        return GeometryReader { geo in
+            // Content + trash lane move together, clipped, so the red trash slides in
+            // from the trailing edge as you swipe (never flashes over the content).
+            HStack(spacing: 0) {
+                taskRowContent(task)
+                    .frame(width: geo.size.width, height: taskRowHeight)
+                Button { Task { await deleteTask(task) } } label: {
+                    ZStack {
+                        Circle().fill(Color.red).frame(width: 40, height: 40)
+                        Image(systemName: "trash").font(.system(size: 17)).foregroundStyle(.white)
+                    }
+                    .frame(width: trashWidth, height: taskRowHeight)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .offset(x: swipeOffset(for: task.id))
+            .frame(width: geo.size.width, height: taskRowHeight, alignment: .leading)
+            .clipped()
+        }
+        .frame(height: taskRowHeight)
+        .offset(y: isDragging ? (dragInfo?.dy ?? 0) : shiftY)
+        .animation(.snappy(duration: 0.2), value: isDragging)
+        .animation(isDragging ? nil : .snappy(duration: 0.2), value: shiftY)
+        .scaleEffect(isDragging ? 1.04 : 1)
+        .shadow(color: .black.opacity(isDragging ? 0.18 : 0), radius: 8, y: 4)
+        .zIndex(isDragging ? 1 : 0)
+    }
+
+    private func taskRowContent(_ task: DailyPageTask) -> some View {
+        HStack(spacing: 12) {
+            Button { Task { await vm.toggleTask(task) } } label: {
+                SelectionCircle(isOn: task.completed)
+            }
+            .buttonStyle(.plain)
+            .a11yTapBorder(Circle())
+
+            // `.onTapGesture` (not a Button/NavigationLink) so a tap opens the detail
+            // only on a CLEAN tap — never after a hold-reorder or a swipe.
+            DSText(task.title).dsTextStyle(.body)
+                .strikethrough(task.completed)
+                .longTitle(lineLimit: 1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { tapTask(task) }
+        }
+        .padding(.vertical, 8)
+        .frame(height: taskRowHeight)
+        .contentShape(Rectangle())
+    }
+
+    /// Clean tap on a row → open its detail (or just close an open swipe).
+    private func tapTask(_ task: DailyPageTask) {
+        if swipeOpenId != nil { closeSwipe(); return }
+        navTask = task
+    }
+
+    // MARK: - Reorder / swipe handlers (mirrors ScheduleEditor)
+
+    private func beginReorder(_ id: String) {
+        guard !vm.isPastLocked else { return }
+        swipeOpenId = nil
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.snappy(duration: 0.18)) { dragInfo = TaskDragInfo(id: id, dy: 0) }
+    }
+
+    private func endReorder(_ dy: CGFloat) {
+        guard let info = dragInfo else { return }
+        var order = vm.sortedTasks
+        guard let base = order.firstIndex(where: { $0.id == info.id }) else { dragInfo = nil; return }
+        let proj = projectedIndex(from: base, dy: dy, count: order.count)
+        withAnimation(.snappy(duration: 0.22)) {
+            if proj != base {
+                let moved = order.remove(at: base)
+                order.insert(moved, at: proj)
+                // Synchronous write: sortedTasks reflects the new order within this
+                // same transaction, so the rows animate into place without flashing
+                // back to the old order first.
+                vm.reorderTasks(order)
+            }
+            dragInfo = nil
+        }
+    }
+
+    private func swipeBegan(_ id: String) {
+        if swipeOpenId != id, swipeOpenId != nil {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipeOpenId = nil }
+        }
+        swipeDragId = id
+        swipeDragX = 0
+    }
+    private func swipeChanged(_ tx: CGFloat) {
+        guard swipeDragId != nil else { return }
+        swipeDragX = tx
+    }
+    private func swipeEnded(_ tx: CGFloat, _ vx: CGFloat) {
+        guard let id = swipeDragId else { return }
+        let base: CGFloat = (swipeOpenId == id) ? -trashWidth : 0
+        let total = base + tx
+        // Snap open or closed; delete is via the revealed trash, never full-swipe.
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+            swipeOpenId = (total < -trashWidth / 2) ? id : nil
+            swipeDragId = nil
+            swipeDragX = 0
+        }
+    }
+
+    private func deleteTask(_ task: DailyPageTask) async {
+        swipeOpenId = nil
+        await vm.deleteTask(task)
+    }
+
+    private func closeSwipe() {
+        withAnimation(.snappy(duration: 0.2)) { swipeOpenId = nil }
+    }
+
+    // MARK: - Reorder / swipe geometry
+
+    private func projectedIndex(from base: Int, dy: CGFloat, count: Int) -> Int {
+        let shift = Int((dy / taskRowHeight).rounded())
+        return max(0, min(count - 1, base + shift))
+    }
+
+    /// Shift rows the dragged row has passed over to open a gap (array isn't mutated
+    /// until the drag ends).
+    private func shiftOffset(forIndex i: Int) -> CGFloat {
+        guard let info = dragInfo else { return 0 }
+        let order = vm.sortedTasks
+        guard let base = order.firstIndex(where: { $0.id == info.id }), base != i else { return 0 }
+        let proj = projectedIndex(from: base, dy: info.dy, count: order.count)
+        if base < proj, (base + 1 ... proj).contains(i) { return -taskRowHeight }
+        if proj < base, (proj ..< base).contains(i) { return taskRowHeight }
+        return 0
+    }
+
+    /// Live horizontal offset. Clamps at the open position with a little rubber-band.
+    private func swipeOffset(for id: String) -> CGFloat {
+        let base: CGFloat = (swipeOpenId == id) ? -trashWidth : 0
+        let raw = base + ((swipeDragId == id) ? swipeDragX : 0)
+        if raw < -trashWidth { return -trashWidth - (-trashWidth - raw) * 0.2 }
+        return min(0, raw)
     }
 
     private func commitAdd() {
@@ -320,37 +534,11 @@ struct PastLockButton: View {
     }
 }
 
-// ── Today task row (checkbox + title + chevron → detail) ─────────────────────────
-private struct TodayTaskRow: View {
-    let task: DailyPageTask
-    let sourceLabel: String
-    let projectName: String
-    let onToggle: () -> Void
-    let onSave: (String, String) -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Button(action: onToggle) {
-                SelectionCircle(isOn: task.completed)
-            }.buttonStyle(.plain)
-            .a11yTapBorder(Circle())
-
-            NavigationLink {
-                TaskDetailView(task: task, sourceLabel: sourceLabel,
-                               projectName: projectName, onSave: onSave)
-            } label: {
-                HStack {
-                    DSText(task.title).dsTextStyle(.body)
-                        .strikethrough(task.completed)
-                        .longTitle()
-                    Spacer()
-                }
-                .contentShape(Rectangle())
-            }.buttonStyle(.plain)
-            .a11yTapBorder(Rectangle())
-        }
-        .frame(minHeight: 44)
-    }
+/// Transient drag-reorder state for a task row (driven by the UIKit reorder
+/// recognizer). Keyed by the task's String id.
+struct TaskDragInfo: Equatable {
+    var id: String
+    var dy: CGFloat
 }
 
 // ── Date picker (jump to a date) ────────────────────────────────────────────────
