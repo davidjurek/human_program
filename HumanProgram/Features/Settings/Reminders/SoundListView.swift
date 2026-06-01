@@ -6,7 +6,7 @@ struct SoundListView: View {
     @Binding var selection: NotificationSoundMode
 
     var body: some View {
-        SettingsScreen {
+        SettingsScreen(centered: true) {       // option screen → symmetric 20/20 margins
             SettingsGroup(title: "Sound") {
                 SettingsSelectRow(label: "Default", isSelected: selection == .defaultSound) {
                     selection = .defaultSound

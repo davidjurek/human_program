@@ -66,7 +66,7 @@ private struct ReminderRow: View {
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     DSText(reminder.title).dsTextStyle(.title3)
-                        .lineLimit(3)
+                        .longTitle()
                     DSText(recurrenceSummary(for: reminder)).dsTextStyle(.subheadline)
                     WeekdayStrip(days: Set(reminder.weekdays))
                 }
@@ -74,10 +74,12 @@ private struct ReminderRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(Rectangle())
 
             Toggle("", isOn: Binding(get: { reminder.isEnabled }, set: { _ in onToggle() }))
                 .labelsHidden()
                 .tint(appToggleTint)
+                .a11yTapBorder(Capsule())
         }
         .frame(minHeight: 52)
     }

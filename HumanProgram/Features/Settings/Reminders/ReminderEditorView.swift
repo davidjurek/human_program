@@ -141,8 +141,10 @@ struct ReminderEditorView: View {
                         Text("Default").font(appFont(18)).foregroundStyle(.primary)
                         DSChevronView()
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .a11yTapBorder(cornerRadius: 4)
             }
             .frame(height: 34)
 
@@ -223,6 +225,7 @@ struct ReminderEditorView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(cornerRadius: 4)
             .anchorFrame("repeat", in: .named(anchorSpace))
         }
         .frame(height: 34)
@@ -240,6 +243,7 @@ struct ReminderEditorView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(cornerRadius: 4)
             .anchorFrame(anchorId, in: .named(anchorSpace))
         }
         .frame(height: 34)
@@ -373,13 +377,16 @@ struct ReminderEditorView: View {
                     .foregroundStyle(.red)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }
         }
         Button { save() } label: {
             Text("Save").font(appFont(18))
                 .foregroundStyle(canSave ? .primary : .secondary)
-                .frame(height: 44)
-                .padding(.horizontal, 6)
+                .frame(minWidth: 44, minHeight: 44)
+                .padding(.horizontal, 8)
+                .contentShape(Rectangle())   // whole frame tappable, not just glyphs
+                .a11yTapBorder(Rectangle())
         }
         .disabled(!canSave)
     }
@@ -394,7 +401,9 @@ struct ReminderEditorView: View {
                 Spacer(minLength: 8)
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     Text(imageFilename == nil ? "Add" : "Change").font(appFont(18))
+                        .contentShape(Rectangle())
                 }
+                .a11yTapBorder(cornerRadius: 4)
             }
             .frame(height: 34)
 
@@ -414,6 +423,8 @@ struct ReminderEditorView: View {
                                 .font(.system(size: 22))
                                 .foregroundStyle(.white, .black.opacity(0.4))
                                 .padding(8)
+                                .contentShape(Circle())
+                                .a11yTapBorder(Circle())
                         }
                     }
             }
