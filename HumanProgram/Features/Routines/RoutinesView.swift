@@ -30,6 +30,7 @@ struct RoutinesView: View {
                             } label: {
                                 RoutineTile(emoji: routine.emoji, name: routine.title)
                             }.buttonStyle(.plain)
+                            .a11yTapBorder(RoundedRectangle(cornerRadius: 20))
                         }
                     }
                     .padding(.horizontal, 20).padding(.top, 8)
@@ -50,11 +51,13 @@ struct RoutinesView: View {
         HStack {
             Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
             Button { pushNew = true } label: {
                 Image(systemName: "plus").font(.system(size: 20, weight: .medium))
                     .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }.buttonStyle(.plain)
         }
         .padding(.horizontal, 12).padding(.bottom, 4)
@@ -69,7 +72,10 @@ private struct RoutineTile: View {
     var body: some View {
         VStack(spacing: 10) {
             Text(emoji.isEmpty ? "📋" : emoji).font(.system(size: 40))
-            DSText(name.isEmpty ? "Untitled" : name).dsTextStyle(.headline).lineLimit(1)
+            DSText(name.isEmpty ? "Untitled" : name).dsTextStyle(.headline)
+                .multilineTextAlignment(.center)
+                .longTitle()
+                .padding(.horizontal, 8)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 130)
@@ -90,15 +96,32 @@ struct EmojiField: View {
                 .foregroundStyle(emoji.isEmpty ? .secondary : .primary)
             TextField("", text: $emoji)
                 .focused($focused)
+                .keyboardType(.default)
                 .opacity(0.02)
                 .onChange(of: emoji) { _, v in
-                    // Keep only the last grapheme (one emoji).
-                    if let last = v.last { emoji = String(last) } else { emoji = "" }
+                    // Keep only the last grapheme, and only if it's an emoji.
+                    // Non-emoji characters (letters, digits, punctuation) are rejected.
+                    if let last = v.last, last.isEmoji {
+                        if String(last) != emoji { emoji = String(last) }
+                    } else {
+                        emoji = ""
+                    }
                 }
         }
         .frame(width: 70, height: 44)
         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle())
+        .a11yTapBorder(RoundedRectangle(cornerRadius: 12))
         .onTapGesture { focused = true }
+    }
+}
+
+extension Character {
+    /// True for a single emoji grapheme (emoji-presentation scalar, or a
+    /// multi-scalar sequence like a ZWJ/flag/variation emoji). Excludes plain
+    /// digits/letters that merely have a default-text emoji property.
+    var isEmoji: Bool {
+        unicodeScalars.contains { $0.properties.isEmojiPresentation }
+            || (unicodeScalars.count > 1 && unicodeScalars.first?.properties.isEmoji == true)
     }
 }

@@ -28,6 +28,7 @@ struct RoutineEditorView: View {
     @State private var keyboardSpacer: CGFloat = 0
     @State private var didLoad = false
     @State private var showDiscard = false
+    @State private var discarded = false
 
     private let rowHeight: CGFloat = 56
     private let trashWidth: CGFloat = 68
@@ -43,8 +44,9 @@ struct RoutineEditorView: View {
     }
     private func discardAndDismiss() {
         showDiscard = false
-        if routine == nil, let r = working { try? repo.delete(r) }   // new → delete
-        working = nil                                                // skip commitOnLeave
+        discarded = true                                             // skip commitOnLeave
+        if routine == nil, let r = working { try? repo.delete(r) }   // new → delete if materialized
+        working = nil
         dismiss()
     }
 
@@ -64,7 +66,7 @@ struct RoutineEditorView: View {
                     EmojiField(emoji: $emoji)
                 }
             } else {
-                DSText(name.isEmpty ? "Untitled" : name).dsTextStyle(.title2)
+                DSText(name.isEmpty ? "Untitled" : name).dsTextStyle(.title2).longTitle()
                 HStack {
                     DSText("Emoji").dsTextStyle(.title3)
                     Spacer()
@@ -72,7 +74,7 @@ struct RoutineEditorView: View {
                 }
             }
 
-            SettingsSectionLabel(title: "Steps")
+            SettingsSectionLabel(title: "Items")
             stepsList
             if editing { addRow }
             Color.clear.frame(height: keyboardSpacer)
@@ -95,6 +97,7 @@ struct RoutineEditorView: View {
             Button { deleteRoutine() } label: {
                 Image(systemName: "trash").font(.system(size: 18)).foregroundStyle(.red)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }
         }
         // Save is disabled until there's a non-empty title. [#routines]
@@ -105,7 +108,9 @@ struct RoutineEditorView: View {
         } label: {
             Text(editing ? "Save" : "Edit").font(appFont(18))
                 .foregroundStyle(editing && titleEmpty ? .secondary : .primary)
-                .frame(height: 44).padding(.horizontal, 6)
+                .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                .contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
         }
         .disabled(editing && titleEmpty)
     }
@@ -173,7 +178,7 @@ struct RoutineEditorView: View {
         HStack(spacing: 12) {
             DSText("•").dsTextStyle(.body)
             if editing && editingTitleId == it.id {
-                TextField("Step", text: textBinding(it.id))
+                TextField("Item", text: textBinding(it.id))
                     .font(appFont(17)).focused($titleFocused).submitLabel(.done)
                     .onSubmit { commitTitleEditing(); editingTitleId = nil }
             } else {
@@ -189,12 +194,13 @@ struct RoutineEditorView: View {
 
     private var addRow: some View {
         HStack(spacing: 0) {
-            TextField("Add step", text: $newText).font(appFont(17)).submitLabel(.done).onSubmit(addStep)
+            TextField("Item", text: $newText).font(appFont(17)).submitLabel(.done).onSubmit(addStep)
             Spacer(minLength: 8)
             Button(action: addStep) {
                 Image(systemName: "plus").font(.system(size: 20, weight: .medium))
                     .foregroundStyle(newText.trimmingCharacters(in: .whitespaces).isEmpty ? .secondary : .primary)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }.buttonStyle(.plain).disabled(newText.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .frame(height: 44)
@@ -266,11 +272,22 @@ struct RoutineEditorView: View {
             name = routine.title; emoji = routine.emoji
             editing = false
         } else {
-            // New routine: create immediately so steps can attach; start editing.
-            working = try? repo.create(title: "")
+            // New routine: do NOT create yet. Materialize only when there's real
+            // content (a name/emoji or the first item) so a blank-then-leave never
+            // flashes an "Untitled" routine in the list. [#routines]
             editing = true
         }
         reloadItems()
+    }
+
+    /// Returns the working routine, creating it lazily the first time real content
+    /// needs a home. For an existing routine it's already set in loadIfNeeded.
+    @discardableResult
+    private func ensureWorking() -> Routine? {
+        if let working { return working }
+        let created = try? repo.create(title: "")
+        working = created
+        return created
     }
 
     private func reloadItems() {
@@ -280,8 +297,12 @@ struct RoutineEditorView: View {
     }
 
     private func commitNameEmoji() {
-        guard let r = working else { return }
-        try? repo.update(r, title: name.trimmingCharacters(in: .whitespaces), emoji: emoji)
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        // Don't materialize a routine for nothing: if there's no working routine
+        // yet AND nothing was typed, there's nothing to save.
+        guard working != nil || !trimmed.isEmpty || !emoji.isEmpty else { return }
+        guard let r = ensureWorking() else { return }
+        try? repo.update(r, title: trimmed, emoji: emoji)
     }
     private func commitTitleEditing() {
         guard let id = editingTitleId, let it = items.first(where: { $0.id == id }) else { return }
@@ -293,7 +314,7 @@ struct RoutineEditorView: View {
     }
     private func addStep() {
         let t = newText.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty, let r = working else { return }
+        guard !t.isEmpty, let r = ensureWorking() else { return }
         if let item = try? repo.addItem(to: r, text: t) {
             items.append(DraftRoutineItem(item: item, text: t))
         }
@@ -304,15 +325,17 @@ struct RoutineEditorView: View {
         if let r = working { try? repo.deleteItem(it.item, from: r) }
     }
     private func deleteRoutine() {
+        discarded = true                       // don't let commitOnLeave re-create it
         if let r = working { try? repo.delete(r) }
         working = nil
         dismiss()
     }
     private func commitOnLeave() {
-        guard working != nil else { return }   // discarded — nothing to commit
+        guard !discarded else { return }       // discarded — nothing to commit
         commitTitleEditing()
         commitNameEmoji()
-        // Never persist a titleless routine (no blank "Untitled"). [#routines]
+        // Never persist a titleless routine (no blank "Untitled"). If nothing was
+        // ever materialized (working == nil), there's nothing to delete. [#routines]
         if let r = working, r.title.trimmingCharacters(in: .whitespaces).isEmpty {
             try? repo.delete(r)
         }
