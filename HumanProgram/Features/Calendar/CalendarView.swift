@@ -12,6 +12,12 @@ enum CalendarViewMode: String, CaseIterable {
     case list   = "List"
 }
 
+/// Identifiable wrapper so an EKEvent can drive a `.sheet(item:)` for editing.
+private struct CalendarEditTarget: Identifiable {
+    let event: EKEvent
+    var id: String { event.eventIdentifier ?? UUID().uuidString }
+}
+
 // MARK: - CalendarView
 
 struct CalendarView: View {
@@ -27,6 +33,10 @@ struct CalendarView: View {
     @State private var selectedEvent: EKEvent? = nil
     @State private var showEventDetail = false
     @State private var showAddEvent = false
+    // Edit flow: tapping "Edit" in the detail sheet dismisses it, then (after the
+    // dismiss completes) presents the editor pre-filled with this event.
+    @State private var pendingEditEvent: EKEvent?
+    @State private var editTarget: CalendarEditTarget?
     @State private var authStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
     @State private var listScrollTick = 0   // bump to scroll the List back to today [#list]
     // Finger-tracked flip paging (Photos-style) for Month/Week/Day. [#5]
@@ -67,13 +77,23 @@ struct CalendarView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .enableSwipeBack()
-        .sheet(isPresented: $showEventDetail, onDismiss: loadEvents) {
+        .sheet(isPresented: $showEventDetail, onDismiss: {
+            loadEvents()
+            // If the user tapped Edit, present the editor now that the detail
+            // sheet has fully dismissed (can't stack two sheet transitions).
+            if let ev = pendingEditEvent { pendingEditEvent = nil; editTarget = CalendarEditTarget(event: ev) }
+        }) {
             if let event = selectedEvent {
-                CalendarEventDetailSheet(event: event, date: selectedDate, context: context)
+                CalendarEventDetailSheet(event: event, date: selectedDate, context: context,
+                                         onEdit: { pendingEditEvent = event; showEventDetail = false })
             }
         }
         .navigationDestination(isPresented: $showAddEvent) {
             AddCalendarEventView(defaultDate: selectedDate, calendarService: calendarService, onSave: loadEvents)
+        }
+        .sheet(item: $editTarget, onDismiss: loadEvents) { target in
+            AddCalendarEventView(eventToEdit: target.event, defaultDate: selectedDate,
+                                 calendarService: calendarService, onSave: loadEvents)
         }
         // All-day events list popup (Week/Day band tap). [#cal-allday]
         .overlay { allDayListPopup }
@@ -1025,6 +1045,8 @@ private struct DayEventBlock: View {
 // Uses native date/time pickers; saves straight to Apple Calendar. [#40,#41]
 struct AddCalendarEventView: View {
     @Environment(\.dismiss) private var dismiss
+    /// When set, the form edits this existing event instead of creating a new one.
+    let eventToEdit: EKEvent?
     let defaultDate: Date
     let calendarService: CalendarAdapterService
     let onSave: () -> Void
@@ -1054,6 +1076,16 @@ struct AddCalendarEventView: View {
             case .yearly: return .yearly
             }
         }
+        /// Map an existing event's first recurrence rule back to a menu choice.
+        init(from rule: EKRecurrenceRule?) {
+            switch rule?.frequency {
+            case .daily:   self = .daily
+            case .weekly:  self = .weekly
+            case .monthly: self = .monthly
+            case .yearly:  self = .yearly
+            default:       self = .never
+            }
+        }
     }
     enum AlertOption: String, CaseIterable, Identifiable {
         case none = "None", atTime = "At time of event", m5 = "5 min before",
@@ -1069,27 +1101,56 @@ struct AddCalendarEventView: View {
             case .h1: return 60
             }
         }
+        /// Map an existing event's first alarm back to a menu choice.
+        init(from alarm: EKAlarm?) {
+            guard let offset = alarm?.relativeOffset else { self = .none; return }
+            switch Int((-offset) / 60) {
+            case 0:  self = .atTime
+            case 5:  self = .m5
+            case 10: self = .m10
+            case 30: self = .m30
+            case 60: self = .h1
+            default: self = .atTime
+            }
+        }
     }
 
-    init(defaultDate: Date, calendarService: CalendarAdapterService, onSave: @escaping () -> Void) {
+    init(eventToEdit: EKEvent? = nil, defaultDate: Date,
+         calendarService: CalendarAdapterService, onSave: @escaping () -> Void) {
+        self.eventToEdit = eventToEdit
         self.defaultDate = defaultDate
         self.calendarService = calendarService
         self.onSave = onSave
-        let cal = Calendar.current
-        let baseHour = cal.component(.hour, from: Date()) + 1
-        var sc = cal.dateComponents([.year, .month, .day], from: defaultDate)
-        sc.hour = baseHour; sc.minute = 0
-        let s = cal.date(from: sc) ?? defaultDate
-        _startDate = State(initialValue: s)
-        _endDate = State(initialValue: s.addingTimeInterval(3600))
+        if let e = eventToEdit {
+            // Prefill every field from the event being edited.
+            _title = State(initialValue: e.title ?? "")
+            _location = State(initialValue: e.location ?? "")
+            _allDay = State(initialValue: e.isAllDay)
+            _startDate = State(initialValue: e.startDate)
+            _endDate = State(initialValue: e.endDate)
+            _notes = State(initialValue: e.notes ?? "")
+            _urlText = State(initialValue: e.url?.absoluteString ?? "")
+            _selectedCalendarId = State(initialValue: e.calendar?.calendarIdentifier)
+            _repeatRule = State(initialValue: RepeatRule(from: e.recurrenceRules?.first))
+            _alert = State(initialValue: AlertOption(from: e.alarms?.first))
+        } else {
+            let cal = Calendar.current
+            let baseHour = cal.component(.hour, from: Date()) + 1
+            var sc = cal.dateComponents([.year, .month, .day], from: defaultDate)
+            sc.hour = baseHour; sc.minute = 0
+            let s = cal.date(from: sc) ?? defaultDate
+            _startDate = State(initialValue: s)
+            _endDate = State(initialValue: s.addingTimeInterval(3600))
+        }
     }
 
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var isEditing: Bool { eventToEdit != nil }
 
     var body: some View {
         SettingsScreen(centered: true, trailing: {
             Button { saveEvent() } label: {
-                Text("Add").font(appFont(18))
+                Text(isEditing ? "Save" : "Add").font(appFont(18))
                     .foregroundStyle(canSave ? .primary : .secondary)
                     .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
                     .contentShape(Rectangle())
@@ -1192,7 +1253,11 @@ struct AddCalendarEventView: View {
             url: URL(string: urlText.trimmingCharacters(in: .whitespaces))
         )
         do {
-            try calendarService.createEvent(spec)
+            if let id = eventToEdit?.eventIdentifier {
+                try calendarService.updateEvent(id: id, spec)
+            } else {
+                try calendarService.createEvent(spec)
+            }
             onSave()
             dismiss()
         } catch {

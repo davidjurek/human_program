@@ -110,6 +110,37 @@ public final class CalendarAdapterService {
         return event.eventIdentifier
     }
 
+    /// Update an existing event (found by identifier) from a full spec — the same
+    /// fields the create editor sets. Recurrence + alarms are replaced wholesale.
+    public func updateEvent(id: String, _ spec: NewEventSpec) throws {
+        guard let event = store.event(withIdentifier: id) else {
+            throw CalendarAdapterError.eventNotFound(id)
+        }
+        event.title = spec.title
+        event.location = (spec.location?.isEmpty == false) ? spec.location : nil
+        event.isAllDay = spec.isAllDay
+        event.startDate = spec.start
+        event.endDate = spec.end
+        event.notes = (spec.notes?.isEmpty == false) ? spec.notes : nil
+        event.url = spec.url
+
+        // Replace recurrence rules.
+        for rule in event.recurrenceRules ?? [] { event.removeRecurrenceRule(rule) }
+        if let rule = spec.recurrence { event.addRecurrenceRule(rule) }
+
+        // Replace alarms.
+        for alarm in event.alarms ?? [] { event.removeAlarm(alarm) }
+        if let minutes = spec.alarmMinutesBefore {
+            event.addAlarm(EKAlarm(relativeOffset: TimeInterval(-minutes * 60)))
+        }
+
+        if let calendarId = spec.calendarId,
+           let cal = store.calendars(for: .event).first(where: { $0.calendarIdentifier == calendarId }) {
+            event.calendar = cal
+        }
+        try store.save(event, span: .thisEvent)
+    }
+
     /// Delete the event with the given identifier (all future spans).
     /// Throws if the event is not found or cannot be deleted.
     public func deleteEvent(id: String) throws {

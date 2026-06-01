@@ -11,6 +11,8 @@ struct CalendarEventDetailSheet: View {
     let event: EKEvent
     let date: Date
     let context: ModelContext
+    /// Called when the user taps "Edit" — the presenter opens the event editor.
+    var onEdit: () -> Void = {}
 
     // Repository is @MainActor, so it's safe to create on the main thread
     private var stateRepo: CalendarLocalStateRepository {
@@ -43,21 +45,28 @@ struct CalendarEventDetailSheet: View {
             }
         }
         .safeAreaInset(edge: .top) {
-            ZStack {
-                Text("Event").font(appFont(17, bold: true)).foregroundStyle(Color.primary)
-                HStack {
-                    Spacer()
-                    Button { dismiss() } label: {
-                        Text("Done").font(appFont(18)).foregroundStyle(Color.accentColor)
-                            .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .a11yTapBorder(Rectangle())
+            // No centered "Event" title (titles are hidden app-wide). Edit on the
+            // left, Done on the right; pushed down from the top edge.
+            HStack {
+                Button { onEdit() } label: {
+                    Text("Edit").font(appFont(18)).foregroundStyle(Color.accentColor)
+                        .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .a11yTapBorder(Rectangle())
+                Spacer()
+                Button { dismiss() } label: {
+                    Text("Done").font(appFont(18)).foregroundStyle(Color.accentColor)
+                        .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .a11yTapBorder(Rectangle())
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.top, 18)
+            .padding(.bottom, 10)
             .topBarFrost()
         }
         .task { await loadLocalState() }
