@@ -184,6 +184,21 @@ func clockString(date: Date) -> String {
     return clockString(minutesOfDay: cal.component(.hour, from: date) * 60 + cal.component(.minute, from: date))
 }
 
+// MARK: - Long-title handling (app-wide)
+
+extension View {
+    /// App-wide rule for any user-entered title that can overflow: allow up to
+    /// `lineLimit` lines (default 2), shrink the font a little (down to 88%) to
+    /// try to fit, then truncate with an ellipsis. One shared place so every
+    /// title screen behaves the same. Works on `DSText` too (the scale/limit are
+    /// environment values the underlying `Text` reads).
+    func longTitle(lineLimit limit: Int = 2, minScale: CGFloat = 0.88) -> some View {
+        self.lineLimit(limit)
+            .minimumScaleFactor(minScale)
+            .truncationMode(.tail)
+    }
+}
+
 /// Soft-green toggle "on" color (#CDEBC5), used app-wide.
 let appToggleTint = Color(red: 205.0/255, green: 235.0/255, blue: 197.0/255)
 

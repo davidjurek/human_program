@@ -96,6 +96,7 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
                 .highPriorityGesture(TapGesture().onEnded {
                     if let onBack { onBack() } else { dismiss() }
                 })
@@ -260,6 +261,7 @@ struct AddNavButton<Destination: View>: View {
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -369,6 +371,7 @@ struct SettingsNavRow<Destination: View>: View {
                                value: value, destructive: destructive) { EmptyView() }
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(Rectangle())
     }
 }
 
@@ -385,6 +388,7 @@ struct SettingsToggleRow: View {
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .tint(appToggleTint)
+                .a11yTapBorder(Capsule())
         }
     }
 }
@@ -401,6 +405,7 @@ struct SettingsButtonRow: View {
             SettingsRowContent(label: label, systemImage: systemImage, destructive: destructive) { EmptyView() }
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(Rectangle())
     }
 }
 
@@ -425,5 +430,6 @@ struct SettingsSelectRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(Rectangle())
     }
 }

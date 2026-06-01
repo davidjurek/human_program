@@ -8,6 +8,7 @@ struct SettingsView: View {
                 SettingsNavRow(label: "Customization", systemImage: "paintbrush") { CustomizationView() }
                 SettingsNavRow(label: "Format", systemImage: "textformat.123") { FormatView() }
                 SettingsNavRow(label: "Reminders", systemImage: "bell") { RemindersView() }
+                SettingsNavRow(label: "Accessibility", systemImage: "accessibility") { AccessibilitySettingsView() }
                 SettingsNavRow(label: "Security", systemImage: "lock") { SecuritySettingsView() }
             }
 

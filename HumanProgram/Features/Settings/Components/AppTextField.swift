@@ -1,10 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// Header-less text field backed by UITextView so we can control the caret:
-/// tapping anywhere places the cursor at the END (no word-select). A grey
-/// placeholder label stays visible whenever the field is empty — even while
-/// focused — until the user types. Uses the chosen app font; grows when multiline.
+/// Header-less text field backed by UITextView. A grey placeholder label stays
+/// visible whenever the field is empty — even while focused — until the user
+/// types. Uses the chosen app font; grows when multiline. Native selection is
+/// preserved: tap places the caret where you tap, double-tap selects a word,
+/// long-press shows the selection loupe/menu (we no longer force the caret to
+/// the end on every tap, which was blocking double-tap-to-select).
 struct AppTextField: UIViewRepresentable {
     @Binding var text: String
     var placeholder: String
@@ -38,12 +40,9 @@ struct AppTextField: UIViewRepresentable {
         ])
         ph.isHidden = !text.isEmpty
 
-        let tap = UITapGestureRecognizer(target: context.coordinator,
-                                         action: #selector(Coordinator.handleTap))
-        tap.cancelsTouchesInView = false
-        tv.addGestureRecognizer(tap)
-
-        context.coordinator.textView = tv
+        // No custom tap recognizer: UITextView is natively focusable/selectable,
+        // so tap-to-focus, tap-to-place-caret, and double-tap-to-select-a-word
+        // all work as users expect.
         context.coordinator.placeholderLabel = ph
         return tv
     }
@@ -69,27 +68,9 @@ struct AppTextField: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: AppTextField
-        weak var textView: UITextView?
         weak var placeholderLabel: UILabel?
 
         init(_ parent: AppTextField) { self.parent = parent }
-
-        @objc func handleTap() {
-            guard let tv = textView else { return }
-            if !tv.isFirstResponder { tv.becomeFirstResponder() }
-            moveCaretToEnd(tv)
-        }
-
-        private func moveCaretToEnd(_ tv: UITextView) {
-            DispatchQueue.main.async {
-                let end = tv.endOfDocument
-                tv.selectedTextRange = tv.textRange(from: end, to: end)
-            }
-        }
-
-        func textViewDidBeginEditing(_ tv: UITextView) {
-            moveCaretToEnd(tv)
-        }
 
         func textViewDidChange(_ tv: UITextView) {
             parent.text = tv.text

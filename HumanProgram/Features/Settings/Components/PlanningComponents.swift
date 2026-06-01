@@ -32,8 +32,10 @@ struct WeekdayCircleSelector: View {
                             .fixedSize()
                     }
                     .frame(width: 38, height: 38)
+                    .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .a11yTapBorder(Circle())
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)

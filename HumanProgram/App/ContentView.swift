@@ -140,6 +140,7 @@ struct HubView: View {
                                         .frame(width: side, height: side)   // square
                                 }
                                 .buttonStyle(.plain)
+                                .a11yTapBorder(RoundedRectangle(cornerRadius: 22, style: .continuous))
                             }
                         }
                     }
