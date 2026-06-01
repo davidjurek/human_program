@@ -2,6 +2,13 @@ import SwiftUI
 import SwiftData
 import DSKit
 import UserNotifications
+import UIKit
+
+/// Reports a view's bottom edge (global Y) so a screen can lift it above the keyboard.
+struct ButtonMaxYKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
 
 // ── FactoryResetView ───────────────────────────────────────────────────────────
 // Pushed screen (reached from Settings → Danger Zone, and Settings → Security).
@@ -56,6 +63,10 @@ struct FactoryResetView: View {
 
     @State private var confirmationInput: String = ""
     @State private var isResetting: Bool = false
+    // Keyboard-avoidance: lift the whole block by exactly the amount the red
+    // button would be covered when the keyboard appears.
+    @State private var buttonMaxY: CGFloat = 0
+    @State private var lift: CGFloat = 0
 
     private var isConfirmationValid: Bool {
         confirmationInput.uppercased() == "RESET"
@@ -67,8 +78,8 @@ struct FactoryResetView: View {
         "This cannot be undone."
 
     var body: some View {
-        // Keep our own keyboard avoidance off and anchor the block in the upper
-        // portion so the system keyboard never covers the red button.
+        // Our own keyboard avoidance is off (so SwiftUI doesn't fight us); we lift
+        // the block manually so the red button always clears the keyboard.
         SettingsScreen(centered: true, manualKeyboardAvoidance: true) {
             VStack(spacing: 14) {
                 DSImageView(systemName: "exclamationmark.triangle.fill",
@@ -98,9 +109,23 @@ struct FactoryResetView: View {
 
                 resetButton
                     .padding(.top, 8)
+                    .background(GeometryReader { g in
+                        Color.clear.preference(key: ButtonMaxYKey.self, value: g.frame(in: .global).maxY)
+                    })
             }
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 8)
+            .offset(y: -lift)
+            .onPreferenceChange(ButtonMaxYKey.self) { buttonMaxY = $0 }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+                guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                // Overlap between the button's bottom (+24pt breathing room) and the keyboard top.
+                let needed = buttonMaxY + 24 - frame.minY
+                withAnimation(.easeOut(duration: 0.25)) { lift = max(0, needed) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation(.easeOut(duration: 0.2)) { lift = 0 }
+            }
         }
     }
 

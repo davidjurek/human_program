@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import DSKit
 import UniformTypeIdentifiers
+import UIKit
 
 // Import and Export, split into two DSKit pages. Import offers three options
 // (text backlog, CSV backlog, restore .hprgm); Export offers one (.hprgm full
@@ -304,12 +305,14 @@ struct HprgmRestoreConfirmView: View {
     @Environment(AppState.self) private var appState
     @State private var confirm = ""
     @State private var error: String?
+    @State private var buttonMaxY: CGFloat = 0
+    @State private var lift: CGFloat = 0
 
     private var canRestore: Bool { confirm.uppercased() == "RESTORE" }
 
     var body: some View {
-        // Manual keyboard avoidance + upper-anchored block so the keyboard never
-        // covers the red button.
+        // Manual keyboard avoidance; we lift the block so the red button always
+        // clears the keyboard.
         SettingsScreen(centered: true, manualKeyboardAvoidance: true) {
             VStack(spacing: 14) {
                 DSImageView(systemName: "exclamationmark.triangle.fill", size: 48, tint: .color(.red))
@@ -333,8 +336,21 @@ struct HprgmRestoreConfirmView: View {
                         .background(canRestore ? Color.red : Color.red.opacity(0.35), in: Capsule())
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).a11yTapBorder(Capsule()).disabled(!canRestore)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: ButtonMaxYKey.self, value: g.frame(in: .global).maxY)
+                })
             }
             .frame(maxWidth: .infinity).padding(.horizontal, 8)
+            .offset(y: -lift)
+            .onPreferenceChange(ButtonMaxYKey.self) { buttonMaxY = $0 }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+                guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                let needed = buttonMaxY + 24 - frame.minY
+                withAnimation(.easeOut(duration: 0.25)) { lift = max(0, needed) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation(.easeOut(duration: 0.2)) { lift = 0 }
+            }
         }
     }
 
