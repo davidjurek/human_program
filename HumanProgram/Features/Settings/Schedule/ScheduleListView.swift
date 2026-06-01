@@ -64,7 +64,7 @@ private struct ScheduleRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     DSText(template.name.isEmpty ? "Untitled" : template.name)
                         .dsTextStyle(.title3)
-                        .lineLimit(3)
+                        .longTitle()
                     DSText(summary).dsTextStyle(.subheadline)
                     WeekdayStrip(days: Set(template.assignedWeekdays))
                 }
@@ -72,10 +72,12 @@ private struct ScheduleRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(Rectangle())
 
             Toggle("", isOn: Binding(get: { template.isEnabled }, set: { onToggle($0) }))
                 .labelsHidden()
                 .tint(appToggleTint)
+                .a11yTapBorder(Capsule())
         }
         .frame(minHeight: 52)
     }

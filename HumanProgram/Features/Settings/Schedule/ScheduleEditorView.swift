@@ -32,6 +32,13 @@ struct ScheduleEditorView: View {
     /// and repeat are intentionally left blank/default so it can't be saved as-is.
     var seed: ScheduleSeed? = nil
 
+    /// When this editor was opened as a duplicate (pushed on top of another
+    /// editor), saving should pop ALL the way back to the schedule list, not just
+    /// one level to the editor that spawned it. The spawning editor passes its own
+    /// dismiss here; calling it pops this editor and everything above it. nil for a
+    /// normal editor (opened straight from the list), which just dismisses itself.
+    var onSavedReturnToList: (() -> Void)? = nil
+
     @State private var duplicateSeed: ScheduleSeed?
     @State private var name = ""
     @State private var repeatMode = "weekly"          // "weekly" | "custom"
@@ -248,7 +255,10 @@ struct ScheduleEditorView: View {
         .onPreferenceChange(KeypadHeightKey.self) { keypadMeasuredHeight = $0 }
         .onAppear(perform: loadIfNeeded)
         .navigationDestination(item: $duplicateSeed) { seed in
-            ScheduleEditorView(template: nil, seed: seed)
+            // Saving the duplicate returns straight to the list. Propagate our own
+            // return action so chained duplicates also land on the list.
+            ScheduleEditorView(template: nil, seed: seed,
+                               onSavedReturnToList: onSavedReturnToList ?? { dismiss() })
         }
     }
 
@@ -271,6 +281,7 @@ struct ScheduleEditorView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(cornerRadius: 4)
             .anchorFrame("repeat", in: .named(anchorSpace))
         }
         .frame(height: 34)
@@ -284,17 +295,21 @@ struct ScheduleEditorView: View {
                 Image(systemName: "plus.square.on.square").font(.system(size: 18))
                     .foregroundStyle(.primary).frame(width: 44, height: 44)
                     .contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }
             Button { showDeleteConfirm = true } label: {
                 Image(systemName: "trash").font(.system(size: 18))
                     .foregroundStyle(.red).frame(width: 44, height: 44)
                     .contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }
         }
         Button { save() } label: {
             Text("Save").font(appFont(18))
                 .foregroundStyle(canSave ? .primary : .secondary)
-                .frame(height: 44).padding(.horizontal, 6)
+                .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                .contentShape(Rectangle())   // whole frame tappable, not just glyphs
+                .a11yTapBorder(Rectangle())
         }
         .disabled(!canSave)
     }
@@ -418,6 +433,7 @@ struct ScheduleEditorView: View {
                 .overlay(Circle().strokeBorder(Color.primary.opacity(0.2)))
                 .contentShape(Circle())
         }.buttonStyle(.plain)
+        .a11yTapBorder(Circle())
     }
 
     // MARK: - Custom keypad
@@ -770,6 +786,7 @@ struct ScheduleEditorView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .a11yTapBorder(cornerRadius: 4)
                 .disabled(isFull)
                 .padding(.leading, 12)
                 .anchorFrame("newDuration", in: .named(anchorSpace))
@@ -781,6 +798,7 @@ struct ScheduleEditorView: View {
                         .foregroundStyle(canAddBlock ? Color.primary : Color.secondary)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
+                        .a11yTapBorder(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(!canAddBlock)
@@ -815,6 +833,7 @@ struct ScheduleEditorView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(cornerRadius: 4)
             .anchorFrame(anchorId, in: .named(anchorSpace))
         }
         .frame(height: 34)
@@ -875,6 +894,13 @@ struct ScheduleEditorView: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, !weekdays.isEmpty else { return }
 
+        // A schedule can't be longer than a day. Sleep + all block durations must
+        // fit in 24h. Show the error in the same slot as the day-conflict message.
+        if usedMinutes > 1440 {
+            conflictMessage = "Schedule exceeds 24 hours"
+            return
+        }
+
         let repo = ScheduleRepository(context: context)
         let isNew = template == nil
         let t = template ?? ScheduleTemplate(name: trimmed)
@@ -902,7 +928,8 @@ struct ScheduleEditorView: View {
         } catch {
             print("[ScheduleEditor] save error: \(error)")
         }
-        dismiss()
+        // A duplicate pops back to the list; a normal editor dismisses itself.
+        if let onSavedReturnToList { onSavedReturnToList() } else { dismiss() }
     }
 
     private func deleteSchedule() {
