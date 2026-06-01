@@ -4,12 +4,6 @@ import DSKit
 import UserNotifications
 import UIKit
 
-/// Reports a view's bottom edge (global Y) so a screen can lift it above the keyboard.
-struct ButtonMaxYKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
 // ── FactoryResetView ───────────────────────────────────────────────────────────
 // Pushed screen (reached from Settings → Danger Zone, and Settings → Security).
 // Wipes all SwiftData records and the app's UserDefaults. The user must type
@@ -63,23 +57,23 @@ struct FactoryResetView: View {
 
     @State private var confirmationInput: String = ""
     @State private var isResetting: Bool = false
-    // Keyboard-avoidance: lift the whole block by exactly the amount the red
-    // button would be covered when the keyboard appears.
-    @State private var buttonMaxY: CGFloat = 0
-    @State private var lift: CGFloat = 0
+    // The block is parked this far up the page (a fixed physical shift, no keyboard
+    // avoidance) so the red button always sits above the keyboard, even at ~6 lines
+    // of warning text. Nothing moves when the keyboard appears.
+    private let contentLift: CGFloat = 60
 
     private var isConfirmationValid: Bool {
         confirmationInput.uppercased() == "RESET"
     }
 
     private let warningBody: String =
-        "This will permanently delete all your tasks, backlog items, schedules, " +
-        "routines, daily pages, history, and reminders. " +
-        "This cannot be undone."
+        "Factory reset will restore the app to its factory state and wipe all data. " +
+        "Consider creating a backup if you have not done so. " +
+        "This action cannot be undone."
 
     var body: some View {
-        // Our own keyboard avoidance is off (so SwiftUI doesn't fight us); we lift
-        // the block manually so the red button always clears the keyboard.
+        // Keyboard avoidance is OFF (manualKeyboardAvoidance) so nothing shifts when
+        // the keyboard appears. The block is simply parked high (see contentLift).
         SettingsScreen(centered: true, manualKeyboardAvoidance: true) {
             VStack(spacing: 14) {
                 DSImageView(systemName: "exclamationmark.triangle.fill",
@@ -109,28 +103,10 @@ struct FactoryResetView: View {
 
                 resetButton
                     .padding(.top, 8)
-                    .background(GeometryReader { g in
-                        Color.clear.preference(key: ButtonMaxYKey.self, value: g.frame(in: .global).maxY)
-                    })
             }
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 8)
-            .offset(y: -lift)
-            .onPreferenceChange(ButtonMaxYKey.self) { buttonMaxY = $0 }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
-                guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-                // buttonMaxY is measured from the already-lifted view, so add the
-                // current lift back to recover the button's RESTING bottom. Without
-                // this, a second keyboardWillShow (the iOS 26 predictive bar toggling
-                // height) computes against the lifted position and the lift collapses.
-                let restingMaxY = buttonMaxY + lift
-                // Overlap between the button's bottom (+24pt breathing room) and the keyboard top.
-                let needed = restingMaxY + 24 - frame.minY
-                withAnimation(.easeOut(duration: 0.25)) { lift = max(0, needed) }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                withAnimation(.easeOut(duration: 0.2)) { lift = 0 }
-            }
+            .offset(y: -contentLift)
         }
     }
 

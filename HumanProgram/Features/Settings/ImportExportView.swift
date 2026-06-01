@@ -305,20 +305,22 @@ struct HprgmRestoreConfirmView: View {
     @Environment(AppState.self) private var appState
     @State private var confirm = ""
     @State private var error: String?
-    @State private var buttonMaxY: CGFloat = 0
-    @State private var lift: CGFloat = 0
+    // The block is parked this far up the page (a fixed physical shift, no keyboard
+    // avoidance) so the red button always sits above the keyboard. Nothing moves
+    // when the keyboard appears.
+    private let contentLift: CGFloat = 60
 
     private var canRestore: Bool { confirm.uppercased() == "RESTORE" }
 
     var body: some View {
-        // Manual keyboard avoidance; we lift the block so the red button always
-        // clears the keyboard.
+        // Keyboard avoidance is OFF (manualKeyboardAvoidance) so nothing shifts when
+        // the keyboard appears. The block is simply parked high (see contentLift).
         SettingsScreen(centered: true, manualKeyboardAvoidance: true) {
             VStack(spacing: 14) {
                 DSImageView(systemName: "exclamationmark.triangle.fill", size: 56, tint: .color(.red))
                     .padding(.top, 8)
                 DSText("Restore Backup").dsTextStyle(.title2)
-                DSText("Restoring REPLACES all current data with the backup. This cannot be undone. Your PIN and Face ID stay as they are.")
+                DSText("Restoring will wipe all current data and replace with what is in the backup. This action cannot be undone.")
                     .dsTextStyle(.body).multilineTextAlignment(.center)
 
                 DSText("Type restore to confirm").dsTextStyle(.subheadline).padding(.top, 12)
@@ -337,26 +339,9 @@ struct HprgmRestoreConfirmView: View {
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).a11yTapBorder(Capsule()).disabled(!canRestore)
                 .padding(.top, 8)
-                .background(GeometryReader { g in
-                    Color.clear.preference(key: ButtonMaxYKey.self, value: g.frame(in: .global).maxY)
-                })
             }
             .frame(maxWidth: .infinity).padding(.horizontal, 8)
-            .offset(y: -lift)
-            .onPreferenceChange(ButtonMaxYKey.self) { buttonMaxY = $0 }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
-                guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-                // buttonMaxY is measured from the already-lifted view, so add the
-                // current lift back to recover the button's RESTING bottom — otherwise
-                // a second keyboardWillShow (iOS 26 predictive bar toggling height)
-                // computes against the lifted position and the lift collapses.
-                let restingMaxY = buttonMaxY + lift
-                let needed = restingMaxY + 24 - frame.minY
-                withAnimation(.easeOut(duration: 0.25)) { lift = max(0, needed) }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                withAnimation(.easeOut(duration: 0.2)) { lift = 0 }
-            }
+            .offset(y: -contentLift)
         }
     }
 
