@@ -23,18 +23,27 @@ struct TermsOfServiceView: View {
     var body: some View {
         switch mode {
         case .reference:
-            SettingsScreen(centered: true) { termsText }
+            SettingsScreen(centered: true) {
+                header
+                sectionsBody
+            }
         case .onboarding:
             ZStack {
                 SettingsBackground()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        termsText
-                        gate
+                VStack(spacing: 0) {
+                    // Frozen, centered header — stays put while the body scrolls.
+                    header
+                        .padding(.horizontal, 24)
+                        .padding(.top, 40)
+                        .padding(.bottom, 18)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            sectionsBody
+                            gate
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 40)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 40)
-                    .padding(.bottom, 40)
                 }
             }
         }
@@ -75,15 +84,28 @@ struct TermsOfServiceView: View {
         }
     }
 
-    // MARK: - The terms text (shared by both modes)
+    // MARK: - Header (center-aligned) + body (shared by both modes)
 
-    private var termsText: some View {
+    /// Centered title block. Uses plain Text (not DSText) so multi-line center
+    /// alignment actually applies. In onboarding mode this is frozen above the
+    /// scroll; in reference mode it sits at the top of the scroll.
+    private var header: some View {
+        VStack(spacing: 8) {
+            Text("Terms of Service")
+                .font(appFont(22)).foregroundStyle(.primary)
+                .multilineTextAlignment(.center).frame(maxWidth: .infinity)
+            Text("Human Program")
+                .font(appFont(17, bold: true)).foregroundStyle(.primary)
+                .multilineTextAlignment(.center).frame(maxWidth: .infinity)
+            Text("Effective date: upon your acceptance. Please read these Terms carefully before using the application.")
+                .font(appFont(15)).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center).frame(maxWidth: .infinity)
+        }
+    }
+
+    /// The numbered sections (left-aligned for readability).
+    private var sectionsBody: some View {
         VStack(alignment: .leading, spacing: 18) {
-            DSText("Terms of Service").dsTextStyle(.title2)
-            DSText("Human Program").dsTextStyle(.headline)
-            DSText("Effective date: upon your acceptance. Please read these Terms carefully before using the application.")
-                .dsTextStyle(.subheadline)
-
             ForEach(Self.sections.indices, id: \.self) { i in
                 section(number: i + 1, Self.sections[i])
             }
