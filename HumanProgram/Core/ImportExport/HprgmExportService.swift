@@ -183,11 +183,14 @@ struct HprgmExportService {
 
         let data = try encoder.encode(bundle)
 
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate]
+        // hpbackup_yymmdd_hhmm.hprgm  (24-hour time). POSIX locale keeps the
+        // numeric format stable regardless of the user's region/calendar.
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyMMdd_HHmm"
         let dateString = formatter.string(from: Date())
 
-        let filename = "HumanProgramBackup-\(dateString).hprgm"
+        let filename = "hpbackup_\(dateString).hprgm"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
 
         try data.write(to: url, options: .atomic)

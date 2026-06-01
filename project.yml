@@ -55,6 +55,22 @@ targets:
           - MartelSans-Bold.ttf
           - Lilex.ttf
           - BitcountGridSingle.ttf
+        # Declare .hprgm as an app-owned file type so iOS recognises it and keeps
+        # the extension when a backup is exported / saved to Files, and so the app
+        # can open .hprgm files.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: app.humanprogram.ios.hprgm
+            UTTypeDescription: Human Program Backup
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - hprgm
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Human Program Backup
+            LSHandlerRank: Owner
+            LSItemContentTypes:
+              - app.humanprogram.ios.hprgm
     settings:
       INFOPLIST_FILE: HumanProgram/Resources/Info.plist
       PRODUCT_NAME: HumanProgram
