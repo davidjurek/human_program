@@ -32,7 +32,12 @@ struct TaskDetailView: View {
                 AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20), verticallyCentered: true)
                     .frame(minHeight: 34, alignment: .leading)   // match read mode → no reflow [#41]
             } else {
-                DSText(title.isEmpty ? "Untitled" : title).dsTextStyle(.title3)
+                // Same AppTextField, just non-editable — so the title renders through the
+                // identical glyph-layout path as edit mode and sits pixel-for-pixel the
+                // same (DSText vs UITextView would drift a couple px). [#41]
+                AppTextField(text: .constant(title.isEmpty ? "Untitled" : title),
+                             placeholder: "Title", fontSize: appScaledSize(20),
+                             verticallyCentered: true, editable: false)
                     .frame(minHeight: 34, alignment: .leading)
             }
 

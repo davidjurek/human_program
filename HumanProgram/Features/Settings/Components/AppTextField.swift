@@ -16,12 +16,20 @@ struct AppTextField: UIViewRepresentable {
     /// matches the read-mode `DSText` (which SwiftUI centers in the same frame) — no
     /// vertical jump between read and edit. Leave false for multiline (top-anchored). [#41]
     var verticallyCentered: Bool = false
+    /// Read mode: render the text through this very same field (UITextView) but with
+    /// editing/selection/interaction off. Lets a read-only label share the EXACT glyph
+    /// layout path as the editable field, so the text sits pixel-identical between
+    /// read and edit modes (two different text engines never line up). [#41]
+    var editable: Bool = true
 
     func makeUIView(context: Context) -> VCenterTextView {
         let tv = VCenterTextView()
         tv.verticallyCenter = verticallyCentered
         tv.backgroundColor = .clear
         tv.delegate = context.coordinator
+        tv.isEditable = editable
+        tv.isSelectable = editable
+        tv.isUserInteractionEnabled = editable
         tv.isScrollEnabled = false
         tv.textContainerInset = .zero
         tv.textContainer.lineFragmentPadding = 0
@@ -59,6 +67,9 @@ struct AppTextField: UIViewRepresentable {
     func updateUIView(_ uiView: VCenterTextView, context: Context) {
         context.coordinator.parent = self   // keep the latest binding/text
         uiView.verticallyCenter = verticallyCentered
+        uiView.isEditable = editable
+        uiView.isSelectable = editable
+        uiView.isUserInteractionEnabled = editable
         uiView.font = appUIFont(fontSize)
         context.coordinator.placeholderLabel?.font = appUIFont(fontSize)
         context.coordinator.placeholderLabel?.text = placeholder

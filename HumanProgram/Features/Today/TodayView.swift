@@ -19,6 +19,9 @@ struct TodayView: View {
     @State private var now = Date()
     @State private var calendarService = CalendarAdapterService()
     @State private var calendarItems: [TimelineItem] = []
+    // Keyboard "safety gap" — height of the bottom spacer that gives the scroll
+    // range for KeyboardScrollNudge to lift the focused field (mirrors Schedule).
+    @State private var keyboardSpacer: CGFloat = 0
 
     // Hold-to-reorder (vertical) + swipe-to-delete (horizontal) for the task rows,
     // mirroring the Schedule editor's block list. Both are UIKit recognizers
@@ -55,14 +58,28 @@ struct TodayView: View {
                     tasksSection
                     exerciseSection
                     Color.clear.frame(height: 32)              // [#41] bottom inset
+                    // Keyboard safety-gap room (= keyboard height). SwiftUI avoidance
+                    // is OFF below, so this spacer gives the scroll range for the
+                    // nudge to lift the focused "New task" field clear of the keyboard.
+                    Color.clear.frame(height: keyboardSpacer)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 28)                             // [#41] top inset
+                .background(KeyboardScrollNudge())             // 20pt gap above keyboard
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)        // disable SwiftUI auto-avoidance
             .scrollDismissesKeyboard(.interactively)           // [#46] drag-to-dismiss
             // Suspend native scrolling while a row is being dragged-to-reorder or
             // swiped, so the gesture owns the touch (Schedule does the same).
             .scrollDisabled(dragInfo != nil || swipeDragId != nil)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+                if let f = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                    withAnimation(.easeOut(duration: 0.25)) { keyboardSpacer = f.height }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation(.easeOut(duration: 0.2)) { keyboardSpacer = 0 }
+            }
             .navigationDestination(item: $navTask) { task in
                 TaskDetailView(task: task,
                                sourceLabel: vm.sourceLabel(for: task),
@@ -159,12 +176,12 @@ struct TodayView: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
-                .onTapGesture { vm.relockOnLeave(); dismiss() }
+                .onTapGesture { if dismissAddIfOpen() { return }; vm.relockOnLeave(); dismiss() }
             Spacer()
             HStack(spacing: 26) {                                 // [#44] spread out
                 navButton("arrow.left") { vm.goToPreviousDay() }
                 navButton("arrow.right") { vm.goToNextDay() }
-                Button { vm.goToToday() } label: {
+                Button { if dismissAddIfOpen() { return }; vm.goToToday() } label: {
                     DSText("Today").dsTextStyle(.subheadline)
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain)
@@ -180,7 +197,7 @@ struct TodayView: View {
     }
 
     private func navButton(_ icon: String, size: CGFloat = 16, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button(action: { if dismissAddIfOpen() { return }; action() }) {
             Image(systemName: icon).font(.system(size: size, weight: .semibold))
                 .foregroundStyle(.primary).frame(width: 30, height: 30)
                 .contentShape(Rectangle())
@@ -258,6 +275,7 @@ struct TodayView: View {
                 HStack {
                     Spacer()
                     Button {
+                        if dismissAddIfOpen() { return }
                         addingTask = true
                         DispatchQueue.main.async { addFocused = true }
                     } label: {
@@ -346,7 +364,7 @@ struct TodayView: View {
 
     private func taskRowContent(_ task: DailyPageTask) -> some View {
         HStack(spacing: 12) {
-            Button { Task { await vm.toggleTask(task) } } label: {
+            Button { if dismissAddIfOpen() { return }; Task { await vm.toggleTask(task) } } label: {
                 SelectionCircle(isOn: task.completed)
             }
             .buttonStyle(.plain)
@@ -368,6 +386,7 @@ struct TodayView: View {
 
     /// Clean tap on a row → open its detail (or just close an open swipe).
     private func tapTask(_ task: DailyPageTask) {
+        if dismissAddIfOpen() { return }
         if swipeOpenId != nil { closeSwipe(); return }
         navTask = task
     }
@@ -456,6 +475,17 @@ struct TodayView: View {
         let raw = base + ((swipeDragId == id) ? swipeDragX : 0)
         if raw < -trashWidth { return -trashWidth - (-trashWidth - raw) * 0.2 }
         return min(0, raw)
+    }
+
+    /// While the "New task" field/keyboard is open, the first tap anywhere just
+    /// dismisses it and is SWALLOWED — it must not also fire the tapped control
+    /// (mirrors the editors' `dismissOpenInputIfAny`). Returns true if it absorbed
+    /// the tap. [#9]
+    @discardableResult
+    private func dismissAddIfOpen() -> Bool {
+        guard addingTask || addFocused else { return false }
+        addFocused = false        // onChange(addFocused) → commitAdd closes the field
+        return true
     }
 
     private func commitAdd() {
