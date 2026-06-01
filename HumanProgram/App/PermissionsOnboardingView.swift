@@ -83,7 +83,7 @@ struct PermissionsOnboardingView: View {
     private func permissionRow(label: String, done: Bool, action: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
             Text(label).font(appFont(18)).foregroundStyle(.primary)
-                .lineLimit(1).minimumScaleFactor(0.7)
+                .lineLimit(1)
             Spacer(minLength: 8)
             Button(action: { if !done { action() } }) {
                 Text(done ? "Done!" : "Grant access")
@@ -100,8 +100,11 @@ struct PermissionsOnboardingView: View {
     // MARK: - Permission requests
 
     @MainActor private func requestCalendar() async {
-        _ = await calendarService.requestAccess()
-        calendarDone = calendarService.isAuthorized
+        // Use the request's own result as the source of truth — re-reading
+        // EKEventStore.authorizationStatus right after granting can still report the
+        // old value, which left the button stuck on "Grant access".
+        let granted = await calendarService.requestAccess()
+        calendarDone = granted || calendarService.isAuthorized
     }
 
     @MainActor private func requestNotifications() async {

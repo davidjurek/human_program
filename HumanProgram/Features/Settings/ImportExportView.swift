@@ -352,6 +352,10 @@ struct HprgmRestoreConfirmView: View {
 
     private func restore() {
         guard canRestore else { return }
+        // Drop the keyboard before the confirmation interstitial appears — otherwise
+        // the field keeps first-responder and the keyboard floats over it.
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                        to: nil, from: nil, for: nil)
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         do {

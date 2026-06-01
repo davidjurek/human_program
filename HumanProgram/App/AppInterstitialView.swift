@@ -15,7 +15,7 @@ struct AppInterstitialView: View {
     private var title: String {
         switch mode {
         case .welcome:  return "Welcome to the Human Program!"
-        case .reset:    return "The Human Program has been reset back to its factory state."
+        case .reset:    return "Human Program has been reset back to its factory state."
         case .restored: return "The backup has been restored."
         }
     }

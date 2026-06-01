@@ -581,17 +581,25 @@ struct CalendarView: View {
                         .padding(.trailing, 16)
                     }
 
-                    // Current time: red pill centered in the time column + line
-                    // attached to it. [#26/#28]
+                    // Current time: red pill in the time column + line attached to
+                    // its right edge. [#26/#28]
                     if isToday {
                         let topOffset = CGFloat(nowMinute) / 60.0 * hourHeight
-                        HStack(spacing: 8) {
+                        // spacing 0 + the pill trailing-aligned in the time column so
+                        // the line starts exactly at the pill's right edge (attached),
+                        // not after the column gap.
+                        HStack(spacing: 0) {
                             Text(nowTimeString)
                                 .font(appFont(13, bold: true)).foregroundStyle(.white)
                                 .padding(.horizontal, 5).padding(.vertical, 2)
                                 .background(Capsule().fill(Color.red))
                                 .fixedSize()
-                                .frame(width: 48, alignment: .center)
+                                // 48 (time-column width) + 5 (the capsule's right
+                                // padding) so the pill's DIGITS land on the column's
+                                // trailing edge — aligned with the hour labels — while
+                                // the capsule's right edge (and the attached line) sit
+                                // just past it.
+                                .frame(width: 53, alignment: .trailing)
                             Rectangle().fill(Color.red).frame(height: 1)
                         }
                         .padding(.trailing, 8)

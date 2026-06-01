@@ -152,6 +152,10 @@ struct FactoryResetView: View {
 
     private func performReset() {
         guard isConfirmationValid else { return }
+        // Drop the keyboard before the confirmation interstitial appears — otherwise
+        // the field keeps first-responder and the keyboard floats over it.
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                        to: nil, from: nil, for: nil)
         isResetting = true
 
         do {

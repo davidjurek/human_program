@@ -46,6 +46,22 @@ struct TodayView: View {
                 .padding(.top, 28)                             // [#41] top inset
             }
             .scrollDismissesKeyboard(.interactively)           // [#46] drag-to-dismiss
+            // Past-day lock/unlock pill: fixed top-right, just under the top bar (it
+            // does NOT scroll with the content and never affects layout). [#16]
+            .overlay(alignment: .topTrailing) {
+                if !vm.isToday && isPast {
+                    PastLockButton(locked: vm.isPastLocked) {
+                        Task {
+                            if vm.isPastLocked { await vm.unlockPastDay() } else { await vm.relockPastDay() }
+                        }
+                    }
+                    // Right edge lined up with the calendar button's true frame edge
+                    // (outer bar pad 12 + inner group pad 16 = 28). Top 0 lifts it to
+                    // just under the bar, out of the date row below.
+                    .padding(.trailing, 28)
+                    .padding(.top, 0)
+                }
+            }
         }
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
@@ -137,8 +153,8 @@ struct TodayView: View {
     // MARK: - Title row + padlock
 
     private var titleRow: some View {
-        // The padlock is an OVERLAY so its 52pt height never stretches the title
-        // row and pushes the schedule/everything below it down. [#16]
+        // Date row only. The past-day lock pill lives as a fixed top-right overlay on
+        // the scroll view (see body) so it never stretches this row or shifts anything.
         HStack {
             // Date turns green when the day is complete (replaces the old banner).
             if vm.isComplete {
@@ -147,15 +163,6 @@ struct TodayView: View {
                 DSText(longDate).dsTextStyle(.title2)
             }
             Spacer()
-        }
-        .overlay(alignment: .trailing) {
-            if !vm.isToday && isPast {
-                PastLockButton(locked: vm.isPastLocked) {
-                    Task {
-                        if vm.isPastLocked { await vm.unlockPastDay() } else { await vm.relockPastDay() }
-                    }
-                }
-            }
         }
     }
 
@@ -294,15 +301,15 @@ struct PastLockButton: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(locked ? Color.red : Color.green)
-                .frame(width: 52, height: 52)
+            Capsule().fill(locked ? Color.red : Color.green)
+                .frame(width: 66, height: 32)
             Image(systemName: locked ? "lock.fill" : "lock.open.fill")
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.white)
         }
         .scaleEffect(pressing ? 1.15 : 1)   // expand on press-and-hold [#17]
         .animation(.easeOut(duration: 0.15), value: pressing)
-        .contentShape(Circle())
+        .contentShape(Capsule())
         .onLongPressGesture(minimumDuration: 0.6, pressing: { p in
             pressing = p
             if p { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }

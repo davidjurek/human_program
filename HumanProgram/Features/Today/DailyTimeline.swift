@@ -103,10 +103,16 @@ struct DailyTimeline: View {
             // Live "now" line: pill over the time column + full-width red line.
             if showNow {
                 let y = yFor(currentMinute, S: S)
+                // Shared, clamped centre for BOTH the line and the pill so they stay
+                // vertically centred on each other even near 00:00 / 24:00. The pill
+                // is ~20pt tall, so its centre must stay within [10, S-10] to keep it
+                // inside the square; clamping the line to the same centre (instead of
+                // only the pill) is what keeps them aligned at the extremes.
+                let cy = min(max(y, 10), S - 10)
                 // Stop the line at the right edge of the block column (time column +
                 // both lanes), not the full square width.
                 Rectangle().fill(Color.red).frame(width: orangeX + laneSpan, height: 1)
-                    .offset(x: 0, y: y)
+                    .offset(x: 0, y: cy)
                 Text(hhmm(currentMinute))
                     .font(appFont(13, bold: true)).foregroundStyle(.white)
                     .padding(.horizontal, 6).padding(.vertical, 2)
@@ -114,7 +120,7 @@ struct DailyTimeline: View {
                     // Shift left by the capsule's horizontal padding (6) so the pill's
                     // time digits line up with the hour-label digits; the rounded left
                     // edge is allowed to spill into the left margin.
-                    .offset(x: -6, y: min(max(0, y - 10), S - 20))
+                    .offset(x: -6, y: cy - 10)
             }
         }
     }
