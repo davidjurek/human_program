@@ -39,7 +39,6 @@ struct TodayView: View {
                     titleRow
                     scheduleSection
                     tasksSection
-                    if vm.isComplete { CompletionBannerView() }
                     exerciseSection
                     Color.clear.frame(height: 32)              // [#41] bottom inset
                 }
@@ -105,6 +104,7 @@ struct TodayView: View {
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
                 .onTapGesture { vm.relockOnLeave(); dismiss() }
             Spacer()
             HStack(spacing: 26) {                                 // [#44] spread out
@@ -112,7 +112,9 @@ struct TodayView: View {
                 navButton("arrow.right") { vm.goToNextDay() }
                 Button { vm.goToToday() } label: {
                     DSText("Today").dsTextStyle(.subheadline)
+                        .contentShape(Rectangle())
                 }.buttonStyle(.plain)
+                .a11yTapBorder(cornerRadius: 4)
                 navButton("calendar", size: 18) { showDatePicker = true }   // [#7] 18pt glyph
             }
             .padding(.horizontal, 16)
@@ -128,6 +130,7 @@ struct TodayView: View {
             Image(systemName: icon).font(.system(size: size, weight: .semibold))
                 .foregroundStyle(.primary).frame(width: 30, height: 30)
                 .contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
         }.buttonStyle(.plain)
     }
 
@@ -137,7 +140,12 @@ struct TodayView: View {
         // The padlock is an OVERLAY so its 52pt height never stretches the title
         // row and pushes the schedule/everything below it down. [#16]
         HStack {
-            DSText(longDate).dsTextStyle(.title2)
+            // Date turns green when the day is complete (replaces the old banner).
+            if vm.isComplete {
+                DSText(longDate).dsTextStyle(.title2, Color(red: 0.18, green: 0.62, blue: 0.32))
+            } else {
+                DSText(longDate).dsTextStyle(.title2)
+            }
             Spacer()
         }
         .overlay(alignment: .trailing) {
@@ -219,6 +227,7 @@ struct TodayView: View {
                         DSText("Add Task").dsTextStyle(.headline)
                             .padding(.horizontal, 28).padding(.vertical, 12)
                             .contentShape(Rectangle())
+                            .a11yTapBorder(cornerRadius: 6)
                     }.buttonStyle(.plain)
                     Spacer()
                 }
@@ -317,6 +326,7 @@ private struct TodayTaskRow: View {
             Button(action: onToggle) {
                 SelectionCircle(isOn: task.completed)
             }.buttonStyle(.plain)
+            .a11yTapBorder(Circle())
 
             NavigationLink {
                 TaskDetailView(task: task, sourceLabel: sourceLabel,
@@ -325,11 +335,12 @@ private struct TodayTaskRow: View {
                 HStack {
                     DSText(task.title).dsTextStyle(.body)
                         .strikethrough(task.completed)
-                        .lineLimit(2)
+                        .longTitle()
                     Spacer()
                 }
                 .contentShape(Rectangle())
             }.buttonStyle(.plain)
+            .a11yTapBorder(Rectangle())
         }
         .frame(minHeight: 44)
     }
@@ -360,6 +371,8 @@ private struct TodayDatePicker: View {
                     DSText("Go").dsTextStyle(.headline)
                         .padding(.horizontal, 28).padding(.vertical, 12)
                         .background(Color.primary.opacity(0.08), in: Capsule())
+                        .contentShape(Capsule())
+                        .a11yTapBorder(Capsule())
                 }.buttonStyle(.plain)
                 Spacer()
             }

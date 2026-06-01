@@ -12,7 +12,6 @@ public enum AppTypography {
     public static func taskTitle() -> Font         { .system(size: 16, weight: .regular) }
     public static func taskMeta() -> Font          { .system(size: 12, weight: .regular) }
     public static func timeLabel() -> Font         { .system(size: 11, weight: .regular).monospacedDigit() }
-    public static func completionMessage() -> Font { .system(size: 15, weight: .medium) }
     public static func caption() -> Font           { .system(size: 12) }
     public static func dateLabel() -> Font         { .system(size: 17, weight: .semibold) }
     public static func buttonLabel() -> Font       { .system(size: 13, weight: .medium) }
