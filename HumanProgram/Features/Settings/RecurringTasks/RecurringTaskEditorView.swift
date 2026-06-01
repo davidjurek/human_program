@@ -145,6 +145,7 @@ struct RecurringTaskEditorView: View {
                 } label: {
                     HStack(spacing: 12) {
                         Text(option.title).font(appFont(18)).foregroundStyle(.primary)
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                         Spacer(minLength: 8)
                         if option.value == repeatMode {
                             Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold))

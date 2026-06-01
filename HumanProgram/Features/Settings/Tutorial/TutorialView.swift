@@ -50,11 +50,18 @@ struct TutorialView: View {
             DSText("A quick tour to get you going. You can reopen this any time from Settings → About → Tutorial.")
                 .dsTextStyle(.subheadline)
 
-            ForEach(Self.tips.indices, id: \.self) { i in
-                tip(Self.tips[i])
+            ForEach(displayTips.indices, id: \.self) { i in
+                tip(displayTips[i])
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The closing "That's it" tip tells the user to "Tap Done to start," which
+    /// only makes sense during onboarding. In the reference page (no Done button)
+    /// we drop it.
+    private var displayTips: [Tip] {
+        mode == .onboarding ? Self.tips : Array(Self.tips.dropLast())
     }
 
     private func tip(_ t: Tip) -> some View {

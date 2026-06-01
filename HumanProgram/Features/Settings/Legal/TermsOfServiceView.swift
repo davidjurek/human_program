@@ -99,7 +99,7 @@ struct TermsOfServiceView: View {
                 .multilineTextAlignment(.center).frame(maxWidth: .infinity)
             Text("Effective date: upon your acceptance. Please read these Terms carefully before using the application.")
                 .font(appFont(15)).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center).frame(maxWidth: .infinity)
+                .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

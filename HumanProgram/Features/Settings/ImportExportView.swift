@@ -315,18 +315,18 @@ struct HprgmRestoreConfirmView: View {
         // clears the keyboard.
         SettingsScreen(centered: true, manualKeyboardAvoidance: true) {
             VStack(spacing: 14) {
-                DSImageView(systemName: "exclamationmark.triangle.fill", size: 48, tint: .color(.red))
+                DSImageView(systemName: "exclamationmark.triangle.fill", size: 56, tint: .color(.red))
                     .padding(.top, 8)
                 DSText("Restore Backup").dsTextStyle(.title2)
                 DSText("Restoring REPLACES all current data with the backup. This cannot be undone. Your PIN and Face ID stay as they are.")
                     .dsTextStyle(.body).multilineTextAlignment(.center)
 
-                DSText("Type RESTORE to confirm").dsTextStyle(.subheadline).padding(.top, 8)
-                TextField("", text: $confirm, prompt: Text("RESTORE").foregroundStyle(.tertiary))
-                    .autocorrectionDisabled().textInputAutocapitalization(.characters)
+                DSText("Type restore to confirm").dsTextStyle(.subheadline).padding(.top, 12)
+                TextField("", text: $confirm, prompt: Text("restore").foregroundStyle(.tertiary))
+                    .autocorrectionDisabled().textInputAutocapitalization(.never)
                     .font(appFont(18)).multilineTextAlignment(.center)
                     .padding(.vertical, 14).padding(.horizontal, 20)
-                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
 
@@ -336,6 +336,7 @@ struct HprgmRestoreConfirmView: View {
                         .background(canRestore ? Color.red : Color.red.opacity(0.35), in: Capsule())
                         .contentShape(Capsule())
                 }.buttonStyle(.plain).a11yTapBorder(Capsule()).disabled(!canRestore)
+                .padding(.top, 8)
                 .background(GeometryReader { g in
                     Color.clear.preference(key: ButtonMaxYKey.self, value: g.frame(in: .global).maxY)
                 })
@@ -345,7 +346,12 @@ struct HprgmRestoreConfirmView: View {
             .onPreferenceChange(ButtonMaxYKey.self) { buttonMaxY = $0 }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
                 guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-                let needed = buttonMaxY + 24 - frame.minY
+                // buttonMaxY is measured from the already-lifted view, so add the
+                // current lift back to recover the button's RESTING bottom — otherwise
+                // a second keyboardWillShow (iOS 26 predictive bar toggling height)
+                // computes against the lifted position and the lift collapses.
+                let restingMaxY = buttonMaxY + lift
+                let needed = restingMaxY + 24 - frame.minY
                 withAnimation(.easeOut(duration: 0.25)) { lift = max(0, needed) }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in

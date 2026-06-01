@@ -35,7 +35,7 @@ struct AboutView: View {
 
                 SettingsNavRow(label: "Licenses", systemImage: "doc.text") { LicensesView() }
 
-                SettingsNavRow(label: "Terms of Use", systemImage: "doc.plaintext") {
+                SettingsNavRow(label: "Terms of Service", systemImage: "doc.plaintext") {
                     TermsOfServiceView(mode: .reference)
                 }
 

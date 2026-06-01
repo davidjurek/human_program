@@ -119,8 +119,13 @@ struct FactoryResetView: View {
             .onPreferenceChange(ButtonMaxYKey.self) { buttonMaxY = $0 }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
                 guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                // buttonMaxY is measured from the already-lifted view, so add the
+                // current lift back to recover the button's RESTING bottom. Without
+                // this, a second keyboardWillShow (the iOS 26 predictive bar toggling
+                // height) computes against the lifted position and the lift collapses.
+                let restingMaxY = buttonMaxY + lift
                 // Overlap between the button's bottom (+24pt breathing room) and the keyboard top.
-                let needed = buttonMaxY + 24 - frame.minY
+                let needed = restingMaxY + 24 - frame.minY
                 withAnimation(.easeOut(duration: 0.25)) { lift = max(0, needed) }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
