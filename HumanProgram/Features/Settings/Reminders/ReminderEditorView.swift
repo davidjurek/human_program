@@ -199,14 +199,7 @@ struct ReminderEditorView: View {
             }
         }
         .onPreferenceChange(KeypadHeightKey.self) { keypadMeasuredHeight = $0 }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
-            if let f = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                withAnimation(.easeOut(duration: 0.25)) { keyboardSpacer = f.height }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(.easeOut(duration: 0.2)) { keyboardSpacer = 0 }
-        }
+        .keyboardSpacer($keyboardSpacer)
         .onAppear(perform: loadIfNeeded)
     }
 

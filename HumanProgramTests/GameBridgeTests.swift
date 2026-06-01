@@ -8,49 +8,16 @@ final class GameBridgeTests: XCTestCase {
     // MARK: - Helpers
 
     // Must match how DailyPage normalizes its date (Calendar.current / local TZ).
-    var localCalendar: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone.current
-        return cal
-    }()
+    let localCalendar = TestCalendars.local
 
     func makeDate(year: Int, month: Int, day: Int) -> Date {
-        var comps = DateComponents()
-        comps.year   = year
-        comps.month  = month
-        comps.day    = day
-        comps.hour   = 0
-        comps.minute = 0
-        comps.second = 0
-        return localCalendar.date(from: comps)!
+        makeDate(year: year, month: month, day: day, in: localCalendar)
     }
 
     var today: Date { makeDate(year: 2025, month: 1, day: 8) }
 
     var yesterday: Date {
         localCalendar.date(byAdding: .day, value: -1, to: today)!
-    }
-
-    @MainActor
-    func makeTestModelContainer() throws -> ModelContainer {
-        let schema = Schema([
-            DailyPage.self,
-            DailyPageTask.self,
-            BacklogItem.self,
-            RecurringTaskTemplate.self,
-            ProjectBucket.self,
-            ScheduleTemplate.self,
-            ExerciseRoutine.self,
-            ExerciseRoutineItem.self,
-            RoutineItem.self,
-            Routine.self,
-            CalendarEventLocalState.self,
-            NotificationReminder.self,
-            GameAccessState.self,
-            GameSaveMetadata.self
-        ])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        return try ModelContainer(for: schema, configurations: config)
     }
 
     /// Create a DailyPage with the given date and dayComplete state.

@@ -65,7 +65,7 @@ struct DSCalendarView: View {
     }
 
     private var monthTitle: String {
-        let f = DateFormatter(); f.dateFormat = "MMMM yyyy"; return f.string(from: month)
+        AppDateFormat.monthYear(month)
     }
     private func step(_ delta: Int) {
         if let m = cal.date(byAdding: .month, value: delta, to: month) { month = m }
@@ -91,7 +91,7 @@ struct DSDateField: View {
     @State private var show = false
 
     private var label: String {
-        let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"; return f.string(from: date)
+        AppDateFormat.monthDayYear(date)
     }
 
     var body: some View {

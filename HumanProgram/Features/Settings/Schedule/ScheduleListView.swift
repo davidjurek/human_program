@@ -84,9 +84,7 @@ private struct ScheduleRow: View {
 
     private var summary: String {
         if let start = template.customDateStart, let end = template.customDateEnd {
-            let f = DateFormatter()
-            f.dateFormat = "MMM d"
-            return "\(f.string(from: start)) – \(f.string(from: end))"
+            return AppDateFormat.monthDayRange(start, end)
         }
         return "Weekly"
     }

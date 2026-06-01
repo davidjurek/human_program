@@ -72,14 +72,7 @@ struct TodayView: View {
             // Suspend native scrolling while a row is being dragged-to-reorder or
             // swiped, so the gesture owns the touch (Schedule does the same).
             .scrollDisabled(dragInfo != nil || swipeDragId != nil)
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
-                if let f = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                    withAnimation(.easeOut(duration: 0.25)) { keyboardSpacer = f.height }
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                withAnimation(.easeOut(duration: 0.2)) { keyboardSpacer = 0 }
-            }
+            .keyboardSpacer($keyboardSpacer)
             .navigationDestination(item: $navTask) { task in
                 TaskDetailView(task: task,
                                sourceLabel: vm.sourceLabel(for: task),
@@ -226,9 +219,7 @@ struct TodayView: View {
     }
 
     private var longDate: String {
-        let f = DateFormatter()
-        f.dateFormat = "EEEE, MMM d, yyyy"
-        return f.string(from: vm.viewingDate)
+        AppDateFormat.weekdayMonthDayYear(vm.viewingDate)
     }
 
     // MARK: - Schedule

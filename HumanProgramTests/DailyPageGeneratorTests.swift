@@ -6,21 +6,10 @@ final class DailyPageGeneratorTests: XCTestCase {
 
     // MARK: - Helpers
 
-    var gregorianUTC: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
-        return cal
-    }()
+    let gregorianUTC = TestCalendars.utc
 
     func makeDate(year: Int, month: Int, day: Int) -> Date {
-        var comps = DateComponents()
-        comps.year   = year
-        comps.month  = month
-        comps.day    = day
-        comps.hour   = 0
-        comps.minute = 0
-        comps.second = 0
-        return gregorianUTC.date(from: comps)!
+        makeDate(year: year, month: month, day: day, in: gregorianUTC)
     }
 
     /// Test date: Monday 2025-05-19 (weekday 2 in iOS Calendar)

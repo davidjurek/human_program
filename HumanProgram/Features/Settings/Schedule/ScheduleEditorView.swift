@@ -541,14 +541,7 @@ struct ScheduleEditorView: View {
         // Track the system keyboard so we can add bottom room for SwiftUI's
         // native avoidance (only fires for text fields — the wheel uses the
         // custom keypad, which isn't a system keyboard).
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
-            if let f = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                withAnimation(.easeOut(duration: 0.25)) { keyboardSpacer = f.height }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(.easeOut(duration: 0.2)) { keyboardSpacer = 0 }
-        }
+        .keyboardSpacer($keyboardSpacer)
     }
 
     private func swipeBegan(_ id: UUID) {

@@ -7,24 +7,13 @@ final class RecurrenceEngineTests: XCTestCase {
     // MARK: - Helpers
 
     /// gregorian calendar with UTC time zone to avoid DST-driven flakiness
-    var gregorianUTC: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
-        return cal
-    }()
+    let gregorianUTC = TestCalendars.utc
 
     /// The fixed anchor date used throughout: 2025-01-06, a Monday (weekday 2)
     var anchor: Date { makeDate(year: 2025, month: 1, day: 6) }
 
     func makeDate(year: Int, month: Int, day: Int) -> Date {
-        var comps = DateComponents()
-        comps.year  = year
-        comps.month = month
-        comps.day   = day
-        comps.hour  = 0
-        comps.minute = 0
-        comps.second = 0
-        return gregorianUTC.date(from: comps)!
+        makeDate(year: year, month: month, day: day, in: gregorianUTC)
     }
 
     /// Convenience: anchor + N calendar days

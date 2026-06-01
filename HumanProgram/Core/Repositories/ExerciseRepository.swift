@@ -21,21 +21,10 @@ public final class ExerciseRepository {
         // Collect which weekdays already have a routine (by first weekday in rule).
         let existingWeekdays = Set(all.compactMap { $0.recurrenceRule.weekdays.first })
 
-        let weekdayNames: [Int: String] = [
-            1: "Sunday",
-            2: "Monday",
-            3: "Tuesday",
-            4: "Wednesday",
-            5: "Thursday",
-            6: "Friday",
-            7: "Saturday"
-        ]
-
         for weekday in 1...7 {
             guard !existingWeekdays.contains(weekday) else { continue }
             // Seed with a BLANK name — the weekday header comes from the rule, and
             // the routine name is an optional custom label the user fills in.
-            _ = weekdayNames   // (kept for reference; names are no longer seeded)
             let rule = RecurrenceRule.on([weekday])
             let routine = ExerciseRoutine(name: "", rule: rule)
             context.insert(routine)

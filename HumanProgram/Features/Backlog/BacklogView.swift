@@ -104,8 +104,7 @@ struct BacklogView: View {
         var parts: [String] = []
         if let p = item.project?.name { parts.append(p) }
         if let d = item.assignedDate {
-            let f = DateFormatter(); f.dateFormat = "MMM d"
-            parts.append(f.string(from: d))
+            parts.append(AppDateFormat.monthDay(d))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -366,9 +365,7 @@ struct BacklogFolderView: View {
                         ForEach(items, id: \.id) { item in
                             BacklogRow(
                                 title: item.title,
-                                subtitle: item.assignedDate.map { d in
-                                    let f = DateFormatter(); f.dateFormat = "MMM d"; return f.string(from: d)
-                                },
+                                subtitle: item.assignedDate.map { AppDateFormat.monthDay($0) },
                                 selecting: selecting,
                                 isSelected: selected.contains(item.id),
                                 swipeOpen: swipeOpen == item.id,

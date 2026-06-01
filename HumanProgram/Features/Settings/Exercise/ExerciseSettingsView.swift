@@ -9,11 +9,6 @@ struct ExerciseSettingsView: View {
     @Environment(\.modelContext) private var context
     @Query private var allRoutines: [ExerciseRoutine]
 
-    private static let fullWeekdayName: [Int: String] = [
-        1: "Sunday", 2: "Monday", 3: "Tuesday", 4: "Wednesday",
-        5: "Thursday", 6: "Friday", 7: "Saturday"
-    ]
-
     /// Sorted by primary weekday (1–7).
     private var sortedRoutines: [ExerciseRoutine] {
         allRoutines.sorted {
@@ -39,7 +34,7 @@ struct ExerciseSettingsView: View {
 
     private func weekdayName(_ routine: ExerciseRoutine) -> String {
         let weekday = routine.recurrenceRule.weekdays.first ?? 0
-        return Self.fullWeekdayName[weekday] ?? "Exercise"
+        return Weekday.fullName(weekday) ?? "Exercise"
     }
 
     private func ensureRoutines() {

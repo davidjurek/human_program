@@ -46,13 +46,9 @@ struct ExerciseRoutineEditorView: View {
 
     private enum ActivePopup: Equatable { case counts(UUID) }
 
-    private static let fullWeekdayName: [Int: String] = [
-        1: "Sunday", 2: "Monday", 3: "Tuesday", 4: "Wednesday",
-        5: "Thursday", 6: "Friday", 7: "Saturday"
-    ]
     private var weekdayTitle: String {
         let weekday = routine.recurrenceRule.weekdays.first ?? 0
-        return Self.fullWeekdayName[weekday] ?? "Exercise"
+        return Weekday.fullName(weekday) ?? "Exercise"
     }
 
     // MARK: - Body
@@ -133,14 +129,7 @@ struct ExerciseRoutineEditorView: View {
             if !focused { commitTitleEditing(); editingTitleId = nil }
         }
         .background(KeyboardScrollNudge())
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
-            if let f = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                withAnimation(.easeOut(duration: 0.25)) { keyboardSpacer = f.height }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(.easeOut(duration: 0.2)) { keyboardSpacer = 0 }
-        }
+        .keyboardSpacer($keyboardSpacer)
     }
 
     private func exerciseRow(ex: DraftExercise, index: Int) -> some View {

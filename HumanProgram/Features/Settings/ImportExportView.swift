@@ -230,7 +230,7 @@ struct ImportSelectionView: View {
     private func subtitle(_ row: ParsedBacklogRow) -> String? {
         var parts: [String] = []
         if let p = row.project { parts.append(p) }
-        if let d = row.date { let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"; parts.append(f.string(from: d)) }
+        if let d = row.date { parts.append(AppDateFormat.monthDayYear(d)) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 

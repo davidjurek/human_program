@@ -133,14 +133,7 @@ struct RoutineEditorView: View {
         .onPreferenceChange(RowFrameKey<UUID>.self) { reorderRowFrames = $0 }
         .background(editing ? AnyView(reorderAndSwipe) : AnyView(Color.clear))
         .background(KeyboardScrollNudge())
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { n in
-            if let f = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                withAnimation(.easeOut(duration: 0.25)) { keyboardSpacer = f.height }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(.easeOut(duration: 0.2)) { keyboardSpacer = 0 }
-        }
+        .keyboardSpacer($keyboardSpacer)
     }
 
     private var reorderAndSwipe: some View {

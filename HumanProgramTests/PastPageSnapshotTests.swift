@@ -12,21 +12,10 @@ final class PastPageSnapshotTests: XCTestCase {
 
     // Must match how DailyPage normalizes its date (Calendar.current / local TZ),
     // otherwise UTC-built dates get shifted to a different local day on store/fetch.
-    var localCalendar: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone.current
-        return cal
-    }()
+    let localCalendar = TestCalendars.local
 
     func makeDate(year: Int, month: Int, day: Int) -> Date {
-        var comps = DateComponents()
-        comps.year   = year
-        comps.month  = month
-        comps.day    = day
-        comps.hour   = 0
-        comps.minute = 0
-        comps.second = 0
-        return localCalendar.date(from: comps)!
+        makeDate(year: year, month: month, day: day, in: localCalendar)
     }
 
     /// A fixed "today" for all tests: Wednesday 2025-05-21 (weekday 4).

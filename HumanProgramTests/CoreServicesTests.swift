@@ -7,45 +7,10 @@ final class CoreServicesTests: XCTestCase {
 
     // MARK: - Helpers
 
-    var gregorianUTC: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
-        return cal
-    }()
+    let gregorianUTC = TestCalendars.utc
 
     func makeDate(year: Int, month: Int, day: Int) -> Date {
-        var comps = DateComponents()
-        comps.year   = year
-        comps.month  = month
-        comps.day    = day
-        comps.hour   = 0
-        comps.minute = 0
-        comps.second = 0
-        return gregorianUTC.date(from: comps)!
-    }
-
-    // MARK: - In-memory ModelContainer
-
-    @MainActor
-    func makeTestModelContainer() throws -> ModelContainer {
-        let schema = Schema([
-            DailyPage.self,
-            DailyPageTask.self,
-            BacklogItem.self,
-            RecurringTaskTemplate.self,
-            ProjectBucket.self,
-            ScheduleTemplate.self,
-            ExerciseRoutine.self,
-            ExerciseRoutineItem.self,
-            RoutineItem.self,
-            Routine.self,
-            CalendarEventLocalState.self,
-            NotificationReminder.self,
-            GameAccessState.self,
-            GameSaveMetadata.self
-        ])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        return try ModelContainer(for: schema, configurations: config)
+        makeDate(year: year, month: month, day: day, in: gregorianUTC)
     }
 
     // MARK: - CompletionService helpers

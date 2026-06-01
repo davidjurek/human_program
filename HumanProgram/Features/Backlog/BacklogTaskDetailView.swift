@@ -159,8 +159,7 @@ struct BacklogTaskDetailView: View {
     }
 
     private var dateString: String {
-        let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"
-        return f.string(from: date)
+        AppDateFormat.monthDayYear(date)
     }
 
     private func loadIfNeeded() {

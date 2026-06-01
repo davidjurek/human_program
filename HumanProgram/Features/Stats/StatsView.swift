@@ -157,9 +157,8 @@ struct StatsView: View {
     }
 
     private var weekLabel: String {
-        let f = DateFormatter(); f.dateFormat = "MMM d"
         let end = cal.date(byAdding: .day, value: 6, to: weekStart)!
-        return "\(f.string(from: weekStart)) – \(f.string(from: end))"
+        return AppDateFormat.monthDayRange(weekStart, end)
     }
 
     // Flip-paging: page index 0…(statsPageCount-1) maps to weekOffset (… -2,-1,0). [#5/#38]
@@ -213,8 +212,7 @@ private struct WeekBar: Identifiable {
     let future: Bool
     var id: Date { date }
     var shortDay: String {
-        let f = DateFormatter(); f.dateFormat = "EEE"   // Sun…Sat (unique within a week)
-        return f.string(from: date)
+        AppDateFormat.weekdayShort(date)   // Sun…Sat (unique within a week)
     }
 }
 
@@ -230,8 +228,7 @@ struct StreakRun: Identifiable {
 }
 
 private func streakDateString(_ date: Date) -> String {
-    let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"
-    return f.string(from: date)
+    AppDateFormat.monthDayYear(date)
 }
 
 private func streakRangeString(_ run: StreakRun) -> String {

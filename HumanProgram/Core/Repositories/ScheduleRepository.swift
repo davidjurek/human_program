@@ -331,15 +331,6 @@ public final class ScheduleRepository {
 
     /// Human-readable weekday name for conflict messages. 1=Sun … 7=Sat.
     private func weekdayName(for weekday: Int) -> String {
-        switch weekday {
-        case 1: return "Sunday"
-        case 2: return "Monday"
-        case 3: return "Tuesday"
-        case 4: return "Wednesday"
-        case 5: return "Thursday"
-        case 6: return "Friday"
-        case 7: return "Saturday"
-        default: return "Day \(weekday)"
-        }
+        Weekday.fullName(weekday) ?? "Day \(weekday)"
     }
 }
