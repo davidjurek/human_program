@@ -126,10 +126,17 @@ struct ContentView: View {
         }
     }
 
-    /// Reset/restore confirmation dismissed. After a reset, `onboarded` was cleared
-    /// so the onboarding cover appears next automatically.
+    /// Reset/restore confirmation dismissed. After a reset, onboarding must run
+    /// again. FactoryResetView clears `hp.onboarded` in UserDefaults directly, but
+    /// that external write isn't reliably observed by this @AppStorage instance — so
+    /// we clear it here through the binding to guarantee the onboarding cover appears.
     private func finishInterstitial() {
+        let dismissed = appState.pendingInterstitial
         appState.pendingInterstitial = nil
+        if dismissed == .reset {
+            onboardingStep = .welcome
+            onboarded = false
+        }
         path = [.today]
     }
 

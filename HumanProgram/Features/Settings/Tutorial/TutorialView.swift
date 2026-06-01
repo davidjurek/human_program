@@ -15,18 +15,27 @@ struct TutorialView: View {
     var body: some View {
         switch mode {
         case .reference:
-            SettingsScreen(centered: true) { content }
+            SettingsScreen(centered: true) {
+                header
+                tipsBody
+            }
         case .onboarding:
             ZStack {
                 SettingsBackground()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        content
-                        doneButton
+                VStack(spacing: 0) {
+                    // Frozen header — stays put while the tips scroll.
+                    header
+                        .padding(.horizontal, 24)
+                        .padding(.top, 40)
+                        .padding(.bottom, 18)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 22) {
+                            tipsBody
+                            doneButton
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 40)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 40)
-                    .padding(.bottom, 40)
                 }
             }
         }
@@ -44,12 +53,19 @@ struct TutorialView: View {
         .a11yTapBorder(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var content: some View {
+    /// Title + intro line. Frozen above the scroll in onboarding mode; sits at the
+    /// top of the scroll in reference mode.
+    private var header: some View {
         VStack(alignment: .leading, spacing: 22) {
             DSText("How Human Program Works").dsTextStyle(.title2)
             DSText("A quick tour to get you going. You can reopen this any time from Settings → About → Tutorial.")
                 .dsTextStyle(.subheadline)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
+    private var tipsBody: some View {
+        VStack(alignment: .leading, spacing: 22) {
             ForEach(displayTips.indices, id: \.self) { i in
                 tip(displayTips[i])
             }

@@ -59,7 +59,7 @@ struct TodayView: View {
                     // (outer bar pad 12 + inner group pad 16 = 28). Top 0 lifts it to
                     // just under the bar, out of the date row below.
                     .padding(.trailing, 28)
-                    .padding(.top, 0)
+                    .padding(.top, -8)
                 }
             }
         }
