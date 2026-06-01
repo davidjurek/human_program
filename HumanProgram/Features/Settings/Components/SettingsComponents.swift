@@ -22,8 +22,8 @@ extension EnvironmentValues {
 /// chosen dark background.
 struct SettingsBackground: View {
     @Environment(\.colorScheme) private var scheme
-    @AppStorage("settings.bgLight") private var lightIndex: Int = 0
-    @AppStorage("settings.bgDark") private var darkIndex: Int = 0
+    @AppStorage(DefaultsKey.bgLight) private var lightIndex: Int = 0
+    @AppStorage(DefaultsKey.bgDark) private var darkIndex: Int = 0
 
     var body: some View {
         AppBackground.resolved(light: lightIndex, dark: darkIndex, scheme: scheme).view

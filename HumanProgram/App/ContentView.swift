@@ -11,10 +11,10 @@ struct ContentView: View {
     @Environment(\.modelContext) private var context
     @State private var lockVM = AppLockViewModel()
     @State private var path: [HubDestination] = [.today]   // launch at Today
-    @AppStorage("hp.onboarded") private var onboarded = false
+    @AppStorage(DefaultsKey.onboarded) private var onboarded = false
     // Fresh-install-only flag for the permissions step. A factory reset deliberately
     // SETS this true (FactoryResetView) so the re-run of onboarding skips permissions.
-    @AppStorage("hp.permissionsAsked") private var permissionsAsked = false
+    @AppStorage(DefaultsKey.permissionsAsked) private var permissionsAsked = false
     @State private var onboardingStep: OnboardingStep = .welcome
 
     private enum OnboardingStep { case welcome, terms, tutorial, permissions }

@@ -52,7 +52,7 @@ struct CalendarView: View {
     @State private var allDayPopupDate: Date?
 
     private var selectedCalendarIds: [String] {
-        UserDefaults.standard.stringArray(forKey: "selectedCalendarIds") ?? []
+        UserDefaults.standard.stringArray(forKey: DefaultsKey.selectedCalendarIds) ?? []
     }
 
     var body: some View {

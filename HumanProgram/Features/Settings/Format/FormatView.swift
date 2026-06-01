@@ -19,7 +19,7 @@ struct FormatView: View {
 // MARK: - Date format
 
 struct DateFormatView: View {
-    @AppStorage("settings.dateFormat") private var format: String = "MMM d, yyyy"
+    @AppStorage(DefaultsKey.dateFormat) private var format: String = "MMM d, yyyy"
 
     // (sample label using 01/23/2045, format string)
     private let options: [(String, String)] = [
@@ -46,7 +46,7 @@ struct DateFormatView: View {
 // MARK: - Time format
 
 struct TimeFormatView: View {
-    @AppStorage("settings.timeFormat") private var format: String = "12h"
+    @AppStorage(DefaultsKey.timeFormat) private var format: String = "12h"
 
     var body: some View {
         SettingsScreen(centered: true) {       // [#55] option screen → 20/20 margins

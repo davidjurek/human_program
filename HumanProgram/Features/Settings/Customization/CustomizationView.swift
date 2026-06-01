@@ -21,8 +21,8 @@ struct CustomizationView: View {
 // MARK: - Background (color + hue)
 
 struct BackgroundSettingsView: View {
-    @AppStorage("settings.bgLight") private var lightIndex: Int = 0
-    @AppStorage("settings.bgDark") private var darkIndex: Int = 0
+    @AppStorage(DefaultsKey.bgLight) private var lightIndex: Int = 0
+    @AppStorage(DefaultsKey.bgDark) private var darkIndex: Int = 0
 
     var body: some View {
         SettingsScreen(centered: true) {
@@ -88,8 +88,8 @@ private struct BackgroundSwatch: View {
 // MARK: - Font (size + type)
 
 struct FontSettingsView: View {
-    @AppStorage("settings.fontChoice") private var fontChoice: String = FontChoice.default.rawValue
-    @AppStorage("settings.fontSizeStep") private var sizeStep: Int = FontSizeStep.defaultIndex
+    @AppStorage(DefaultsKey.fontChoice) private var fontChoice: String = FontChoice.default.rawValue
+    @AppStorage(DefaultsKey.fontSizeStep) private var sizeStep: Int = FontSizeStep.defaultIndex
 
     var body: some View {
         SettingsScreen(centered: true) {       // [#55] option screen → 20/20 margins
@@ -207,7 +207,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 }
 
 struct AppearanceSettingsView: View {
-    @AppStorage("settings.appearanceMode") private var mode: String = AppearanceMode.system.rawValue
+    @AppStorage(DefaultsKey.appearanceMode) private var mode: String = AppearanceMode.system.rawValue
 
     var body: some View {
         SettingsScreen(centered: true) {       // [#55] option screen → 20/20 margins
@@ -245,7 +245,7 @@ enum AppIconCatalog {
 }
 
 struct AppIconSettingsView: View {
-    @AppStorage("settings.appIcon") private var selectedId: String = AppIconCatalog.defaultId
+    @AppStorage(DefaultsKey.appIcon) private var selectedId: String = AppIconCatalog.defaultId
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
 

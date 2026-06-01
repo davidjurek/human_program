@@ -242,14 +242,14 @@ struct HprgmImportService {
 
     private func applySettings(_ s: AppSettingsJSON) {
         let d = UserDefaults.standard
-        if let v = s.fontChoice { d.set(v, forKey: "settings.fontChoice") }
-        if let v = s.fontSizeStep { d.set(v, forKey: "settings.fontSizeStep") }
-        if let v = s.appearanceMode { d.set(v, forKey: "settings.appearanceMode") }
-        if let v = s.appIcon { d.set(v, forKey: "settings.appIcon") }
-        if let v = s.bgLight { d.set(v, forKey: "settings.bgLight") }
-        if let v = s.bgDark { d.set(v, forKey: "settings.bgDark") }
-        if let v = s.dateFormat { d.set(v, forKey: "settings.dateFormat") }
-        if let v = s.timeFormat { d.set(v, forKey: "settings.timeFormat") }
-        if let v = s.selectedCalendarIds { d.set(v, forKey: "selectedCalendarIds") }
+        if let v = s.fontChoice { d.set(v, forKey: DefaultsKey.fontChoice) }
+        if let v = s.fontSizeStep { d.set(v, forKey: DefaultsKey.fontSizeStep) }
+        if let v = s.appearanceMode { d.set(v, forKey: DefaultsKey.appearanceMode) }
+        if let v = s.appIcon { d.set(v, forKey: DefaultsKey.appIcon) }
+        if let v = s.bgLight { d.set(v, forKey: DefaultsKey.bgLight) }
+        if let v = s.bgDark { d.set(v, forKey: DefaultsKey.bgDark) }
+        if let v = s.dateFormat { d.set(v, forKey: DefaultsKey.dateFormat) }
+        if let v = s.timeFormat { d.set(v, forKey: DefaultsKey.timeFormat) }
+        if let v = s.selectedCalendarIds { d.set(v, forKey: DefaultsKey.selectedCalendarIds) }
     }
 }

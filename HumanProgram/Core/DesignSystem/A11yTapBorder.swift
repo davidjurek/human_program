@@ -8,7 +8,7 @@ import SwiftUI
 /// This is the one shared place the border is defined; tappable views apply it
 /// with `.a11yTapBorder(...)`, matching the shape of their hit area so the line
 /// sits exactly on the tappable edge (`strokeBorder` insets the line inward).
-let a11yButtonBordersKey = "settings.a11yButtonBorders"
+let a11yButtonBordersKey = DefaultsKey.a11yButtonBorders
 
 private struct A11yTapBorderModifier<S: InsettableShape>: ViewModifier {
     @AppStorage(a11yButtonBordersKey) private var enabled = false

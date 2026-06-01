@@ -133,7 +133,7 @@ extension FontChoice {
 /// so plain SwiftUI Text/TextField (which can't use DSText) still match the app font.
 /// Re-reads on each render, so it updates when the font changes.
 func appFont(_ size: CGFloat, bold: Bool = false) -> Font {
-    let raw = UserDefaults.standard.string(forKey: "settings.fontChoice") ?? FontChoice.default.rawValue
+    let raw = UserDefaults.standard.string(forKey: DefaultsKey.fontChoice) ?? FontChoice.default.rawValue
     return FontChoice.from(raw).font(size: size, bold: bold)
 }
 
@@ -143,13 +143,13 @@ func appFont(_ size: CGFloat, bold: Bool = false) -> Font {
 /// styles apply the global FontSizeStep scale; `appFont`/`appUIFont` do not).
 /// e.g. `.title2` → `appScaledSize(22)`, `.title3` → `appScaledSize(20)`.
 func appScaledSize(_ base: CGFloat) -> CGFloat {
-    let step = UserDefaults.standard.object(forKey: "settings.fontSizeStep") as? Int ?? FontSizeStep.defaultIndex
+    let step = UserDefaults.standard.object(forKey: DefaultsKey.fontSizeStep) as? Int ?? FontSizeStep.defaultIndex
     return base * FontSizeStep.scale(for: step)
 }
 
 /// The currently-selected app font as a UIFont (for UIKit-backed views).
 func appUIFont(_ size: CGFloat, bold: Bool = false) -> UIFont {
-    let raw = UserDefaults.standard.string(forKey: "settings.fontChoice") ?? FontChoice.default.rawValue
+    let raw = UserDefaults.standard.string(forKey: DefaultsKey.fontChoice) ?? FontChoice.default.rawValue
     let choice = FontChoice.from(raw)
     return (bold ? choice.boldSpec : choice.regularSpec).uiFont(size)
 }
@@ -159,7 +159,7 @@ func appUIFont(_ size: CGFloat, bold: Bool = false) -> UIFont {
 /// Reads the app's time-format setting (`settings.timeFormat`, default "12h").
 enum TimeFormatSetting {
     static var is24Hour: Bool {
-        (UserDefaults.standard.string(forKey: "settings.timeFormat") ?? "12h") == "24h"
+        (UserDefaults.standard.string(forKey: DefaultsKey.timeFormat) ?? "12h") == "24h"
     }
 }
 

@@ -14,7 +14,7 @@ struct CalendarSourceSettingsView: View {
     @State private var selectedIds: Set<String> = []
     @State private var authStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
 
-    private let selectedIdsKey = "selectedCalendarIds"
+    private let selectedIdsKey = DefaultsKey.selectedCalendarIds
 
     var body: some View {
         SettingsScreen(centered: true) {

@@ -272,15 +272,15 @@ struct HprgmExportService {
         func str(_ k: String) -> String? { d.object(forKey: k) as? String }
         func int(_ k: String) -> Int? { d.object(forKey: k) as? Int }
         return AppSettingsJSON(
-            fontChoice: str("settings.fontChoice"),
-            fontSizeStep: int("settings.fontSizeStep"),
-            appearanceMode: str("settings.appearanceMode"),
-            appIcon: str("settings.appIcon"),
-            bgLight: int("settings.bgLight"),
-            bgDark: int("settings.bgDark"),
-            dateFormat: str("settings.dateFormat"),
-            timeFormat: str("settings.timeFormat"),
-            selectedCalendarIds: d.stringArray(forKey: "selectedCalendarIds")
+            fontChoice: str(DefaultsKey.fontChoice),
+            fontSizeStep: int(DefaultsKey.fontSizeStep),
+            appearanceMode: str(DefaultsKey.appearanceMode),
+            appIcon: str(DefaultsKey.appIcon),
+            bgLight: int(DefaultsKey.bgLight),
+            bgDark: int(DefaultsKey.bgDark),
+            dateFormat: str(DefaultsKey.dateFormat),
+            timeFormat: str(DefaultsKey.timeFormat),
+            selectedCalendarIds: d.stringArray(forKey: DefaultsKey.selectedCalendarIds)
         )
     }
 

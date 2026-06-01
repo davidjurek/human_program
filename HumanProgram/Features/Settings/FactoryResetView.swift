@@ -205,11 +205,11 @@ struct FactoryResetView: View {
 
     private func clearUserDefaults() {
         let keys = [
-            "hp.lock.enabled",
-            "hp.lock.biometric",
-            "hp.lock.timeout",
-            "selectedCalendarIds",
-            "hp.onboarded"
+            DefaultsKey.lockEnabled,
+            DefaultsKey.lockBiometric,
+            DefaultsKey.lockTimeout,
+            DefaultsKey.selectedCalendarIds,
+            DefaultsKey.onboarded
         ]
         for key in keys {
             UserDefaults.standard.removeObject(forKey: key)
@@ -217,6 +217,6 @@ struct FactoryResetView: View {
         // A reset re-runs onboarding (Welcome → Terms → Tutorial) but is NOT a fresh
         // install, so the permissions step should not appear. Mark it asked so the
         // re-run skips it.
-        UserDefaults.standard.set(true, forKey: "hp.permissionsAsked")
+        UserDefaults.standard.set(true, forKey: DefaultsKey.permissionsAsked)
     }
 }

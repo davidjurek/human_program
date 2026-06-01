@@ -9,7 +9,7 @@ import DSKit
 /// Shared, app-wide preset swatch library, persisted in UserDefaults.
 final class ColorPresetStore: ObservableObject {
     static let shared = ColorPresetStore()
-    private let key = "blockColorPresets"
+    private let key = DefaultsKey.blockColorPresets
     static let maxPresets = 18   // 6×3 [#14]
 
     @Published private(set) var presets: [String]

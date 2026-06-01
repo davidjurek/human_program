@@ -41,7 +41,7 @@ struct TodayView: View {
     private let ticker = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
     private var selectedCalendarIds: [String] {
-        UserDefaults.standard.stringArray(forKey: "selectedCalendarIds") ?? []
+        UserDefaults.standard.stringArray(forKey: DefaultsKey.selectedCalendarIds) ?? []
     }
 
     init(context: ModelContext) {

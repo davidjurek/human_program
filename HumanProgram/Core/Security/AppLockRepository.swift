@@ -13,9 +13,9 @@ public final class AppLockRepository {
     private let keychainAccount = "pin_hash"
 
     // UserDefaults keys
-    private let keyLockEnabled   = "hp.lock.enabled"
-    private let keyBiometric     = "hp.lock.biometric"
-    private let keyTimeout       = "hp.lock.timeout"
+    private let keyLockEnabled   = DefaultsKey.lockEnabled
+    private let keyBiometric     = DefaultsKey.lockBiometric
+    private let keyTimeout       = DefaultsKey.lockTimeout
 
     // ── PIN management ─────────────────────────────────────────────────────────
 

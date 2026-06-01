@@ -5,9 +5,9 @@ import DSKit
 @main
 struct HumanProgramApp: App {
     @State private var appState = AppState()
-    @AppStorage("settings.fontChoice") private var fontChoiceRaw = FontChoice.default.rawValue
-    @AppStorage("settings.fontSizeStep") private var fontSizeStep = FontSizeStep.defaultIndex
-    @AppStorage("settings.appearanceMode") private var appearanceModeRaw = AppearanceMode.system.rawValue
+    @AppStorage(DefaultsKey.fontChoice) private var fontChoiceRaw = FontChoice.default.rawValue
+    @AppStorage(DefaultsKey.fontSizeStep) private var fontSizeStep = FontSizeStep.defaultIndex
+    @AppStorage(DefaultsKey.appearanceMode) private var appearanceModeRaw = AppearanceMode.system.rawValue
     private let container: ModelContainer
 
     init() {
