@@ -10,7 +10,7 @@ setup:
 test:
 	xcodebuild test \
 		-scheme HumanProgram \
-		-destination 'platform=iOS Simulator,name=iPhone 15'
+		-destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 
 clean:
 	rm -rf HumanProgram.xcodeproj
