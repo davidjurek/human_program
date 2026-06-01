@@ -206,6 +206,16 @@ These are not up for debate. If a task seems to require changing one of these, s
 - SwiftData model tests use `makeTestModelContainer()` — an in-memory container that leaves no files on disk.
 - If you add a new service, add unit tests for it in `HumanProgramTests/`.
 
+### Verifying screens in the simulator (when you can't tap)
+
+You can build/install/launch the app and take screenshots, but on this machine there is **no UI-tap automation** (no `idb`/`cliclick`; AppleScript/System Events lacks Accessibility permission). That means you can't tap/scroll/type to navigate. This is NOT a reason to skip visual verification — **if navigation by tapping doesn't work, render the target screen directly instead:**
+
+- **Flag-gated screens** (Welcome, Terms gate, reset/restore interstitials, anything behind an `@AppStorage`/state flag): set the underlying value with `xcrun simctl spawn booted defaults write <bundle-id> <key> -bool YES/...`, relaunch, and the app opens onto that screen. (Bundle id: `app.humanprogram.ios`.)
+- **Pushed/nested pages** (e.g. About → Tutorial, a row deep in Settings): add a tiny *temporary* launch override — point the app root (or the launch nav `path`) straight at that view — build, screenshot, then revert the override. Renders any view in isolation regardless of depth.
+- **Specific interaction states** (e.g. "Confirm enabled after the agree box is checked"): temporarily initialize that view's `@State` (or the gating flag) to the post-interaction value and screenshot. You verify the before/after states by rendering; you verify the wiring between them by reading the code.
+
+Use this as a fallback whenever tapping fails — don't fall back to "I couldn't verify it." The only thing it can't prove is the literal tap transition firing, which is cheap to confirm by inspection.
+
 ---
 
 ## How to talk to the owner

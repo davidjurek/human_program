@@ -30,9 +30,13 @@ struct AppInterstitialView: View {
                 Spacer()
                 logo
                 Spacer().frame(height: 28)
-                DSText(title)
-                    .dsTextStyle(.title2)
+                // Plain Text (not DSText) so multi-line CENTER alignment actually
+                // applies — DSText renders leading-aligned regardless. title2 ≈ 22.
+                Text(title)
+                    .font(appFont(22))
+                    .foregroundStyle(.primary)
                     .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, 32)
                 Spacer()
                 Button(action: onAction) {

@@ -11,17 +11,35 @@ struct ContentView: View {
     @Environment(\.modelContext) private var context
     @State private var lockVM = AppLockViewModel()
     @State private var path: [HubDestination] = [.today]   // launch at Today
-    @AppStorage("hp.hasLaunched") private var hasLaunched = false
+    @AppStorage("hp.onboarded") private var onboarded = false
+    @State private var onboardingStep: OnboardingStep = .welcome
 
-    private var showInterstitial: Bool {
-        appState.pendingInterstitial != nil || !hasLaunched
-    }
-    private var interstitialMode: AppInterstitialView.Mode {
-        switch appState.pendingInterstitial {
-        case .reset:    return .reset
-        case .restored: return .restored
-        case nil:       return .welcome
+    private enum OnboardingStep { case welcome, terms, tutorial }
+
+    /// The one full-screen gate (if any) to show over the app. Using a SINGLE
+    /// cover is deliberate: stacking two `.fullScreenCover`s makes SwiftUI silently
+    /// drop the second, which is why the Welcome screen wasn't appearing on a
+    /// fresh install or after a factory reset.
+    private enum StartupCover: Identifiable {
+        case interstitial(AppInterstitial)   // reset / restore confirmation
+        case onboarding                       // welcome → terms → tutorial
+        case lock                             // app-unlock gate
+        var id: String {
+            switch self {
+            case .interstitial(let m): return "interstitial-\(m)"
+            case .onboarding:          return "onboarding"
+            case .lock:                return "lock"
+            }
         }
+    }
+
+    private var startupCover: StartupCover? {
+        // Reset/restore confirmation first; after a reset it clears `onboarded`,
+        // so the onboarding sequence then takes over.
+        if let pending = appState.pendingInterstitial { return .interstitial(pending) }
+        if !onboarded { return .onboarding }
+        if lockVM.isLocked { return .lock }
+        return nil
     }
 
     var body: some View {
@@ -31,17 +49,15 @@ struct ContentView: View {
                     dest.view(context: context)
                 }
         }
-        .fullScreenCover(isPresented: Binding(
-            get: { lockVM.isLocked },
-            set: { _ in }
-        )) {
-            LockScreenView(vm: lockVM)
-        }
-        .fullScreenCover(isPresented: Binding(
-            get: { showInterstitial },
-            set: { _ in }
-        )) {
-            AppInterstitialView(mode: interstitialMode, onAction: handleInterstitial)
+        .fullScreenCover(item: Binding(get: { startupCover }, set: { _ in })) { cover in
+            switch cover {
+            case .interstitial(let pending):
+                AppInterstitialView(mode: interstitialMode(pending), onAction: finishInterstitial)
+            case .onboarding:
+                onboardingView
+            case .lock:
+                LockScreenView(vm: lockVM)
+            }
         }
         .onReceive(
             NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
@@ -57,17 +73,42 @@ struct ContentView: View {
         }
     }
 
-    /// Tapping the interstitial button. For reset/restored we clear the pending
-    /// state and return to Today; after a reset, `hasLaunched` was cleared so the
-    /// Welcome screen appears next (waiting underneath). For Welcome, mark launched.
-    private func handleInterstitial() {
-        if appState.pendingInterstitial != nil {
-            appState.pendingInterstitial = nil
-            path = [.today]
-        } else {
-            hasLaunched = true
-            path = [.today]
+    private func interstitialMode(_ pending: AppInterstitial) -> AppInterstitialView.Mode {
+        switch pending {
+        case .reset:    return .reset
+        case .restored: return .restored
         }
+    }
+
+    // Onboarding sequence: Welcome → Terms of Service (must agree) → Tutorial.
+    // The app cannot be reached until the Terms are confirmed.
+    @ViewBuilder
+    private var onboardingView: some View {
+        switch onboardingStep {
+        case .welcome:
+            AppInterstitialView(mode: .welcome) {
+                withAnimation { onboardingStep = .terms }
+            }
+        case .terms:
+            TermsOfServiceView(mode: .onboarding) {
+                withAnimation { onboardingStep = .tutorial }
+            }
+        case .tutorial:
+            TutorialView(mode: .onboarding) { finishOnboarding() }
+        }
+    }
+
+    /// Reset/restore confirmation dismissed. After a reset, `onboarded` was cleared
+    /// so the onboarding cover appears next automatically.
+    private func finishInterstitial() {
+        appState.pendingInterstitial = nil
+        path = [.today]
+    }
+
+    private func finishOnboarding() {
+        onboarded = true
+        onboardingStep = .welcome
+        path = [.today]
     }
 }
 

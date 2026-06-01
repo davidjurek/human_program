@@ -143,7 +143,8 @@ struct FactoryResetView: View {
             try? AppLockRepository().removePIN()
 
             // Show the full-screen "reset to factory state" interstitial; clearing
-            // hp.hasLaunched means the Welcome screen waits underneath it.
+            // hp.onboarded means the onboarding sequence (Welcome → Terms → Tutorial)
+            // runs again after it.
             appState.pendingInterstitial = .reset
         } catch {
             // If save fails, still leave the screen — the deletes may be partial
@@ -182,7 +183,7 @@ struct FactoryResetView: View {
             "hp.lock.biometric",
             "hp.lock.timeout",
             "selectedCalendarIds",
-            "hp.hasLaunched"
+            "hp.onboarded"
         ]
         for key in keys {
             UserDefaults.standard.removeObject(forKey: key)

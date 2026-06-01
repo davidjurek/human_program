@@ -35,6 +35,14 @@ struct AboutView: View {
 
                 SettingsNavRow(label: "Licenses", systemImage: "doc.text") { LicensesView() }
 
+                SettingsNavRow(label: "Terms of Use", systemImage: "doc.plaintext") {
+                    TermsOfServiceView(mode: .reference)
+                }
+
+                SettingsNavRow(label: "Tutorial", systemImage: "questionmark.circle") {
+                    TutorialView(mode: .reference)
+                }
+
                 SettingsNavRow(label: "Cat Corner", systemImage: "cat") { CatCornerView() }
             }
         }
