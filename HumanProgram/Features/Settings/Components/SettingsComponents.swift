@@ -333,7 +333,8 @@ struct SettingsRowContent<Trailing: View>: View {
             }
             HStack(spacing: 16) {
                 if let value {
-                    DSText(value).dsTextStyle(.subheadline)
+                    // Full row font size (matches the label), kept grey.
+                    DSText(value).dsTextStyle(.title3, Color.secondary)
                 }
                 trailing()
             }

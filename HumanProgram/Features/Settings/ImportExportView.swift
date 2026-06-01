@@ -48,7 +48,7 @@ struct ImportView: View {
                 }
             }
             SettingsGroup(title: "Full Backup") {
-                SettingsNavRow(label: "Restore from .hprgm", systemImage: "arrow.down.doc") {
+                SettingsNavRow(label: "Restore from backup", systemImage: "arrow.down.doc") {
                     HprgmRestoreChooseView()
                 }
             }
@@ -283,7 +283,7 @@ struct HprgmRestoreChooseView: View {
     var body: some View {
         SettingsScreen(centered: true) {
             SettingsGroup(title: "Restore") {
-                SettingsButtonRow(label: "Choose .hprgm file", systemImage: "folder") {
+                SettingsButtonRow(label: "Choose backup file", systemImage: "folder") {
                     showPicker = true
                 }
             }
@@ -306,9 +306,9 @@ struct HprgmRestoreConfirmView: View {
     @State private var confirm = ""
     @State private var error: String?
     // The block is parked this far up the page (a fixed physical shift, no keyboard
-    // avoidance) so the red button always sits above the keyboard. Nothing moves
-    // when the keyboard appears.
-    private let contentLift: CGFloat = 60
+    // avoidance) so the red button sits a comfortable gap above the keyboard.
+    // Matches FactoryResetView so the field + button line up across both screens.
+    private let contentLift: CGFloat = 32
 
     private var canRestore: Bool { confirm.uppercased() == "RESTORE" }
 
@@ -320,8 +320,7 @@ struct HprgmRestoreConfirmView: View {
                 DSImageView(systemName: "exclamationmark.triangle.fill", size: 56, tint: .color(.red))
                     .padding(.top, 8)
                 DSText("Restore Backup").dsTextStyle(.title2)
-                DSText("Restoring will wipe all current data and replace with what is in the backup. This action cannot be undone.")
-                    .dsTextStyle(.body).multilineTextAlignment(.center)
+                DestructiveWarningText(text: "Restoring will wipe all current data and replace with what is in the backup. This action cannot be undone.")
 
                 DSText("Type restore to confirm").dsTextStyle(.subheadline).padding(.top, 12)
                 TextField("", text: $confirm, prompt: Text("restore").foregroundStyle(.tertiary))

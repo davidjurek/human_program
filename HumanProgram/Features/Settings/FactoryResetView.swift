@@ -4,6 +4,29 @@ import DSKit
 import UserNotifications
 import UIKit
 
+/// The centered warning body shared by the Factory Reset and Restore screens.
+/// Both reserve the height of the LONGER (reset) copy via a hidden sizer, so the
+/// confirm field and the destructive button land in the SAME spot on both screens;
+/// the shorter Restore copy simply leaves a little blank space beneath it. Using a
+/// hidden DSText as the sizer keeps the reserved height correct at any font scale.
+struct DestructiveWarningText: View {
+    /// The longer of the two warnings (Factory Reset) — also the height reference.
+    static let resetWarning =
+        "Factory reset will restore the app to its factory state and wipe all data. " +
+        "Consider creating a backup if you have not done so. " +
+        "This action cannot be undone."
+
+    let text: String
+    var body: some View {
+        ZStack(alignment: .top) {
+            DSText(Self.resetWarning).dsTextStyle(.body)
+                .multilineTextAlignment(.center).hidden()
+            DSText(text).dsTextStyle(.body)
+                .multilineTextAlignment(.center)
+        }
+    }
+}
+
 // ── FactoryResetView ───────────────────────────────────────────────────────────
 // Pushed screen (reached from Settings → Danger Zone, and Settings → Security).
 // Wipes all SwiftData records and the app's UserDefaults. The user must type
@@ -58,18 +81,13 @@ struct FactoryResetView: View {
     @State private var confirmationInput: String = ""
     @State private var isResetting: Bool = false
     // The block is parked this far up the page (a fixed physical shift, no keyboard
-    // avoidance) so the red button always sits above the keyboard, even at ~6 lines
-    // of warning text. Nothing moves when the keyboard appears.
-    private let contentLift: CGFloat = 60
+    // avoidance) so the red button sits a comfortable gap above the keyboard.
+    // Nothing moves when the keyboard appears.
+    private let contentLift: CGFloat = 32
 
     private var isConfirmationValid: Bool {
         confirmationInput.uppercased() == "RESET"
     }
-
-    private let warningBody: String =
-        "Factory reset will restore the app to its factory state and wipe all data. " +
-        "Consider creating a backup if you have not done so. " +
-        "This action cannot be undone."
 
     var body: some View {
         // Keyboard avoidance is OFF (manualKeyboardAvoidance) so nothing shifts when
@@ -82,9 +100,7 @@ struct FactoryResetView: View {
 
                 DSText("Reset App").dsTextStyle(.title2)
 
-                DSText(warningBody)
-                    .dsTextStyle(.body)
-                    .multilineTextAlignment(.center)
+                DestructiveWarningText(text: DestructiveWarningText.resetWarning)
 
                 DSText("Type reset to confirm")
                     .dsTextStyle(.subheadline)

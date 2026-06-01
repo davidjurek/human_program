@@ -704,6 +704,10 @@ struct CalendarView: View {
             end = cal.date(byAdding: .year, value: 2, to: today) ?? today
         }
 
+        // Only sync events from calendars the user checked in Settings → Calendar.
+        // None checked → show nothing (an empty list means "all" to fetchEvents, so
+        // we must guard here, exactly like Today does).
+        guard !selectedCalendarIds.isEmpty else { events = []; return }
         events = calendarService.fetchEvents(from: start, to: end, calendarIds: selectedCalendarIds)
     }
 
