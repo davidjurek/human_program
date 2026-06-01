@@ -27,23 +27,14 @@ struct ScheduleEditorView: View {
     /// nil = creating a new schedule; non-nil = editing an existing one.
     let template: ScheduleTemplate?
 
-    /// When set (and template == nil), prefills a NEW schedule with copied blocks
-    /// + sleep from another schedule (used by the Duplicate button). Title, weekdays
-    /// and repeat are intentionally left blank/default so it can't be saved as-is.
-    var seed: ScheduleSeed? = nil
+    /// Set when the user taps Duplicate: this same editor turns INTO a new-schedule
+    /// draft copied from the current one (sleep + blocks carry over; title/weekdays
+    /// reset). Saving then creates a brand-new schedule and dismisses once back to
+    /// the list — no nested editor, so there's no multi-level-pop bug. (SwiftUI
+    /// won't let an ancestor pop a view while its descendant is still on top, which
+    /// is why the old push-a-second-editor approach left you stranded on save.)
+    @State private var forceNew = false
 
-    /// Set when this editor was pushed as a DUPLICATE on top of another editor.
-    /// On save we flip the spawning editor's signal instead of dismissing
-    /// ourselves; that editor then dismisses ITSELF (which pops this child too),
-    /// rippling up to the schedule list. Capturing the parent's `dismiss` in a
-    /// closure and calling it from here does NOT reliably pop the ancestor, so we
-    /// use a binding + each view dismissing itself, which is well-defined. nil for
-    /// a normal editor opened straight from the list (it just dismisses itself).
-    var returnToListSignal: Binding<Bool>? = nil
-
-    @State private var duplicateSeed: ScheduleSeed?
-    /// Flipped true by a duplicate child we pushed, asking us to pop to the list.
-    @State private var childRequestedReturn = false
     @State private var name = ""
     @State private var repeatMode = "weekly"          // "weekly" | "custom"
     @State private var weekdays: Set<Int> = []
@@ -158,7 +149,9 @@ struct ScheduleEditorView: View {
                          sleepStart: sleepStart, sleepEnd: sleepEnd, blocks: blocks)
     }
     private var hasUnsavedChanges: Bool {
-        template == nil ? (canSave || !blocks.isEmpty) : (currentSnapshot != original)
+        // A duplicated-in-place draft counts as new (compare against "empty", not
+        // the original template it was copied from).
+        (template == nil || forceNew) ? (canSave || !blocks.isEmpty) : (currentSnapshot != original)
     }
     private func attemptBack() {
         if hasUnsavedChanges { showDiscardConfirm = true } else { dismiss() }
@@ -258,19 +251,6 @@ struct ScheduleEditorView: View {
         .onChange(of: newDuration) { _, _ in closeSwipeIfOpen() }
         .onPreferenceChange(KeypadHeightKey.self) { keypadMeasuredHeight = $0 }
         .onAppear(perform: loadIfNeeded)
-        .navigationDestination(item: $duplicateSeed) { seed in
-            // The duplicate child flips our signal on save; we then dismiss
-            // ourselves (popping the child too), back toward the list.
-            ScheduleEditorView(template: nil, seed: seed,
-                               returnToListSignal: $childRequestedReturn)
-        }
-        .onChange(of: childRequestedReturn) { _, requested in
-            guard requested else { return }
-            childRequestedReturn = false
-            // If we are ourselves a duplicate, ripple the request up; otherwise
-            // we're the list-spawned editor — dismiss ourselves to reach the list.
-            if let returnToListSignal { returnToListSignal.wrappedValue = true } else { dismiss() }
-        }
     }
 
     private func closeSwipeIfOpen() {
@@ -300,9 +280,10 @@ struct ScheduleEditorView: View {
 
     @ViewBuilder
     private var editorButtons: some View {
-        if template != nil {
-            // Duplicate: copy blocks + sleep into a fresh, unsaveable new schedule.
-            Button { duplicateSeed = ScheduleSeed(sleepStart: sleepStart, sleepEnd: sleepEnd, blocks: blocks) } label: {
+        // Duplicate + Delete only on an existing, not-yet-duplicated schedule.
+        if template != nil && !forceNew {
+            // Duplicate: turn THIS editor into a fresh copy (in place).
+            Button { startDuplicateInPlace() } label: {
                 Image(systemName: "plus.square.on.square").font(.system(size: 18))
                     .foregroundStyle(.primary).frame(width: 44, height: 44)
                     .contentShape(Rectangle())
@@ -856,16 +837,7 @@ struct ScheduleEditorView: View {
         guard !didLoad else { return }
         didLoad = true
         defer { original = currentSnapshot }
-        guard let t = template else {
-            // New schedule. If duplicating, copy blocks + sleep; leave title,
-            // weekdays and repeat blank/default so it can't be saved as-is.
-            if let s = seed {
-                sleepStart = s.sleepStart
-                sleepEnd = s.sleepEnd
-                blocks = s.blocks.map { DraftBlock(title: $0.title, duration: $0.duration, colorHex: $0.colorHex) }
-            }
-            return
-        }
+        guard let t = template else { return }   // brand-new schedule: blank form
         name = t.name
         if t.customDateStart != nil || t.customDateEnd != nil {
             repeatMode = "custom"
@@ -913,8 +885,10 @@ struct ScheduleEditorView: View {
         }
 
         let repo = ScheduleRepository(context: context)
-        let isNew = template == nil
-        let t = template ?? ScheduleTemplate(name: trimmed)
+        // A duplicated-in-place draft creates a NEW template (never touches the
+        // original it was copied from).
+        let isNew = template == nil || forceNew
+        let t = isNew ? ScheduleTemplate(name: trimmed) : template!
         if isNew { context.insert(t) }
 
         t.name = trimmed
@@ -939,9 +913,21 @@ struct ScheduleEditorView: View {
         } catch {
             print("[ScheduleEditor] save error: \(error)")
         }
-        // A duplicate asks its spawning editor to pop to the list; a normal
-        // editor just dismisses itself.
-        if let returnToListSignal { returnToListSignal.wrappedValue = true } else { dismiss() }
+        dismiss()
+    }
+
+    /// Turn this editor into a new-schedule draft copied from the current one:
+    /// sleep + blocks stay, title/weekdays/repeat reset so it can't save as-is and
+    /// the original is untouched. Saving creates a new schedule → back to the list.
+    private func startDuplicateInPlace() {
+        forceNew = true
+        name = ""
+        weekdays = []
+        repeatMode = "weekly"
+        fromDate = Calendar.current.startOfDay(for: Date())
+        toDate = fromDate
+        conflictMessage = nil
+        swipeOpenId = nil
     }
 
     private func deleteSchedule() {
@@ -981,14 +967,6 @@ struct DraftBlock: Identifiable, Equatable, Hashable {
     var title: String
     var duration: Int   // minutes
     var colorHex: String? = nil   // assigned block colour [#20]
-}
-
-/// Seed data for duplicating a schedule into a fresh editor (blocks + sleep only).
-struct ScheduleSeed: Identifiable, Hashable {
-    let id = UUID()
-    var sleepStart: Int
-    var sleepEnd: Int
-    var blocks: [DraftBlock]
 }
 
 /// Transient drag-reorder state. Driven by the UIKit reorder recognizer.
