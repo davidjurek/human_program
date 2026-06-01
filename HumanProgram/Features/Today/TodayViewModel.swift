@@ -84,15 +84,13 @@ public final class TodayViewModel {
         defer { isLoading = false }
         do {
             let today = Calendar.current.startOfDay(for: Date())
-            let recurringInputs = try fetchRecurringInputs()
-            let backlogInputs = try fetchBacklogInputs()
-            let scheduleInputs = try fetchScheduleInputs()
+            let inputs = try TemplateInputs.fetchAll(context: context)
             page = try pageRepo.getOrCreate(
                 date: viewingDate,
                 today: today,
-                recurringTemplates: recurringInputs,
-                backlogItems: backlogInputs,
-                scheduleTemplates: scheduleInputs
+                recurringTemplates: inputs.recurring,
+                backlogItems: inputs.backlog,
+                scheduleTemplates: inputs.schedule
             )
             let exerciseRepo = ExerciseRepository(context: context)
             exerciseRoutine = try exerciseRepo.fetchRoutine(for: viewingDate)
@@ -205,24 +203,4 @@ public final class TodayViewModel {
         return items.first(where: { $0.id == sid })?.project?.name ?? "None"
     }
 
-    // MARK: - Private template fetching
-
-    private func fetchRecurringInputs() throws -> [RecurringTaskInput] {
-        let templates = try context.fetch(FetchDescriptor<RecurringTaskTemplate>())
-        return templates.map { RecurringTaskInput(id: $0.id, title: $0.title, notes: $0.notes, rule: $0.recurrenceRule, active: $0.active) }
-    }
-
-    private func fetchBacklogInputs() throws -> [BacklogTaskInput] {
-        let items = try context.fetch(FetchDescriptor<BacklogItem>())
-        return items.map { BacklogTaskInput(id: $0.id, title: $0.title, assignedDate: $0.assignedDate, status: $0.status) }
-    }
-
-    private func fetchScheduleInputs() throws -> [ScheduleBlockInput] {
-        let templates = try context.fetch(FetchDescriptor<ScheduleTemplate>())
-        return templates.flatMap { t in
-            t.blocks.map { b in
-                ScheduleBlockInput(id: b.id, title: b.title, startMinuteOfDay: b.startMinuteOfDay, endMinuteOfDay: b.endMinuteOfDay, sortOrder: b.sortOrder, colorHex: b.colorHex, templateIsEnabled: t.isEnabled, templateAssignedWeekdays: t.assignedWeekdays, templateCustomDateStart: t.customDateStart, templateCustomDateEnd: t.customDateEnd)
-            }
-        }
-    }
 }
