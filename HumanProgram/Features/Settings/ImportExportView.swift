@@ -57,11 +57,17 @@ struct ImportView: View {
         .navigationDestination(isPresented: Binding(
             get: { flow.mode != nil },
             set: { if !$0 { flow.mode = nil } })) {
-                switch flow.mode {
-                case .text: TextBacklogImportView()
-                case .csv:  CSVBacklogImportView()
-                case .none: EmptyView()
+                // navigationDestination hoists its content above the .environment(flow)
+                // applied on SettingsScreen, so re-inject the shared flow here or the
+                // destination crashes looking it up.
+                Group {
+                    switch flow.mode {
+                    case .text: TextBacklogImportView()
+                    case .csv:  CSVBacklogImportView()
+                    case .none: EmptyView()
+                    }
                 }
+                .environment(flow)
         }
     }
 }
@@ -122,7 +128,7 @@ struct TextBacklogImportView: View {
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
         }
         .navigationDestination(isPresented: $flow.showSelection) {
-            ImportSelectionView()
+            ImportSelectionView().environment(flow)
         }
     }
 }
@@ -155,7 +161,7 @@ struct CSVBacklogImportView: View {
             handle(result)
         }
         .navigationDestination(isPresented: $flow.showSelection) {
-            ImportSelectionView()
+            ImportSelectionView().environment(flow)
         }
     }
 
@@ -217,7 +223,7 @@ struct ImportSelectionView: View {
         }
         .onAppear { if selected.isEmpty { selected = Set(flow.rows.map { $0.id }) } }
         .navigationDestination(isPresented: $flow.showSummary) {
-            ImportSummaryView()
+            ImportSummaryView().environment(flow)
         }
     }
 
@@ -281,7 +287,7 @@ struct HprgmRestoreChooseView: View {
     @State private var push = false
 
     var body: some View {
-        SettingsScreen(centered: true) {
+        SettingsScreen {
             SettingsGroup(title: "Restore") {
                 SettingsButtonRow(label: "Choose backup file", systemImage: "folder") {
                     showPicker = true
