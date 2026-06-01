@@ -143,7 +143,7 @@ struct CSVBacklogImportView: View {
 
     var body: some View {
         @Bindable var flow = flow
-        SettingsScreen(centered: true) {
+        SettingsScreen {
             SettingsGroup(title: "CSV") {
                 SettingsButtonRow(label: "Download template", systemImage: "arrow.down.doc") {
                     shareTemplate = writeTemplate()

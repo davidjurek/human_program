@@ -12,14 +12,16 @@ struct ContentView: View {
     @State private var lockVM = AppLockViewModel()
     @State private var path: [HubDestination] = [.today]   // launch at Today
     @AppStorage("hp.onboarded") private var onboarded = false
+    // Fresh-install-only flag for the permissions step. A factory reset deliberately
+    // SETS this true (FactoryResetView) so the re-run of onboarding skips permissions.
+    @AppStorage("hp.permissionsAsked") private var permissionsAsked = false
     @State private var onboardingStep: OnboardingStep = .welcome
 
-    private enum OnboardingStep { case welcome, terms, tutorial }
+    private enum OnboardingStep { case welcome, terms, tutorial, permissions }
 
-    /// The one full-screen gate (if any) to show over the app. Using a SINGLE
-    /// cover is deliberate: stacking two `.fullScreenCover`s makes SwiftUI silently
-    /// drop the second, which is why the Welcome screen wasn't appearing on a
-    /// fresh install or after a factory reset.
+    /// The one full-screen gate (if any) to show over the app. Rendered as a single
+    /// continuous overlay (see body) rather than a `.fullScreenCover`: covers never
+    /// dismiss/re-present between steps, so the Today root never flashes in the gap.
     private enum StartupCover: Identifiable {
         case interstitial(AppInterstitial)   // reset / restore confirmation
         case onboarding                       // welcome → terms → tutorial
@@ -43,20 +45,23 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            HubView()
-                .navigationDestination(for: HubDestination.self) { dest in
-                    dest.view(context: context)
-                }
-        }
-        .fullScreenCover(item: Binding(get: { startupCover }, set: { _ in })) { cover in
-            switch cover {
-            case .interstitial(let pending):
-                AppInterstitialView(mode: interstitialMode(pending), onAction: finishInterstitial)
-            case .onboarding:
-                onboardingView
-            case .lock:
-                LockScreenView(vm: lockVM)
+        ZStack {
+            NavigationStack(path: $path) {
+                HubView()
+                    .navigationDestination(for: HubDestination.self) { dest in
+                        dest.view(context: context)
+                    }
+            }
+            // Continuous full-screen gate, drawn as an OVERLAY (not a
+            // fullScreenCover). Moving from one startup screen to the next — e.g. the
+            // reset confirmation → onboarding — is an in-place content swap while the
+            // overlay stays mounted, so the Today root never flashes between them.
+            // Each gate view is opaque full-screen (SettingsBackground ignores the
+            // safe area), so it fully blocks the app underneath.
+            if let cover = startupCover {
+                startupCoverView(cover)
+                    .transition(.identity)
+                    .zIndex(1)
             }
         }
         .onReceive(
@@ -73,6 +78,18 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
+    private func startupCoverView(_ cover: StartupCover) -> some View {
+        switch cover {
+        case .interstitial(let pending):
+            AppInterstitialView(mode: interstitialMode(pending), onAction: finishInterstitial)
+        case .onboarding:
+            onboardingView
+        case .lock:
+            LockScreenView(vm: lockVM)
+        }
+    }
+
     private func interstitialMode(_ pending: AppInterstitial) -> AppInterstitialView.Mode {
         switch pending {
         case .reset:    return .reset
@@ -80,8 +97,9 @@ struct ContentView: View {
         }
     }
 
-    // Onboarding sequence: Welcome → Terms of Service (must agree) → Tutorial.
-    // The app cannot be reached until the Terms are confirmed.
+    // Onboarding sequence: Welcome → Terms of Service (must agree) → Tutorial →
+    // (fresh install only) Permissions. The app cannot be reached until the Terms
+    // are confirmed.
     @ViewBuilder
     private var onboardingView: some View {
         switch onboardingStep {
@@ -94,7 +112,17 @@ struct ContentView: View {
                 withAnimation { onboardingStep = .tutorial }
             }
         case .tutorial:
-            TutorialView(mode: .onboarding) { finishOnboarding() }
+            TutorialView(mode: .onboarding) {
+                // Fresh install → ask for permissions. After a factory reset,
+                // permissionsAsked is already true, so skip straight to the app.
+                if permissionsAsked {
+                    finishOnboarding()
+                } else {
+                    withAnimation { onboardingStep = .permissions }
+                }
+            }
+        case .permissions:
+            PermissionsOnboardingView { finishPermissions() }
         }
     }
 
@@ -103,6 +131,11 @@ struct ContentView: View {
     private func finishInterstitial() {
         appState.pendingInterstitial = nil
         path = [.today]
+    }
+
+    private func finishPermissions() {
+        permissionsAsked = true
+        finishOnboarding()
     }
 
     private func finishOnboarding() {

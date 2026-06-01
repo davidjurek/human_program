@@ -210,5 +210,9 @@ struct FactoryResetView: View {
         for key in keys {
             UserDefaults.standard.removeObject(forKey: key)
         }
+        // A reset re-runs onboarding (Welcome → Terms → Tutorial) but is NOT a fresh
+        // install, so the permissions step should not appear. Mark it asked so the
+        // re-run skips it.
+        UserDefaults.standard.set(true, forKey: "hp.permissionsAsked")
     }
 }
