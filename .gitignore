@@ -37,3 +37,6 @@ Podfile.lock
 
 # Claude Code session data (already in .claude/ which is separate)
 catpics/
+
+# Obsidian editor workspace
+.obsidian/
