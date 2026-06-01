@@ -488,6 +488,7 @@ struct GlassKeypad: View {
                 .background(Capsule().fill(Color.white.opacity(0.8)))
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(Capsule())
         case .backspace:
             Button(action: onBackspace) {
                 Image(systemName: "delete.left").font(.system(size: 20))
@@ -496,6 +497,7 @@ struct GlassKeypad: View {
                     .background(Capsule().fill(Color.white.opacity(0.8)))
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(Capsule())
         case .done:
             Button(action: onDone) {
                 Image(systemName: "checkmark").font(.system(size: 20, weight: .semibold))
@@ -504,6 +506,7 @@ struct GlassKeypad: View {
                     .background(Capsule().fill(Color.white.opacity(0.8)))
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(Capsule())
         }
     }
 }

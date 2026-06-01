@@ -59,8 +59,10 @@ struct CalendarSourceSettingsView: View {
         HStack(spacing: 24) {
             Button("Select All") { selectedIds = Set(allCalendars.map { $0.calendarIdentifier }); saveSelection() }
                 .buttonStyle(.plain)
+                .a11yTapBorder(cornerRadius: 4)
             Button("Deselect All") { selectedIds = []; saveSelection() }
                 .buttonStyle(.plain)
+                .a11yTapBorder(cornerRadius: 4)
             Spacer()
         }
         .font(appFont(16))
@@ -166,6 +168,7 @@ private struct CalendarSelectRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(Rectangle())
     }
 }
 
@@ -193,8 +196,10 @@ private struct CalendarMessageState: View {
                         .padding(.horizontal, 24)
                         .padding(.vertical, 12)
                         .background(Color.primary.opacity(0.08), in: Capsule())
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .a11yTapBorder(Capsule())
             }
         }
         .frame(maxWidth: .infinity)

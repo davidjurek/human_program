@@ -119,6 +119,7 @@ struct RecurringTaskEditorView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(cornerRadius: 4)
             .anchorFrame("repeat", in: .named(anchorSpace))
         }
         .frame(height: 34)
@@ -155,6 +156,7 @@ struct RecurringTaskEditorView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .a11yTapBorder(Rectangle())
             }
         }
     }
@@ -168,13 +170,16 @@ struct RecurringTaskEditorView: View {
                     .foregroundStyle(.red)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }
         }
         Button { save() } label: {
             Text("Save").font(appFont(18))
                 .foregroundStyle(canSave ? .primary : .secondary)
-                .frame(height: 44)
-                .padding(.horizontal, 6)
+                .frame(minWidth: 44, minHeight: 44)
+                .padding(.horizontal, 8)
+                .contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
         }
         .disabled(!canSave)
     }

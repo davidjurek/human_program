@@ -49,9 +49,11 @@ struct CalendarEventDetailSheet: View {
                     Spacer()
                     Button { dismiss() } label: {
                         Text("Done").font(appFont(18)).foregroundStyle(Color.accentColor)
+                            .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
                 }
             }
             .padding(.horizontal, 16)
@@ -187,7 +189,9 @@ struct CalendarEventDetailSheet: View {
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(Color.secondary)
+                                    .contentShape(Circle())
                             }
+                            .a11yTapBorder(Circle())
                         }
                     }
 
@@ -195,6 +199,7 @@ struct CalendarEventDetailSheet: View {
                         Button("Save title") { saveTitleOverride() }
                             .font(appFont(17))
                             .foregroundStyle(Color.accentColor)
+                            .a11yTapBorder(cornerRadius: 4)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -290,6 +295,7 @@ private struct OverrideToggleRow: View {
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .tint(Color.accentColor)
+                .a11yTapBorder(Capsule())
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

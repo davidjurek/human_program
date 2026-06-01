@@ -76,7 +76,9 @@ struct BacklogTaskDetailView: View {
                                 Text(projectName).font(appFont(18)).foregroundStyle(.primary)
                                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 12)).foregroundStyle(.secondary)
                             }
+                            .contentShape(Rectangle())
                         }
+                        .a11yTapBorder(cornerRadius: 4)
                     } else {
                         DSText(projectName).dsTextStyle(.subheadline)
                     }
@@ -98,6 +100,7 @@ struct BacklogTaskDetailView: View {
                     }
                     if editing {
                         Toggle("", isOn: $hasDate).labelsHidden().tint(appToggleTint)
+                            .a11yTapBorder(Capsule())
                     }
                 }
                 .frame(height: 34)
@@ -133,14 +136,18 @@ struct BacklogTaskDetailView: View {
                 Button { save() } label: {
                     Text("Save").font(appFont(18))
                         .foregroundStyle(canSave ? .primary : .secondary)
-                        .frame(height: 44).padding(.horizontal, 6)
+                        .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                        .contentShape(Rectangle())
+                        .a11yTapBorder(Rectangle())
                 }.disabled(!canSave)
             } else {
                 Button {
                     if editing { save(); editing = false } else { editing = true }
                 } label: {
                     Text(editing ? "Save" : "Edit").font(appFont(18))   // [#29]
-                        .foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
+                        .foregroundStyle(.primary).frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                        .contentShape(Rectangle())
+                        .a11yTapBorder(Rectangle())
                 }
             }
         }

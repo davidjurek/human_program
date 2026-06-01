@@ -42,8 +42,10 @@ struct AppInterstitialView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 18)
                         .background(lightBlue, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .a11yTapBorder(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.horizontal, 20)
                 .padding(.bottom, 40)
             }

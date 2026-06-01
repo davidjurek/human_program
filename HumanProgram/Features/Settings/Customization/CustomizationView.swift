@@ -80,6 +80,7 @@ private struct BackgroundSwatch: View {
             )
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(RoundedRectangle(cornerRadius: 14))
         .disabled(background == nil)
     }
 }
@@ -178,6 +179,7 @@ private struct FontOptionRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(Rectangle())
     }
 }
 
@@ -302,5 +304,6 @@ private struct AppIconSwatch: View {
             )
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }

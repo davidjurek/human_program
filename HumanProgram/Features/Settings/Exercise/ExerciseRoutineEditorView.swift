@@ -161,6 +161,7 @@ struct ExerciseRoutineEditorView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .a11yTapBorder(Circle())
             }
             .offset(x: swipeOffset(for: ex.id))
             .frame(width: geo.size.width, height: rowHeight, alignment: .leading)
@@ -245,6 +246,7 @@ struct ExerciseRoutineEditorView: View {
                     .foregroundStyle(canAdd ? Color.primary : Color.secondary)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(!canAdd)

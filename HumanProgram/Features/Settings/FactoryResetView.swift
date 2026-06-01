@@ -119,8 +119,10 @@ struct FactoryResetView: View {
             .padding(.vertical, 16)
             .background(isConfirmationValid ? Color.red : Color.red.opacity(0.35),
                         in: Capsule())
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(Capsule())
         .disabled(!isConfirmationValid || isResetting)
     }
 

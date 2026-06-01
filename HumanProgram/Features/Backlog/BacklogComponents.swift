@@ -35,6 +35,7 @@ struct BacklogRow<Destination: View>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .a11yTapBorder(Circle())
             }
             .offset(x: offset)
             .frame(width: geo.size.width, height: rowHeight, alignment: .leading)
@@ -53,8 +54,10 @@ struct BacklogRow<Destination: View>: View {
     private var face: some View {
         if selecting {
             Button(action: onTapSelect) { faceContent }.buttonStyle(.plain)
+                .a11yTapBorder(Rectangle())
         } else {
             NavigationLink(destination: destination) { faceContent }.buttonStyle(.plain)
+                .a11yTapBorder(Rectangle())
         }
     }
 
@@ -64,7 +67,7 @@ struct BacklogRow<Destination: View>: View {
                 SelectionCircle(isOn: isSelected)
             }
             VStack(alignment: .leading, spacing: 2) {
-                DSText(title).dsTextStyle(.title3).lineLimit(2)
+                DSText(title).dsTextStyle(.title3).longTitle()
                 if let subtitle { DSText(subtitle).dsTextStyle(.subheadline) }
             }
             Spacer(minLength: 8)
@@ -114,11 +117,15 @@ struct NewProjectPopup: View {
                     Button(action: onCancel) {
                         Text("Cancel").font(appFont(18)).foregroundStyle(.primary)
                             .frame(maxWidth: .infinity).frame(height: 44)
+                            .contentShape(Rectangle())
                     }.buttonStyle(.plain)
+                    .a11yTapBorder(cornerRadius: 6)
                     Button(action: onCreate) {
                         Text("Add").font(appFont(18)).foregroundStyle(.primary)
                             .frame(maxWidth: .infinity).frame(height: 44)
+                            .contentShape(Rectangle())
                     }.buttonStyle(.plain)
+                    .a11yTapBorder(cornerRadius: 6)
                 }
             }
             .padding(20).frame(width: 300).popupGlass(cornerRadius: 22)
@@ -164,5 +171,6 @@ struct MoveToProjectPopup: View {
                 .padding(.horizontal, 18).frame(height: 48)
                 .contentShape(Rectangle())
         }.buttonStyle(.plain)
+        .a11yTapBorder(Rectangle())
     }
 }

@@ -77,7 +77,9 @@ struct TaskDetailView: View {
             editing.toggle()
         } label: {
             Text(editing ? "Save" : "Edit").font(appFont(18))
-                .foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
+                .foregroundStyle(.primary).frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                .contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
         }
     }
 

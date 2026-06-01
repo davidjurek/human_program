@@ -47,7 +47,7 @@ private struct RecurringTaskRow: View {
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     DSText(template.title).dsTextStyle(.title3)
-                        .lineLimit(3)
+                        .longTitle()
                     DSText(summary).dsTextStyle(.subheadline)
                     WeekdayStrip(days: Self.weekdays(from: template.recurrenceRule))
                 }
@@ -55,10 +55,12 @@ private struct RecurringTaskRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .a11yTapBorder(Rectangle())
 
             Toggle("", isOn: Binding(get: { template.active }, set: { _ in onToggle() }))
                 .labelsHidden()
                 .tint(appToggleTint)
+                .a11yTapBorder(Capsule())
         }
         .frame(minHeight: 52)
     }

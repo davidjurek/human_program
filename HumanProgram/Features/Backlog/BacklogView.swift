@@ -132,6 +132,7 @@ struct BacklogView: View {
             projectRowContent(name: "Unorganized", count: unassignedCount)
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(Rectangle())
         .disabled(selecting)
 
         ForEach(sortedProjects, id: \.id) { project in
@@ -153,7 +154,7 @@ struct BacklogView: View {
     private func projectRowContent(name: String, count: Int) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                DSText(name).dsTextStyle(.title3)
+                DSText(name).dsTextStyle(.title3).longTitle()
                 DSText("\(count) items").dsTextStyle(.subheadline)
             }
             Spacer(minLength: 8)
@@ -169,14 +170,15 @@ struct BacklogView: View {
             Image(systemName: "chevron.left")
                 .font(.system(size: 18, weight: .semibold)).foregroundStyle(.primary)
                 .frame(width: 44, height: 44).contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
             if selecting {
                 iconButton("arrow.right.arrow.left") { if !selected.isEmpty { showMove = true } }
                 iconButton("trash", tint: .red) { deleteSelected() }
                 Button { selecting = false; selected = [] } label: {
-                    DSText("Done").dsTextStyle(.headline)
-                }.buttonStyle(.plain).padding(.horizontal, 6)
+                    DSText("Done").dsTextStyle(.headline).contentShape(Rectangle())
+                }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.horizontal, 6)
             } else {
                 // View toggle shows the CURRENT view as a word. Both words are
                 // left-aligned at the same x (fixed width); "Task" leaves a wide
@@ -185,12 +187,12 @@ struct BacklogView: View {
                     DSText(mode == .tasks ? "Task" : "Project").dsTextStyle(.headline)
                         .frame(width: 78, alignment: .leading)
                         .frame(height: 44).contentShape(Rectangle())
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).a11yTapBorder(Rectangle())
                 sortMenu
                 iconButton("plus") { addTapped() }
                 Button { selecting = true } label: {
-                    DSText("Select").dsTextStyle(.headline)
-                }.buttonStyle(.plain).padding(.horizontal, 6)
+                    DSText("Select").dsTextStyle(.headline).contentShape(Rectangle())
+                }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.horizontal, 6)
             }
         }
         .padding(.horizontal, 12)
@@ -202,6 +204,7 @@ struct BacklogView: View {
         Button(action: action) {
             Image(systemName: icon).font(.system(size: 18, weight: .medium))
                 .foregroundStyle(tint).frame(width: 40, height: 44).contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
         }.buttonStyle(.plain)
     }
 
@@ -223,6 +226,7 @@ struct BacklogView: View {
         } label: {
             Image(systemName: "arrow.up.arrow.down").font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.primary).frame(width: 40, height: 44).contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
         }
         .tint(.primary)   // keep the glyph black, not the menu accent (blue)
     }
@@ -400,26 +404,30 @@ struct BacklogFolderView: View {
         HStack(spacing: 6) {
             Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
             if selecting {
                 Button { if !selected.isEmpty { showMove = true } } label: {
                     Image(systemName: "arrow.right.arrow.left").font(.system(size: 18, weight: .medium))
                         .foregroundStyle(.primary).frame(width: 40, height: 44).contentShape(Rectangle())
+                        .a11yTapBorder(Rectangle())
                 }.buttonStyle(.plain)
                 Button { deleteSelected() } label: {
                     Image(systemName: "trash").font(.system(size: 18, weight: .medium))
                         .foregroundStyle(.red).frame(width: 40, height: 44).contentShape(Rectangle())
+                        .a11yTapBorder(Rectangle())
                 }.buttonStyle(.plain)
-                Button { selecting = false; selected = [] } label: { DSText("Done").dsTextStyle(.headline) }
-                    .buttonStyle(.plain).padding(.horizontal, 6)
+                Button { selecting = false; selected = [] } label: { DSText("Done").dsTextStyle(.headline).contentShape(Rectangle()) }
+                    .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.horizontal, 6)
             } else {
                 Button { pushEditorForNew = true } label: {
                     Image(systemName: "plus").font(.system(size: 18, weight: .medium))
                         .foregroundStyle(.primary).frame(width: 40, height: 44).contentShape(Rectangle())
+                        .a11yTapBorder(Rectangle())
                 }.buttonStyle(.plain)
-                Button { selecting = true } label: { DSText("Select").dsTextStyle(.headline) }
-                    .buttonStyle(.plain).padding(.horizontal, 6)
+                Button { selecting = true } label: { DSText("Select").dsTextStyle(.headline).contentShape(Rectangle()) }
+                    .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.horizontal, 6)
             }
         }
         .padding(.horizontal, 12).padding(.bottom, 4)

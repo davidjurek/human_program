@@ -76,8 +76,9 @@ struct BlockColorPickerView: View {
             HStack {
                 DSText(title).dsTextStyle(.headline)
                 Spacer()
-                Button { onClose() } label: { DSText("Done").dsTextStyle(.headline) }
+                Button { onClose() } label: { DSText("Done").dsTextStyle(.headline).contentShape(Rectangle()) }
                     .buttonStyle(.plain)
+                    .a11yTapBorder(cornerRadius: 4)
             }
 
             // 18 fixed slots. Filled: tap to use, double-tap to overwrite with
@@ -99,8 +100,9 @@ struct BlockColorPickerView: View {
                     .frame(width: 44, height: 28)
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.12)))
                 Spacer()
-                Button { store.reset() } label: { DSText("Reset to presets").dsTextStyle(.subheadline) }
+                Button { store.reset() } label: { DSText("Reset to presets").dsTextStyle(.subheadline).contentShape(Rectangle()) }
                     .buttonStyle(.plain)
+                    .a11yTapBorder(cornerRadius: 4)
             }
 
             Picker("", selection: $mode) {
@@ -132,6 +134,7 @@ struct BlockColorPickerView: View {
             .frame(height: 34)
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.10)))
             .contentShape(Rectangle())
+            .a11yTapBorder(RoundedRectangle(cornerRadius: 8))
             .onTapGesture { store.addToEmptySlot(currentHex) }
     }
 
@@ -151,10 +154,12 @@ struct BlockColorPickerView: View {
                         Image(systemName: "minus.circle.fill")
                             .font(.system(size: 16)).foregroundStyle(.red)
                             .background(Circle().fill(.white))
-                    }.buttonStyle(.plain).offset(x: 5, y: -5)
+                            .contentShape(Circle())
+                    }.buttonStyle(.plain).a11yTapBorder(Circle()).offset(x: 5, y: -5)
                 }
             }
             .contentShape(Rectangle())
+            .a11yTapBorder(RoundedRectangle(cornerRadius: 8))
             .onTapGesture(count: 2) {
                 pendingDelete = nil
                 store.replace(at: index, with: currentHex)

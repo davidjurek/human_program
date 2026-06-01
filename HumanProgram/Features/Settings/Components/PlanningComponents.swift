@@ -259,13 +259,17 @@ struct ConfirmPopup: View {
                     Button(action: onCancel) {
                         Text("Cancel").font(appFont(18)).foregroundStyle(.primary)
                             .frame(maxWidth: .infinity).frame(height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .a11yTapBorder(cornerRadius: 6)
                     Button(action: onConfirm) {
                         Text(confirmTitle).font(appFont(18)).foregroundStyle(.red)
                             .frame(maxWidth: .infinity).frame(height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .a11yTapBorder(cornerRadius: 6)
                 }
             }
             .padding(20)

@@ -308,6 +308,7 @@ struct ReminderEditorView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .a11yTapBorder(Rectangle())
             }
         }
     }

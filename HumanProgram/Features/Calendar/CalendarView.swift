@@ -84,12 +84,15 @@ struct CalendarView: View {
         HStack(spacing: 8) {
             Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
-            Button { goToday() } label: { DSText("Today").dsTextStyle(.subheadline) }.buttonStyle(.plain)
+            Button { goToday() } label: { DSText("Today").dsTextStyle(.subheadline).contentShape(Rectangle()) }
+                .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
             Button { showAddEvent = true } label: {
                 Image(systemName: "plus").font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }.buttonStyle(.plain)
         }
         .padding(.horizontal, 12).padding(.bottom, 4)
@@ -443,6 +446,7 @@ struct CalendarView: View {
                                     .frame(width: colW - 2, height: h, alignment: .topLeading)
                                     .background(RoundedRectangle(cornerRadius: 3).fill(Color(cgColor: event.calendar.cgColor)))
                             }.buttonStyle(.plain)
+                            .a11yTapBorder(RoundedRectangle(cornerRadius: 3))
                             .offset(x: weekTimeColW + CGFloat(idx) * colW + 1,
                                     y: CGFloat(s) / 60 * weekHourHeight)
                         }
@@ -551,6 +555,7 @@ struct CalendarView: View {
                                 .frame(height: height)
                         }
                         .buttonStyle(.plain)
+                        .a11yTapBorder(RoundedRectangle(cornerRadius: 4))
                         .offset(x: 56, y: topOffset)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.trailing, 16)
@@ -778,6 +783,7 @@ struct CalendarView: View {
         }
         .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .topLeading)
         .contentShape(Rectangle())
+        .a11yTapBorder(Rectangle())
         .onTapGesture { if !events.isEmpty { onTap() } }
     }
 
@@ -810,6 +816,7 @@ struct CalendarView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .a11yTapBorder(Rectangle())
                         }
                     }
                     .padding(.vertical, 6)
@@ -928,6 +935,7 @@ private struct MonthDayCell: View {
             .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(Rectangle())
     }
 }
 
@@ -972,6 +980,7 @@ private struct EventRowView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(Rectangle())
     }
 }
 
@@ -1082,7 +1091,9 @@ struct AddCalendarEventView: View {
             Button { saveEvent() } label: {
                 Text("Add").font(appFont(18))
                     .foregroundStyle(canSave ? .primary : .secondary)
-                    .frame(height: 44).padding(.horizontal, 6)
+                    .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                    .contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }.disabled(!canSave)
         }) {
             SettingsSectionLabel(title: "Event")
@@ -1093,6 +1104,7 @@ struct AddCalendarEventView: View {
                 HStack {
                     DSText("All-day").dsTextStyle(.body); Spacer()
                     Toggle("", isOn: $allDay).labelsHidden().tint(appToggleTint)
+                        .a11yTapBorder(Capsule())
                 }.frame(height: 34)
                 HStack(spacing: 14) {
                     DSText("Starts").dsTextStyle(.body); Spacer()
@@ -1155,7 +1167,9 @@ struct AddCalendarEventView: View {
                     Text(value).font(appFont(17)).foregroundStyle(.primary)
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: 12)).foregroundStyle(.secondary)
                 }
+                .contentShape(Rectangle())
             }.tint(.primary)
+            .a11yTapBorder(cornerRadius: 4)
         }
         .frame(height: 34)
     }

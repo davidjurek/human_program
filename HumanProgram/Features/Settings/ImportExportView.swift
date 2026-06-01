@@ -108,7 +108,8 @@ struct TextBacklogImportView: View {
                 let rows = BacklogImportParser.parseText(text)
                 if !rows.isEmpty { flow.openSelection(rows: rows, skipped: 0) }
             } label: {
-                Text("Load").font(appFont(18)).foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
+                Text("Load").font(appFont(18)).foregroundStyle(.primary).frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                    .contentShape(Rectangle()).a11yTapBorder(Rectangle())
             }
         }) {
             SettingsSectionLabel(title: "Paste titles — one per line")
@@ -192,7 +193,8 @@ struct ImportSelectionView: View {
         @Bindable var flow = flow
         SettingsScreen(centered: true, trailing: {
             Button { runImport() } label: {
-                Text("Import").font(appFont(18)).foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
+                Text("Import").font(appFont(18)).foregroundStyle(.primary).frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                    .contentShape(Rectangle()).a11yTapBorder(Rectangle())
             }
         }) {
             SettingsSectionLabel(title: "\(selected.count) of \(flow.rows.count) selected")
@@ -209,7 +211,7 @@ struct ImportSelectionView: View {
                         Spacer()
                     }
                     .frame(minHeight: 44).contentShape(Rectangle())
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).a11yTapBorder(Rectangle())
             }
         }
         .onAppear { if selected.isEmpty { selected = Set(flow.rows.map { $0.id }) } }
@@ -240,7 +242,8 @@ struct ImportSummaryView: View {
     var body: some View {
         SettingsScreen(centered: true, trailing: {
             Button { flow.backToMenu() } label: {
-                Text("Done").font(appFont(18)).foregroundStyle(.primary).frame(height: 44).padding(.horizontal, 6)
+                Text("Done").font(appFont(18)).foregroundStyle(.primary).frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                    .contentShape(Rectangle()).a11yTapBorder(Rectangle())
             }
         }) {
             SettingsSectionLabel(title: "Import complete")
@@ -328,7 +331,8 @@ struct HprgmRestoreConfirmView: View {
                     Text("Restore Everything").font(appFont(18)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 16)
                         .background(canRestore ? Color.red : Color.red.opacity(0.35), in: Capsule())
-                }.buttonStyle(.plain).disabled(!canRestore)
+                        .contentShape(Capsule())
+                }.buttonStyle(.plain).a11yTapBorder(Capsule()).disabled(!canRestore)
             }
             .frame(maxWidth: .infinity).padding(.horizontal, 8)
         }

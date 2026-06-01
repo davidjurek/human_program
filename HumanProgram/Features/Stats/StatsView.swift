@@ -48,13 +48,15 @@ struct StatsView: View {
         HStack {
             Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
             Button { withAnimation { statsPage = statsPageIndex(forOffset: 0) } } label: {  // jump to current week
-                DSText("Today").dsTextStyle(.subheadline)
-            }.buttonStyle(.plain).padding(.trailing, 18)
+                DSText("Today").dsTextStyle(.subheadline).contentShape(Rectangle())
+            }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.trailing, 18)
             Image(systemName: "calendar").font(.system(size: 18, weight: .medium))   // [#35]
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
                 .onTapGesture { showWeekPicker = true }
         }
         .padding(.horizontal, 12).padding(.bottom, 4)
@@ -81,11 +83,13 @@ struct StatsView: View {
                 } label: {
                     statCard("Current", current?.length ?? 0)
                 }.buttonStyle(.plain)
+                .a11yTapBorder(RoundedRectangle(cornerRadius: 16))
                 NavigationLink {
                     LongestStreakListView(title: title, runs: runs)
                 } label: {
                     statCard("Longest", longest?.length ?? 0)
                 }.buttonStyle(.plain)
+                .a11yTapBorder(RoundedRectangle(cornerRadius: 16))
             }
         }
     }
@@ -297,6 +301,8 @@ private struct StatsWeekPicker: View {
                     DSText("Go").dsTextStyle(.headline)
                         .padding(.horizontal, 28).padding(.vertical, 12)
                         .background(Color.primary.opacity(0.08), in: Capsule())
+                        .contentShape(Capsule())
+                        .a11yTapBorder(Capsule())
                 }.buttonStyle(.plain)
                 Spacer()
             }

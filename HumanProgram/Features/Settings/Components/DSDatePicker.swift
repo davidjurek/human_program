@@ -24,8 +24,10 @@ struct DSCalendarView: View {
                 Spacer()
                 Button { step(-1) } label: { Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold)) }
                     .buttonStyle(.plain).foregroundStyle(.primary).frame(width: 40, height: 36).contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
                 Button { step(1) } label: { Image(systemName: "chevron.right").font(.system(size: 16, weight: .semibold)) }
                     .buttonStyle(.plain).foregroundStyle(.primary).frame(width: 40, height: 36).contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
             }
             // Weekday header.
             LazyVGrid(columns: cols, spacing: 4) {
@@ -59,6 +61,7 @@ struct DSCalendarView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain).disabled(disabled)
+        .a11yTapBorder(Rectangle())
     }
 
     private var monthTitle: String {
@@ -97,13 +100,14 @@ struct DSDateField: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(cornerRadius: 4)
         .sheet(isPresented: $show) {
             ZStack {
                 SettingsBackground().ignoresSafeArea()
                 VStack {
                     HStack {
                         Spacer()
-                        Button { show = false } label: { DSText("Done").dsTextStyle(.headline) }.buttonStyle(.plain)
+                        Button { show = false } label: { DSText("Done").dsTextStyle(.headline).contentShape(Rectangle()) }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
                     }
                     DSCalendarView(date: $date, minDate: minDate)
                     Spacer()
@@ -136,13 +140,14 @@ struct DSTimeField: View {
             Text(label).font(appFont(17)).foregroundStyle(.primary).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(cornerRadius: 4)
         .sheet(isPresented: $show) {
             ZStack {
                 SettingsBackground().ignoresSafeArea()
                 VStack {
                     HStack {
                         Spacer()
-                        Button { show = false } label: { DSText("Done").dsTextStyle(.headline) }.buttonStyle(.plain)
+                        Button { show = false } label: { DSText("Done").dsTextStyle(.headline).contentShape(Rectangle()) }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
                     }
                     HStack(spacing: 0) {
                         Picker("", selection: hour) {

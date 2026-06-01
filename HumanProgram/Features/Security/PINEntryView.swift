@@ -39,6 +39,7 @@ struct PINEntryView: View {
                             .foregroundStyle(.primary)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
+                            .a11yTapBorder(Rectangle())
                             .onTapGesture { onBack?() }
                         Spacer()
                     }
@@ -83,8 +84,10 @@ struct PINEntryView: View {
                                 Text("Use Face ID").font(appFont(16))
                             }
                             .foregroundStyle(.primary)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .a11yTapBorder(cornerRadius: 6)
                         .padding(.top, 18)
                     }
                 }

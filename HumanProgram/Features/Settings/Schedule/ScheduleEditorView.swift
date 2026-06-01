@@ -32,14 +32,18 @@ struct ScheduleEditorView: View {
     /// and repeat are intentionally left blank/default so it can't be saved as-is.
     var seed: ScheduleSeed? = nil
 
-    /// When this editor was opened as a duplicate (pushed on top of another
-    /// editor), saving should pop ALL the way back to the schedule list, not just
-    /// one level to the editor that spawned it. The spawning editor passes its own
-    /// dismiss here; calling it pops this editor and everything above it. nil for a
-    /// normal editor (opened straight from the list), which just dismisses itself.
-    var onSavedReturnToList: (() -> Void)? = nil
+    /// Set when this editor was pushed as a DUPLICATE on top of another editor.
+    /// On save we flip the spawning editor's signal instead of dismissing
+    /// ourselves; that editor then dismisses ITSELF (which pops this child too),
+    /// rippling up to the schedule list. Capturing the parent's `dismiss` in a
+    /// closure and calling it from here does NOT reliably pop the ancestor, so we
+    /// use a binding + each view dismissing itself, which is well-defined. nil for
+    /// a normal editor opened straight from the list (it just dismisses itself).
+    var returnToListSignal: Binding<Bool>? = nil
 
     @State private var duplicateSeed: ScheduleSeed?
+    /// Flipped true by a duplicate child we pushed, asking us to pop to the list.
+    @State private var childRequestedReturn = false
     @State private var name = ""
     @State private var repeatMode = "weekly"          // "weekly" | "custom"
     @State private var weekdays: Set<Int> = []
@@ -255,10 +259,17 @@ struct ScheduleEditorView: View {
         .onPreferenceChange(KeypadHeightKey.self) { keypadMeasuredHeight = $0 }
         .onAppear(perform: loadIfNeeded)
         .navigationDestination(item: $duplicateSeed) { seed in
-            // Saving the duplicate returns straight to the list. Propagate our own
-            // return action so chained duplicates also land on the list.
+            // The duplicate child flips our signal on save; we then dismiss
+            // ourselves (popping the child too), back toward the list.
             ScheduleEditorView(template: nil, seed: seed,
-                               onSavedReturnToList: onSavedReturnToList ?? { dismiss() })
+                               returnToListSignal: $childRequestedReturn)
+        }
+        .onChange(of: childRequestedReturn) { _, requested in
+            guard requested else { return }
+            childRequestedReturn = false
+            // If we are ourselves a duplicate, ripple the request up; otherwise
+            // we're the list-spawned editor — dismiss ourselves to reach the list.
+            if let returnToListSignal { returnToListSignal.wrappedValue = true } else { dismiss() }
         }
     }
 
@@ -928,8 +939,9 @@ struct ScheduleEditorView: View {
         } catch {
             print("[ScheduleEditor] save error: \(error)")
         }
-        // A duplicate pops back to the list; a normal editor dismisses itself.
-        if let onSavedReturnToList { onSavedReturnToList() } else { dismiss() }
+        // A duplicate asks its spawning editor to pop to the list; a normal
+        // editor just dismisses itself.
+        if let returnToListSignal { returnToListSignal.wrappedValue = true } else { dismiss() }
     }
 
     private func deleteSchedule() {

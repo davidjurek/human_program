@@ -69,13 +69,14 @@ private struct ExerciseRoutineRow: View {
             ExerciseRoutineEditorView(routine: routine)
         } label: {
             VStack(alignment: .leading, spacing: 4) {
-                DSText(weekdayName).dsTextStyle(.title3)
+                DSText(weekdayName).dsTextStyle(.title3).longTitle()
                 DSText(subtitle).dsTextStyle(.subheadline)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .a11yTapBorder(Rectangle())
         .frame(minHeight: 52)
     }
 }
