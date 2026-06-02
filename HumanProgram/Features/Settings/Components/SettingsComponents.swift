@@ -1,6 +1,40 @@
 import SwiftUI
 import DSKit
 
+/// Editor toolbar "Save" button: greyed + disabled until `enabled`. The documented
+/// 44pt tap target + contentShape so the whole frame is tappable. Shared by every
+/// planning editor (Schedule / Reminder / Recurring / …).
+struct EditorSaveButton: View {
+    let enabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("Save").font(appFont(18))
+                .foregroundStyle(enabled ? .primary : .secondary)
+                .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                .contentShape(Rectangle())   // whole frame tappable, not just glyphs
+                .a11yTapBorder(Rectangle())
+        }
+        .disabled(!enabled)
+    }
+}
+
+/// Editor toolbar red trash button (44×44 tap target + contentShape). Shared by the
+/// planning editors.
+struct EditorDeleteButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "trash").font(.system(size: 18))
+                .foregroundStyle(.red).frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
+        }
+    }
+}
+
 /// True on menu screens (asymmetric 42-left inset). Lets rows know to pull their
 /// TRAILING accessory (toggle / value) inboard to the 20 margin while titles are
 /// free to run out to the 8 margin. False on centered editor/list screens.

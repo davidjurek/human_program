@@ -165,24 +165,9 @@ struct RecurringTaskEditorView: View {
     @ViewBuilder
     private var editorButtons: some View {
         if template != nil {
-            Button { showDeleteConfirm = true } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 18))
-                    .foregroundStyle(.red)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-                    .a11yTapBorder(Rectangle())
-            }
+            EditorDeleteButton { showDeleteConfirm = true }
         }
-        Button { save() } label: {
-            Text("Save").font(appFont(18))
-                .foregroundStyle(canSave ? .primary : .secondary)
-                .frame(minWidth: 44, minHeight: 44)
-                .padding(.horizontal, 8)
-                .contentShape(Rectangle())
-                .a11yTapBorder(Rectangle())
-        }
-        .disabled(!canSave)
+        EditorSaveButton(enabled: canSave) { save() }
     }
 
     // MARK: - Load / Save
