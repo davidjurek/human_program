@@ -146,6 +146,29 @@ final class RecurrenceEngineTests: XCTestCase {
                       "week 2 Monday should match")
     }
 
+    // MARK: - 8c. occurrences() with an occurrenceLimit equals the per-day matches() result
+
+    func test_occurrences_withOccurrenceLimit_equalsPerDayMatches() {
+        // every day, capped at 3 occurrences, starting at the anchor.
+        let rule = RecurrenceRule(frequency: .everyDay, anchorDate: anchor,
+                                  startDate: anchor, occurrenceLimit: 3)
+        let result = engine.occurrences(of: rule, in: anchor...anchorPlus(10), calendar: gregorianUTC)
+
+        // Only the first 3 days fire, then the limit stops it.
+        XCTAssertEqual(result, [anchorPlus(0), anchorPlus(1), anchorPlus(2)])
+
+        // The optimized running-count path must equal filtering each day through matches().
+        let viaMatches = (0...10).map { anchorPlus($0) }
+            .filter { engine.matches(rule, on: $0, calendar: gregorianUTC) }
+        XCTAssertEqual(result, viaMatches)
+
+        // nextOccurrence respects the same limit: from within the cap it returns the day,
+        // from beyond it (4th day onward) there is no further occurrence.
+        XCTAssertEqual(engine.nextOccurrence(of: rule, from: anchorPlus(1), withinDays: 30, calendar: gregorianUTC),
+                       anchorPlus(1))
+        XCTAssertNil(engine.nextOccurrence(of: rule, from: anchorPlus(3), withinDays: 30, calendar: gregorianUTC))
+    }
+
     // MARK: - 8b. everyNWeeks fires on ALL selected weekdays in a qualifying week
 
     func test_everyNWeeks_multipleWeekdays_fireOnEverySelectedDayInQualifyingWeeks() {

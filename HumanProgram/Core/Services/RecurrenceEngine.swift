@@ -37,13 +37,20 @@ public struct RecurrenceEngine: Sendable {
     ) -> Date? {
         let startDay = calendar.startOfDay(for: from)
 
+        // Count occurrences before `from` ONCE (instead of re-counting per candidate via
+        // matches()). The first occurrence >= from has exactly this many prior occurrences,
+        // so it fires iff priorCount < occurrenceLimit.
+        let priorCount = rule.occurrenceLimit != nil
+            ? countOccurrences(of: rule, before: startDay, calendar: calendar)
+            : 0
+
         for offset in 0..<limit {
             guard let candidate = calendar.date(byAdding: .day, value: offset, to: startDay) else {
                 continue
             }
-            if matches(rule, on: candidate, calendar: calendar) {
-                return candidate
-            }
+            guard rule.occurs(on: candidate, calendar: calendar) else { continue }
+            if let occLimit = rule.occurrenceLimit, priorCount >= occLimit { return nil }
+            return candidate
         }
 
         return nil
@@ -66,13 +73,23 @@ public struct RecurrenceEngine: Sendable {
         let components = calendar.dateComponents([.day], from: startDay, to: endDay)
         guard let totalDays = components.day, totalDays >= 0 else { return [] }
 
+        // Count occurrences before the range ONCE, then carry a running total forward so the
+        // occurrenceLimit check is O(1) per day. matches() re-counts from the origin (back to
+        // 1970 when no start/anchor is set) on every call, which made this O(range × origin).
+        var priorCount = rule.occurrenceLimit != nil
+            ? countOccurrences(of: rule, before: startDay, calendar: calendar)
+            : 0
+
         for offset in 0...totalDays {
             guard let candidate = calendar.date(byAdding: .day, value: offset, to: startDay) else {
                 continue
             }
-            if matches(rule, on: candidate, calendar: calendar) {
-                results.append(candidate)
+            guard rule.occurs(on: candidate, calendar: calendar) else { continue }
+            if let limit = rule.occurrenceLimit {
+                if priorCount >= limit { break }   // limit reached — no later day can fire
+                priorCount += 1
             }
+            results.append(candidate)
         }
 
         return results
