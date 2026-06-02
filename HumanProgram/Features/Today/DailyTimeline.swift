@@ -30,8 +30,8 @@ struct DailyTimeline: View {
     private let laneGap: CGFloat = 0     // schedule + calendar lanes flush, no gap
     private let laneLeadingGap: CGFloat = 9   // gap between time column and lanes/lines (halved from 18)
 
-    /// Fixed light blue for the calendar (right) lane. [#15]
-    private static let calendarBlue = Color(red: 0.46, green: 0.67, blue: 0.96).opacity(0.55)
+    /// Fixed light blue for the calendar (right) lane (shared design token). [#31]
+    private static let calendarBlue = appCalendarLaneBlue.opacity(0.55)
 
     var body: some View {
         // A clear square (height == width) reserves the layout height; the

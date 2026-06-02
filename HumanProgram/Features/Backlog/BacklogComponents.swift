@@ -18,31 +18,38 @@ struct BacklogRow<Destination: View>: View {
     @ViewBuilder let destination: () -> Destination
 
     @State private var dragX: CGFloat = 0
-    private let rowHeight: CGFloat = 48   // [#43] tighter row (was 60)
+    private let rowMinHeight: CGFloat = 48   // [#43] tighter row; a long title can grow it [#6]
     private let trashW: CGFloat = 68
 
     var body: some View {
-        GeometryReader { geo in
+        // A hidden copy of the content drives the row HEIGHT so a long title can wrap to
+        // two lines and the row grows to fit (short titles stay at the 48pt minimum). The
+        // GeometryReader overlay lays out the slide-together content + trash at that size,
+        // preserving the clipped "trash slides in from the edge" look. [#6]
+        ZStack {
+            faceContent.hidden()
+            GeometryReader { geo in
             HStack(spacing: 0) {
                 face
-                    .frame(width: geo.size.width, height: rowHeight)
+                    .frame(width: geo.size.width, height: geo.size.height)
                 Button(action: onDelete) {
                     ZStack {
                         Circle().fill(Color.red).frame(width: 38, height: 38)
                         Image(systemName: "trash").font(.system(size: 16)).foregroundStyle(.white)
                     }
-                    .frame(width: trashW, height: rowHeight)
+                    .frame(width: trashW, height: geo.size.height)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .a11yTapBorder(Circle())
             }
             .offset(x: offset)
-            .frame(width: geo.size.width, height: rowHeight, alignment: .leading)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
             .clipped()
-            .gesture(selecting ? nil : swipe)
+            }
         }
-        .frame(height: rowHeight)
+        .frame(maxWidth: .infinity)
+        .gesture(selecting ? nil : swipe)
     }
 
     private var offset: CGFloat {
@@ -67,12 +74,13 @@ struct BacklogRow<Destination: View>: View {
                 SelectionCircle(isOn: isSelected)
             }
             VStack(alignment: .leading, spacing: 2) {
-                DSText(title).dsTextStyle(.title3).longTitle()
+                DSText(title).dsTextStyle(.title3).longTitle(lineLimit: 2)
                 if let subtitle { DSText(subtitle).dsTextStyle(.subheadline) }
             }
             Spacer(minLength: 8)
         }
-        .frame(height: rowHeight)
+        .padding(.vertical, 6)
+        .frame(minHeight: rowMinHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -188,6 +196,7 @@ struct NewProjectPopup: View {
                 }
             }
             .padding(20).frame(width: 300).popupGlass(cornerRadius: 22)
+            .offset(y: -80)   // sit slightly above center (clears the keyboard) [#1]
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
@@ -200,16 +209,20 @@ struct MoveToProjectPopup: View {
     let projects: [ProjectBucket]
     let onPick: (ProjectBucket?) -> Void
     let onCancel: () -> Void
+    /// Header + the label for the "no project" choice. Defaults suit the move action;
+    /// the task editor reuses this same glass popup as its project picker. [#4]
+    var title: String = "Move to…"
+    var noneLabel: String = "Unorganized"
 
     var body: some View {
         ZStack {
             Color.clear.contentShape(Rectangle()).onTapGesture(perform: onCancel)
             VStack(spacing: 0) {
-                DSText("Move to…").dsTextStyle(.headline).padding(.vertical, 14)
+                DSText(title).dsTextStyle(.headline).padding(.vertical, 14)
                 Divider()
                 ScrollView {
                     VStack(spacing: 0) {
-                        pickRow("Unorganized") { onPick(nil) }
+                        pickRow(noneLabel) { onPick(nil) }
                         ForEach(projects, id: \.id) { p in
                             pickRow(p.name) { onPick(p) }
                         }

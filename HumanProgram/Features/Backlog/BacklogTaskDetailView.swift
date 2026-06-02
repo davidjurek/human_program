@@ -25,6 +25,7 @@ struct BacklogTaskDetailView: View {
     /// like an existing one — read mode, Edit/Save — instead of popping). [#28]
     @State private var savedItem: BacklogItem?
     @State private var showDiscard = false
+    @State private var showProjectPicker = false
 
     private var repo: BacklogRepository { BacklogRepository(context: context) }
     private var effectiveItem: BacklogItem? { item ?? savedItem }
@@ -40,8 +41,11 @@ struct BacklogTaskDetailView: View {
                 || projectId != it.project?.id
                 || assigned != it.assignedDate
         }
+        // A brand-new task is "dirty" only if the user actually entered something — a
+        // pre-filled default project (when adding inside a folder) does NOT count, so
+        // leaving an untouched new task never triggers the discard prompt. [#3]
         return !title.trimmingCharacters(in: .whitespaces).isEmpty
-            || !notes.isEmpty || projectId != nil || hasDate
+            || !notes.isEmpty || hasDate || projectId != defaultProject?.id
     }
 
     var body: some View {
@@ -66,18 +70,15 @@ struct BacklogTaskDetailView: View {
                     DSText("Project").dsTextStyle(.body)
                     Spacer(minLength: 8)
                     if editing {
-                        Menu {
-                            Button("None") { projectId = nil }
-                            ForEach(projects, id: \.id) { p in
-                                Button(p.name) { projectId = p.id }
-                            }
-                        } label: {
+                        // Opens the shared DSKit glass project picker (not a system Menu). [#4]
+                        Button { showProjectPicker = true } label: {
                             HStack(spacing: 4) {
-                                Text(projectName).font(appFont(18)).foregroundStyle(.primary)
+                                DSText(projectName).dsTextStyle(.subheadline)
                                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 12)).foregroundStyle(.secondary)
                             }
                             .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .a11yTapBorder(cornerRadius: 4)
                     } else {
                         DSText(projectName).dsTextStyle(.subheadline)
@@ -89,6 +90,20 @@ struct BacklogTaskDetailView: View {
                 HStack {
                     DSText("Assigned Date").dsTextStyle(.body)
                     Spacer(minLength: 8)
+                    if editing {
+                        // Quick-assign to today (sets the date and turns the toggle on). [#5]
+                        Button {
+                            hasDate = true
+                            date = Calendar.current.startOfDay(for: Date())
+                        } label: {
+                            DSText("Today").dsTextStyle(.subheadline)
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(Color.primary.opacity(0.08), in: Capsule())
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .a11yTapBorder(Capsule())
+                    }
                     if hasDate {
                         if editing {
                             DSDateField(date: $date)   // custom DSKit calendar [#13]
@@ -121,6 +136,12 @@ struct BacklogTaskDetailView: View {
                              confirmTitle: "Discard",
                              onConfirm: { showDiscard = false; dismiss() },
                              onCancel: { showDiscard = false })
+            }
+            if showProjectPicker {
+                MoveToProjectPopup(projects: projects,
+                                   onPick: { projectId = $0?.id; showProjectPicker = false },
+                                   onCancel: { showProjectPicker = false },
+                                   title: "Project", noneLabel: "None")
             }
         }
         .onAppear(perform: loadIfNeeded)

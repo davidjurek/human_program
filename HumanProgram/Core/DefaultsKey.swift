@@ -33,6 +33,8 @@ enum DefaultsKey {
     static let lockEnabled         = "hp.lock.enabled"
     static let lockBiometric       = "hp.lock.biometric"
     static let lockTimeout         = "hp.lock.timeout"
+    static let backlogViewMode     = "hp.backlog.viewMode"   // persisted Task/Project view
+    static let backlogTaskSort     = "hp.backlog.taskSort"   // persisted backlog sort
 
     // MARK: Shared color-preset library
 
@@ -51,6 +53,6 @@ enum DefaultsKey {
     /// app to a clean factory state — not just the lock/onboarding keys. [#11]
     static let allKeys: [String] = userPreferenceKeys + [
         onboarded, permissionsAsked, lockEnabled, lockBiometric, lockTimeout,
-        blockColorPresets
+        blockColorPresets, backlogViewMode, backlogTaskSort
     ]
 }

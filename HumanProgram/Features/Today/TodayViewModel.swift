@@ -7,18 +7,19 @@ import SwiftData
 public final class TodayViewModel {
     public private(set) var page: DailyPage?
     public private(set) var exerciseRoutine: ExerciseRoutine? = nil
-    public private(set) var isLoading: Bool = false
-    public var showDatePicker: Bool = false
-    public var showAddTask: Bool = false
     public var newTaskTitle: String = ""
 
     private var _viewingDate: Date
+    /// Serializes page loads: a fast prev/next/jump cancels the previous in-flight load
+    /// so two loads can't land out of order and briefly show a stale page. [#30]
+    private var loadTask: Task<Void, Never>?
     public var viewingDate: Date {
         get { _viewingDate }
         set {
             relockCurrentIfPast()   // leaving this day re-locks it
             _viewingDate = Calendar.current.startOfDay(for: newValue)
-            Task { await loadPage() }
+            loadTask?.cancel()
+            loadTask = Task { await loadPage() }
         }
     }
 
@@ -34,6 +35,7 @@ public final class TodayViewModel {
 
     private let pageRepo: DailyPageRepository
     private let backlogRepo: BacklogRepository
+    private let exerciseRepo: ExerciseRepository
     private let context: ModelContext
 
     public init(context: ModelContext) {
@@ -41,6 +43,7 @@ public final class TodayViewModel {
         self._viewingDate = Calendar.current.startOfDay(for: Date())
         self.pageRepo = DailyPageRepository(context: context)
         self.backlogRepo = BacklogRepository(context: context)
+        self.exerciseRepo = ExerciseRepository(context: context)   // held, not rebuilt per load [#113]
     }
 
     public var isToday: Bool {
@@ -80,8 +83,6 @@ public final class TodayViewModel {
     }
 
     public func loadPage() async {
-        isLoading = true
-        defer { isLoading = false }
         do {
             let today = Calendar.current.startOfDay(for: Date())
             let inputs = try TemplateInputs.fetchAll(context: context)
@@ -92,7 +93,6 @@ public final class TodayViewModel {
                 backlogItems: inputs.backlog,
                 scheduleTemplates: inputs.schedule
             )
-            let exerciseRepo = ExerciseRepository(context: context)
             exerciseRoutine = try exerciseRepo.fetchRoutine(for: viewingDate)
         } catch {
             print("[TodayViewModel] loadPage error: \(error)")
@@ -143,7 +143,6 @@ public final class TodayViewModel {
         do {
             try pageRepo.addManualTask(title: newTaskTitle, to: p)
             newTaskTitle = ""
-            showAddTask = false
         } catch {
             print("[TodayViewModel] addManualTask error: \(error)")
         }
@@ -199,8 +198,11 @@ public final class TodayViewModel {
     /// Project name for a backlog-sourced task ("None" otherwise / if unassigned).
     public func projectName(for task: DailyPageTask) -> String {
         guard task.sourceType == .backlog, let sid = task.sourceId else { return "None" }
-        let items = (try? context.fetch(FetchDescriptor<BacklogItem>())) ?? []
-        return items.first(where: { $0.id == sid })?.project?.name ?? "None"
+        // Fetch just the one matching item instead of loading the whole table. [#112/#187]
+        var descriptor = FetchDescriptor<BacklogItem>(predicate: #Predicate { $0.id == sid })
+        descriptor.fetchLimit = 1
+        let item = (try? context.fetch(descriptor))?.first
+        return item?.project?.name ?? "None"
     }
 
 }

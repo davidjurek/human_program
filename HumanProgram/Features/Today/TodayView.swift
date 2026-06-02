@@ -233,7 +233,7 @@ struct TodayView: View {
         HStack {
             // Date turns green when the day is complete (replaces the old banner).
             if vm.isComplete {
-                DSText(longDate).dsTextStyle(.title2, Color(red: 0.18, green: 0.62, blue: 0.32))
+                DSText(longDate).dsTextStyle(.title2, appCompleteGreen)
             } else {
                 DSText(longDate).dsTextStyle(.title2)
             }

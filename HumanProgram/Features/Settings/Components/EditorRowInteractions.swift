@@ -133,6 +133,34 @@ struct ReorderRecognizer<ID: Hashable>: UIViewRepresentable {
 
 // MARK: - Swipe-to-delete (UIKit pan)
 
+/// A pan that commits to a horizontal swipe as soon as the finger moves a few
+/// points sideways (and sideways more than up/down), and fails for vertical drags
+/// so they fall through to scrolling. Beginning this EARLY (≈4pt, before SwiftUI's
+/// ~10pt tap slop) is what guarantees even a small horizontal slide engages the
+/// swipe and can never be mistaken for a tap. [owner: tiny-swipe must not tap]
+final class HorizontalPanGestureRecognizer: UIPanGestureRecognizer {
+    private var startPoint: CGPoint = .zero
+    private let beginThreshold: CGFloat = 4
+    private let failThreshold: CGFloat = 8
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesBegan(touches, with: event)
+        startPoint = touches.first?.location(in: view) ?? .zero
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        guard state == .possible, let p = touches.first?.location(in: view) else { return }
+        let dx = p.x - startPoint.x
+        let dy = p.y - startPoint.y
+        if abs(dx) > beginThreshold, abs(dx) > abs(dy) {
+            state = .began                     // horizontal slide → engage the swipe
+        } else if abs(dy) > failThreshold, abs(dy) >= abs(dx) {
+            state = .failed                    // vertical drag → let the scroll view have it
+        }
+    }
+}
+
 /// Drives swipe-to-delete with a UIKit pan recognizer that only begins for
 /// HORIZONTAL drags — so vertical drags fall straight through to native
 /// scrolling. Hit-tests which row the pan started on.
@@ -172,7 +200,7 @@ struct SwipePanRecognizer<ID: Hashable>: UIViewRepresentable {
                 }
                 return
             }
-            let p = UIPanGestureRecognizer(target: self, action: #selector(handle(_:)))
+            let p = HorizontalPanGestureRecognizer(target: self, action: #selector(handle(_:)))
             p.delegate = self
             p.cancelsTouchesInView = false
             target.addGestureRecognizer(p)
@@ -200,11 +228,14 @@ struct SwipePanRecognizer<ID: Hashable>: UIViewRepresentable {
             }
         }
 
-        // Begin only for horizontal drags over a row (vertical → scroll).
+        // Begin only for horizontal drags over a row (vertical → scroll). The custom
+        // recognizer already commits to .began only when horizontal motion dominates,
+        // so here we confirm the gate and that the touch started on a row (translation,
+        // not velocity, which is unreliable at the early begin threshold).
         func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
             guard parent.canStart(), let pan = g as? UIPanGestureRecognizer else { return false }
-            let v = pan.velocity(in: pan.view)
-            guard abs(v.x) > abs(v.y) else { return false }
+            let t = pan.translation(in: pan.view)
+            guard abs(t.x) >= abs(t.y) else { return false }
             let loc = pan.location(in: nil)
             return parent.rowFrames.contains(where: { $0.value.contains(loc) })
         }

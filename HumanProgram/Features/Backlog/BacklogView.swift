@@ -13,8 +13,9 @@ struct BacklogView: View {
     @Query(sort: \BacklogItem.createdAt) private var allItems: [BacklogItem]
     @Query(sort: \ProjectBucket.name) private var projects: [ProjectBucket]
 
-    @State private var mode: Mode = .tasks
-    @State private var taskSort: TaskSort = .az
+    // View mode and task sort persist across visits (owner request). [#2/#7]
+    @AppStorage(DefaultsKey.backlogViewMode) private var mode: Mode = .tasks
+    @AppStorage(DefaultsKey.backlogTaskSort) private var taskSort: TaskSort = .az
     @State private var projectSort: ProjectSort = .az
     @State private var selecting = false
     @State private var selected: Set<String> = []
@@ -27,8 +28,10 @@ struct BacklogView: View {
     @State private var projectsPendingDelete: [ProjectBucket] = []
     @State private var pushEditorForNew = false
 
-    enum Mode { case tasks, projects }
-    enum TaskSort: String, CaseIterable { case az = "A–Z", za = "Z–A", date = "Assigned date" }
+    enum Mode: String { case tasks, projects }
+    enum TaskSort: String, CaseIterable {
+        case az = "A–Z", za = "Z–A", date = "Assigned date", entered = "Order entered"
+    }
     enum ProjectSort: String, CaseIterable { case az = "A–Z", za = "Z–A" }
 
     private var repo: BacklogRepository { BacklogRepository(context: context) }
@@ -74,6 +77,7 @@ struct BacklogView: View {
         case .date: return active.sorted {
             ($0.assignedDate ?? .distantFuture) < ($1.assignedDate ?? .distantFuture)
         }
+        case .entered: return active.sorted { $0.createdAt > $1.createdAt }   // last entered on top [#7]
         }
     }
 

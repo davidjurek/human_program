@@ -213,6 +213,12 @@ let appToggleTint = Color(red: 205.0/255, green: 235.0/255, blue: 197.0/255)
 /// Selected weekday circle color (#A3D5FF).
 let weekdaySelectedColor = Color(red: 163.0/255, green: 213.0/255, blue: 255.0/255)
 
+/// Day-complete accent (the Today date turns this green when the day is done). [#31]
+let appCompleteGreen = Color(red: 0.18, green: 0.62, blue: 0.32)
+
+/// Fixed light blue for the calendar (right) lane on the Today/timeline gutter. [#31]
+let appCalendarLaneBlue = Color(red: 0.46, green: 0.67, blue: 0.96)
+
 /// Six fixed font-size steps for the size slider. Index 0…5; the value is a
 /// global scale multiplier applied to all typography.
 enum FontSizeStep {
