@@ -179,14 +179,9 @@ struct FactoryResetView: View {
     }
 
     private func clearUserDefaults() {
-        let keys = [
-            DefaultsKey.lockEnabled,
-            DefaultsKey.lockBiometric,
-            DefaultsKey.lockTimeout,
-            DefaultsKey.selectedCalendarIds,
-            DefaultsKey.onboarded
-        ]
-        for key in keys {
+        // Clear EVERY app-managed key (font, size, appearance, icon, backgrounds, formats,
+        // calendars, lock, onboarding, presets) so a reset is a true factory state. [#11]
+        for key in DefaultsKey.allKeys {
             UserDefaults.standard.removeObject(forKey: key)
         }
         // A reset re-runs onboarding (Welcome → Terms → Tutorial) but is NOT a fresh

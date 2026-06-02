@@ -21,6 +21,13 @@ public struct ScheduleBlock: Codable, Identifiable, Hashable, Sendable {
     public var sortOrder: Int
     public var colorHex: String?       // assigned block colour (nil → default-by-name) [#20]
 
+    /// The mandatory first block of every schedule is the Sleep block, identified by
+    /// this reserved title. Routing all "is this the Sleep block?" checks through the
+    /// computed `isSleep` keeps the sentinel in ONE place instead of scattering the
+    /// literal "Sleep" across the repository. [#21]
+    public static let sleepBlockTitle = "Sleep"
+    public var isSleep: Bool { title == Self.sleepBlockTitle }
+
     public var durationMinutes: Int {
         if endMinuteOfDay > startMinuteOfDay {
             return endMinuteOfDay - startMinuteOfDay
@@ -334,40 +341,6 @@ public enum NotificationSoundMode: String, Codable {
         self.attachedTaskId = nil
         self.createdAt = Date()
         self.updatedAt = Date()
-    }
-}
-
-// ── GameAccessState ───────────────────────────────────────────────
-@Model public final class GameAccessState {
-    public var date: Date                  // normalized to start-of-day
-    public var isUnlocked: Bool
-    public var unlockedAt: Date?
-    public var reason: String
-
-    public init(date: Date) {
-        self.date = Calendar.current.startOfDay(for: date)
-        self.isUnlocked = false
-        self.unlockedAt = nil
-        self.reason = ""
-    }
-}
-
-// ── GameSaveMetadata ──────────────────────────────────────────────
-@Model public final class GameSaveMetadata {
-    @Attribute(.unique) public var id: String
-    public var engine: String
-    public var saveSlot: String
-    public var lastPlayedAt: Date?
-    public var localPath: String
-    public var schemaVersion: Int
-
-    public init(engine: String, saveSlot: String, localPath: String) {
-        self.id = UUID().uuidString
-        self.engine = engine
-        self.saveSlot = saveSlot
-        self.lastPlayedAt = nil
-        self.localPath = localPath
-        self.schemaVersion = 1
     }
 }
 

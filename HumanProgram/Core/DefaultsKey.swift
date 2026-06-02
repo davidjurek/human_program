@@ -37,4 +37,20 @@ enum DefaultsKey {
     // MARK: Shared color-preset library
 
     static let blockColorPresets   = "blockColorPresets"
+
+    // MARK: Key groups
+
+    /// The user-preference keys carried in .hprgm backups (font, sizes, appearance,
+    /// icon, backgrounds, date/time format, accessibility borders, selected calendars).
+    static let userPreferenceKeys: [String] = [
+        fontChoice, fontSizeStep, appearanceMode, appIcon, bgLight, bgDark,
+        dateFormat, timeFormat, a11yButtonBorders, selectedCalendarIds
+    ]
+
+    /// Every app-managed key. Factory Reset clears this whole list so a reset returns the
+    /// app to a clean factory state — not just the lock/onboarding keys. [#11]
+    static let allKeys: [String] = userPreferenceKeys + [
+        onboarded, permissionsAsked, lockEnabled, lockBiometric, lockTimeout,
+        blockColorPresets
+    ]
 }

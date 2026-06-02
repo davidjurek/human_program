@@ -51,6 +51,7 @@ final class DailyPageGeneratorTests: XCTestCase {
 
     // Convenience builder for a ScheduleBlockInput assigned to specific weekdays
     func makeWeekdayScheduleBlock(id: String = UUID().uuidString,
+                                  templateId: String = "weekday-template",
                                   title: String,
                                   startMinute: Int = 480,
                                   endMinute: Int = 540,
@@ -59,6 +60,7 @@ final class DailyPageGeneratorTests: XCTestCase {
                                   isEnabled: Bool = true) -> ScheduleBlockInput {
         ScheduleBlockInput(
             id: id,
+            templateId: templateId,
             title: title,
             startMinuteOfDay: startMinute,
             endMinuteOfDay: endMinute,
@@ -72,6 +74,7 @@ final class DailyPageGeneratorTests: XCTestCase {
 
     // Convenience builder for a ScheduleBlockInput with a custom date range
     func makeCustomDateScheduleBlock(id: String = UUID().uuidString,
+                                     templateId: String = "custom-template",
                                      title: String,
                                      startMinute: Int = 480,
                                      endMinute: Int = 540,
@@ -81,6 +84,7 @@ final class DailyPageGeneratorTests: XCTestCase {
                                      isEnabled: Bool = true) -> ScheduleBlockInput {
         ScheduleBlockInput(
             id: id,
+            templateId: templateId,
             title: title,
             startMinuteOfDay: startMinute,
             endMinuteOfDay: endMinute,
@@ -237,6 +241,22 @@ final class DailyPageGeneratorTests: XCTestCase {
         let ids = page.scheduleBlocks.map { $0.id }
         XCTAssertTrue(ids.contains("block-1"))
         XCTAssertTrue(ids.contains("block-2"))
+    }
+
+    func test_scheduleBlocks_distinctTemplatesSameMetadata_doNotMerge() {
+        // Two SEPARATE templates that happen to share metadata (enabled, Monday, no date
+        // range). Only the first matching template's blocks should appear — they must not
+        // be merged into one super-template. [#18]
+        let tA = makeWeekdayScheduleBlock(id: "a", templateId: "template-A",
+                                          title: "A", weekdays: [2])
+        let tB = makeWeekdayScheduleBlock(id: "b", templateId: "template-B",
+                                          title: "B", weekdays: [2])
+
+        let page = generate(scheduleTemplates: [tA, tB])
+
+        XCTAssertEqual(page.scheduleBlocks.count, 1,
+                       "Only the first matching template's blocks should appear")
+        XCTAssertEqual(page.scheduleBlocks.first?.id, "a")
     }
 
     func test_scheduleBlocks_nonMatchingWeekday_excluded() {

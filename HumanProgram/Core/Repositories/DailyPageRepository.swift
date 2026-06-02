@@ -48,6 +48,10 @@ public final class DailyPageRepository {
                     scheduleTemplates: scheduleTemplates,
                     calendar: calendar
                 )
+                // applyRefresh mutates tasks/blocks/completion but does NOT save — persist
+                // it here so a refresh is never left only in memory (matches every other
+                // mutator in this repo). [#3]
+                try context.save()
             }
             return existing
         }
@@ -192,14 +196,16 @@ public final class DailyPageRepository {
         let incomingById = Dictionary(events.map { ($0.eventId, $0) }, uniquingKeysWith: { first, _ in first })
         let incomingIds = Set(incomingById.keys)
 
-        // Remove calendar tasks whose event is no longer present.
-        for task in page.tasks where task.sourceType == .calendar {
-            let stillPresent = task.sourceId.map { incomingIds.contains($0) } ?? false
-            if !stillPresent {
-                page.tasks.removeAll { $0.id == task.id }
-                context.delete(task)
-                changed = true
-            }
+        // Remove calendar tasks whose event is no longer present. Collect first, then
+        // delete — never mutate page.tasks while iterating it. [#65]
+        let staleCalendarTasks = page.tasks.filter { task in
+            task.sourceType == .calendar && !(task.sourceId.map { incomingIds.contains($0) } ?? false)
+        }
+        if !staleCalendarTasks.isEmpty {
+            let staleIds = Set(staleCalendarTasks.map { $0.id })
+            page.tasks.removeAll { staleIds.contains($0.id) }
+            for task in staleCalendarTasks { context.delete(task) }
+            changed = true
         }
 
         // Update titles of calendar tasks still present. Do NOT touch sortOrder here:
@@ -346,11 +352,11 @@ public final class DailyPageRepository {
             calendar: calendar
         )
 
-        // Remove stale tasks.
+        // Remove stale tasks in a single pass (not one removeAll scan per task). [#189]
         let removeSet = Set(diff.taskIdsToRemove)
         let tasksToDelete = page.tasks.filter { removeSet.contains($0.id) }
+        page.tasks.removeAll { removeSet.contains($0.id) }
         for task in tasksToDelete {
-            page.tasks.removeAll { $0.id == task.id }
             context.delete(task)
         }
 

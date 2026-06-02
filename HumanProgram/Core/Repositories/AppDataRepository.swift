@@ -23,8 +23,6 @@ public final class AppDataRepository {
         try deleteAll(DailyPageTask.self)
         try deleteAll(DailyPage.self)
         try deleteAll(NotificationReminder.self)
-        try deleteAll(GameAccessState.self)
-        try deleteAll(GameSaveMetadata.self)
         try deleteAll(RoutineItem.self)
         try deleteAll(Routine.self)
         try deleteAll(CalendarEventLocalState.self)

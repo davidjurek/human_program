@@ -3,10 +3,7 @@ import DSKit
 import UIKit
 
 struct AboutView: View {
-    @State private var showSudokuGate = false
     @State private var showDocument = false
-    private let gateService = EasterEggGateService()
-    @Environment(AppState.self) private var appState
 
     private var versionValue: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -23,10 +20,7 @@ struct AboutView: View {
                 .padding(.vertical, 8)
 
             SettingsGroup {
-                // Developer — double-tap triggers the hidden game gate (no affordance)
                 SettingsRowContent(label: "Developer", systemImage: "person", value: "David Ko") { EmptyView() }
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) { handleDeveloperTap() }
 
                 // Version — double-tap opens the hidden document
                 SettingsRowContent(label: "Version", systemImage: "number", value: versionValue) { EmptyView() }
@@ -46,30 +40,10 @@ struct AboutView: View {
                 SettingsNavRow(label: "Cat Corner", systemImage: "cat") { CatCornerView() }
             }
         }
-        .fullScreenCover(isPresented: $showSudokuGate) {
-            SudokuGateView()
-        }
         // Pushed page (back button + swipe-back), not a modal sheet.
         .navigationDestination(isPresented: $showDocument) {
             HiddenDocumentView()
         }
-    }
-
-    /// Double-tap the developer name: reveal the gate if today is complete,
-    /// otherwise a subtle haptic and nothing else (no visual affordance).
-    private func handleDeveloperTap() {
-        let today = Calendar.current.startOfDay(for: Date())
-        let tempPage = DailyPage(date: today)
-        tempPage.dayComplete = appState.streakStats.currentStreak > 0 || isCurrentDayComplete()
-        if gateService.shouldRevealGate(todayPage: tempPage, today: today) {
-            showSudokuGate = true
-        } else {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
-    }
-
-    private func isCurrentDayComplete() -> Bool {
-        appState.streakStats.currentStreak > 0
     }
 }
 

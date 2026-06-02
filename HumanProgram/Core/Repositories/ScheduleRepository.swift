@@ -122,10 +122,10 @@ public final class ScheduleRepository {
         bedtimeMinute: Int,
         wakeMinute: Int
     ) throws {
-        guard let sleepIndex = template.blocks.firstIndex(where: { $0.title == "Sleep" }) else {
+        guard let sleepIndex = template.blocks.firstIndex(where: { $0.isSleep }) else {
             // No Sleep block — insert one then update.
             let sleep = ScheduleBlock(
-                title: "Sleep",
+                title: ScheduleBlock.sleepBlockTitle,
                 startMinuteOfDay: bedtimeMinute,
                 endMinuteOfDay: wakeMinute,
                 sortOrder: 0
@@ -149,7 +149,7 @@ public final class ScheduleRepository {
     /// Delete a non-Sleep block from a template.
     /// Attempting to delete the Sleep block is a no-op (enforced silently).
     public func deleteBlock(_ block: ScheduleBlock, from template: ScheduleTemplate) throws {
-        guard block.title != "Sleep" else { return }
+        guard !block.isSleep else { return }
         template.blocks.removeAll { $0.id == block.id }
         normalizeBlocks(in: template)
         template.updatedAt = Date()
@@ -167,7 +167,7 @@ public final class ScheduleRepository {
         in template: ScheduleTemplate
     ) throws {
         // Pull out the Sleep block (must stay at position 0).
-        guard let sleepBlock = template.blocks.first(where: { $0.title == "Sleep" }) else {
+        guard let sleepBlock = template.blocks.first(where: { $0.isSleep }) else {
             // No Sleep block — just assign the passed-in order and normalize.
             template.blocks = nonSleepBlocks.enumerated().map { idx, block in
                 var b = block
@@ -208,7 +208,7 @@ public final class ScheduleRepository {
 
         // Cannot rename or change duration of the Sleep block via this method.
         // Sleep block is managed through updateSleepBlock.
-        guard template.blocks[index].title != "Sleep" || title == nil else { return }
+        guard !template.blocks[index].isSleep || title == nil else { return }
 
         if let title = title {
             template.blocks[index].title = title
@@ -233,13 +233,13 @@ public final class ScheduleRepository {
 
         // Sort current blocks: Sleep first, then by sortOrder.
         var sorted = template.blocks.sorted { lhs, rhs in
-            if lhs.title == "Sleep" { return true }
-            if rhs.title == "Sleep" { return false }
+            if lhs.isSleep { return true }
+            if rhs.isSleep { return false }
             return lhs.sortOrder < rhs.sortOrder
         }
 
         // Guarantee Sleep is present at index 0.
-        if sorted.first?.title != "Sleep" {
+        if sorted.first?.isSleep != true {
             let sleep = Self.defaultSleepBlock()
             sorted.insert(sleep, at: 0)
         }
@@ -328,12 +328,13 @@ public final class ScheduleRepository {
         return nil
     }
 
-    /// Default Sleep block: 21:30 (1290) to 05:30 (330), sortOrder 0.
+    /// Default Sleep block for a brand-new schedule: 00:00 → 00:00 (zero-length), the
+    /// mandatory first block. The user sets their real bed/wake times afterward.
     private static func defaultSleepBlock() -> ScheduleBlock {
         ScheduleBlock(
-            title: "Sleep",
-            startMinuteOfDay: 21 * 60 + 30,  // 21:30 = 1290
-            endMinuteOfDay: 5 * 60 + 30,     // 05:30 = 330
+            title: ScheduleBlock.sleepBlockTitle,
+            startMinuteOfDay: 0,   // 00:00
+            endMinuteOfDay: 0,     // 00:00
             sortOrder: 0
         )
     }

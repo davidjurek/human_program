@@ -8,12 +8,7 @@ import SwiftData
 final class PastPageDecouplingTests: XCTestCase {
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema([DailyPage.self, DailyPageTask.self, BacklogItem.self, ProjectBucket.self,
-                             RecurringTaskTemplate.self, ScheduleTemplate.self, ExerciseRoutine.self,
-                             ExerciseRoutineItem.self, RoutineItem.self, Routine.self,
-                             CalendarEventLocalState.self, NotificationReminder.self,
-                             GameAccessState.self, GameSaveMetadata.self])
-        return try ModelContainer(for: schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        return try makeTestModelContainer()
     }
 
     private func addTask(_ page: DailyPage, source: DailyTaskSourceType, sourceId: String?, in ctx: ModelContext) {

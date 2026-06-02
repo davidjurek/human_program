@@ -84,6 +84,7 @@ public struct CalendarTaskInput: Sendable {
 
 public struct ScheduleBlockInput: Sendable {
     public let id: String
+    public let templateId: String          // real parent ScheduleTemplate id (groups blocks) [#18]
     public let title: String
     public let startMinuteOfDay: Int
     public let endMinuteOfDay: Int
@@ -96,6 +97,7 @@ public struct ScheduleBlockInput: Sendable {
 
     public init(
         id: String,
+        templateId: String,
         title: String,
         startMinuteOfDay: Int,
         endMinuteOfDay: Int,
@@ -107,6 +109,7 @@ public struct ScheduleBlockInput: Sendable {
         templateCustomDateEnd: Date?
     ) {
         self.id = id
+        self.templateId = templateId
         self.title = title
         self.startMinuteOfDay = startMinuteOfDay
         self.endMinuteOfDay = endMinuteOfDay
@@ -141,69 +144,51 @@ public struct DailyPageGenerator: Sendable {
     ) -> [DailyPageScheduleBlock] {
         let dayStart = calendar.startOfDay(for: date)
 
-        // Group templates by their source template identity so we can collect
-        // all blocks from the winning template.
-        // ScheduleBlockInput represents a single block row, not the parent template.
-        // We need to pick a winning "template group" then return all its blocks.
-        // Templates are identified by matching (templateIsEnabled, templateAssignedWeekdays,
-        // templateCustomDateStart, templateCustomDateEnd) — but that can collide.
-        // The safest approach: build a stable template key from the shared template metadata
-        // and group blocks by that key, then pick the first matching group.
-
-        // Build an ordered list of unique template groups preserving input order.
-        struct TemplateKey: Hashable {
-            let isEnabled: Bool
-            let assignedWeekdays: [Int]
-            let customDateStart: Date?
-            let customDateEnd: Date?
-        }
-
-        var seen = Set<TemplateKey>()
-        var orderedKeys: [TemplateKey] = []
-        var groupedBlocks: [TemplateKey: [ScheduleBlockInput]] = [:]
+        // Group blocks by their REAL parent template id. Grouping by template METADATA
+        // (enabled flag, weekdays, date range) would merge two distinct templates that
+        // happen to share those settings and emit both their blocks on a matching day. [#18]
+        // All blocks of one template share the same metadata, so the group's first block
+        // carries the metadata used for selection.
+        var seen = Set<String>()
+        var orderedIds: [String] = []
+        var groupedBlocks: [String: [ScheduleBlockInput]] = [:]
 
         for block in templates {
-            let key = TemplateKey(
-                isEnabled: block.templateIsEnabled,
-                assignedWeekdays: block.templateAssignedWeekdays,
-                customDateStart: block.templateCustomDateStart,
-                customDateEnd: block.templateCustomDateEnd
-            )
-            if seen.insert(key).inserted {
-                orderedKeys.append(key)
+            if seen.insert(block.templateId).inserted {
+                orderedIds.append(block.templateId)
             }
-            groupedBlocks[key, default: []].append(block)
+            groupedBlocks[block.templateId, default: []].append(block)
         }
 
         let weekday = calendar.component(.weekday, from: date)
 
         // Phase 1: look for an enabled template whose custom date range contains date.
-        var winningKey: TemplateKey? = nil
-        for key in orderedKeys {
-            guard key.isEnabled else { continue }
-            guard let start = key.customDateStart, let end = key.customDateEnd else { continue }
+        var winningId: String? = nil
+        for id in orderedIds {
+            guard let meta = groupedBlocks[id]?.first, meta.templateIsEnabled else { continue }
+            guard let start = meta.templateCustomDateStart, let end = meta.templateCustomDateEnd else { continue }
             let startDay = calendar.startOfDay(for: start)
             let endDay = calendar.startOfDay(for: end)
             if dayStart >= startDay && dayStart <= endDay {
-                winningKey = key
+                winningId = id
                 break
             }
         }
 
         // Phase 2: fall back to weekday-assigned templates.
-        if winningKey == nil {
-            for key in orderedKeys {
-                guard key.isEnabled else { continue }
+        if winningId == nil {
+            for id in orderedIds {
+                guard let meta = groupedBlocks[id]?.first, meta.templateIsEnabled else { continue }
                 // Skip templates that are custom-date-range templates (they did not match above).
-                if key.customDateStart != nil || key.customDateEnd != nil { continue }
-                if key.assignedWeekdays.contains(weekday) {
-                    winningKey = key
+                if meta.templateCustomDateStart != nil || meta.templateCustomDateEnd != nil { continue }
+                if meta.templateAssignedWeekdays.contains(weekday) {
+                    winningId = id
                     break
                 }
             }
         }
 
-        guard let winner = winningKey, let blocks = groupedBlocks[winner] else {
+        guard let winner = winningId, let blocks = groupedBlocks[winner] else {
             return []
         }
 
@@ -366,45 +351,32 @@ public struct DailyPageGenerator: Sendable {
         // New tasks to add: desired tasks whose source is not yet on the page.
         var tasksToAdd: [GeneratedTask] = []
 
-        // Add new recurring tasks (sorted by title, consistent with generate()).
-        let newRecurring = desiredPage.tasks
-            .filter { $0.sourceType == .recurring }
-            .filter { task in
-                guard let sid = task.sourceId else { return false }
-                return !existingRecurringSourceIds.contains(sid)
+        // Both the recurring and backlog branches are the same shape: filter desired
+        // tasks of one source type, drop those already present, sort by title, then
+        // append with a running sortOrder. Recurring is appended before backlog (to
+        // match generate()'s order). [#20]
+        func appendNew(sourceType: DailyTaskSourceType, alreadyPresent: Set<String>) {
+            let newTasks = desiredPage.tasks
+                .filter { $0.sourceType == sourceType }
+                .filter { task in
+                    guard let sid = task.sourceId else { return false }
+                    return !alreadyPresent.contains(sid)
+                }
+                .sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+            for task in newTasks {
+                tasksToAdd.append(GeneratedTask(
+                    title: task.title,
+                    notes: task.notes,
+                    sourceType: sourceType,
+                    sourceId: task.sourceId,
+                    sortOrder: nextSortOrder
+                ))
+                nextSortOrder += 1
             }
-            .sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
-
-        for task in newRecurring {
-            tasksToAdd.append(GeneratedTask(
-                title: task.title,
-                notes: task.notes,
-                sourceType: .recurring,
-                sourceId: task.sourceId,
-                sortOrder: nextSortOrder
-            ))
-            nextSortOrder += 1
         }
 
-        // Add new backlog tasks (sorted by title, consistent with generate()).
-        let newBacklog = desiredPage.tasks
-            .filter { $0.sourceType == .backlog }
-            .filter { task in
-                guard let sid = task.sourceId else { return false }
-                return !existingBacklogSourceIds.contains(sid)
-            }
-            .sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
-
-        for task in newBacklog {
-            tasksToAdd.append(GeneratedTask(
-                title: task.title,
-                notes: task.notes,
-                sourceType: .backlog,
-                sourceId: task.sourceId,
-                sortOrder: nextSortOrder
-            ))
-            nextSortOrder += 1
-        }
+        appendNew(sourceType: .recurring, alreadyPresent: existingRecurringSourceIds)
+        appendNew(sourceType: .backlog, alreadyPresent: existingBacklogSourceIds)
 
         // Refresh schedule blocks.
         let newScheduleBlocks = activeScheduleBlocks(for: date, from: scheduleTemplates, calendar: calendar)

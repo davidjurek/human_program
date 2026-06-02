@@ -32,6 +32,22 @@ struct HprgmImportService {
     ///   4. Insert new records from the bundle
     ///   5. Save the context
     func importData(_ bundle: HprgmBundle, context: ModelContext) throws {
+        // The whole delete-then-insert runs as one unit: every change is staged in the
+        // context and only persisted by the single save() at the end. If anything throws
+        // before then (or the save itself fails), roll the context back so a botched
+        // restore never wipes your data and leaves nothing in its place. [#5]
+        do {
+            try replaceAllData(bundle, context: context)
+        } catch {
+            context.rollback()
+            throw error
+        }
+        // Restore user preferences (UserDefaults) — excludes PIN / Face ID. Outside the
+        // SwiftData transaction; only reached once the data restore fully succeeded.
+        if let s = bundle.settings { applySettings(s) }
+    }
+
+    private func replaceAllData(_ bundle: HprgmBundle, context: ModelContext) throws {
         // ── 1. Delete ALL daily pages (tasks cascade-deleted automatically) ──
         // A restore is an explicit "REPLACES all current data" action, so it is a
         // faithful full restore: even past-locked snapshots are replaced by the
@@ -159,6 +175,10 @@ struct HprgmImportService {
         // Daily pages — ALL of them, locked snapshots included, exactly as backed up.
         for json in bundle.dailyPages {
             let page = DailyPage(date: json.date, createdAutomatically: json.createdAutomatically)
+            // The init re-rounds the date via Calendar.current.startOfDay, which can shift
+            // the day across a timezone change. Set it straight from the backup value so a
+            // restored page always lands on exactly the backed-up date. [#4]
+            page.date = json.date
             page.id = json.id
             page.dayComplete = json.dayComplete
             page.isPastLocked = json.isPastLocked
@@ -224,6 +244,7 @@ struct HprgmImportService {
         // Calendar local state (completion / hidden / overrides per event+date).
         for json in bundle.calendarEventStates ?? [] {
             let state = CalendarEventLocalState(date: json.date, eventId: json.eventId)
+            state.date = json.date   // preserve the backed-up day exactly (see [#4] above)
             state.completed = json.completed
             state.hidden = json.hidden
             state.titleOverride = json.titleOverride
@@ -235,9 +256,6 @@ struct HprgmImportService {
 
         // ── 5. Save ──
         try context.save()
-
-        // ── 6. Restore user preferences (UserDefaults) — excludes PIN / Face ID. ──
-        if let s = bundle.settings { applySettings(s) }
     }
 
     private func applySettings(_ s: AppSettingsJSON) {

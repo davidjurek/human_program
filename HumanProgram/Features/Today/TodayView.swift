@@ -63,7 +63,10 @@ struct TodayView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     titleRow
                     scheduleSection
+                    // Triple the default 22pt gap (→ ~66pt) between the schedule timeline
+                    // and the Tasks header so they don't read as cramped together.
                     tasksSection
+                        .padding(.top, 44)
                     exerciseSection
                     Color.clear.frame(height: 32)              // [#41] bottom inset
                     // Keyboard safety-gap room (= keyboard height). SwiftUI avoidance
@@ -158,12 +161,28 @@ struct TodayView: View {
     }
 
     private var scheduleItems: [TimelineItem] {
-        (vm.page?.scheduleBlocks ?? []).sorted { $0.sortOrder < $1.sortOrder }.map { b in
-            let end = b.endMinuteOfDay <= b.startMinuteOfDay ? 1440 : b.endMinuteOfDay
-            return TimelineItem(id: "blk-\(b.id)", title: b.title,
-                                startMin: b.startMinuteOfDay, endMin: end, isCalendar: false,
-                                color: BlockColors.color(hex: b.colorHex, title: b.title)
-                                    .opacity(0.55))   // [#18] block colour drives the left lane
+        (vm.page?.scheduleBlocks ?? []).sorted { $0.sortOrder < $1.sortOrder }.flatMap { b -> [TimelineItem] in
+            let color = BlockColors.color(hex: b.colorHex, title: b.title).opacity(0.55)
+            let start = b.startMinuteOfDay
+            let end = b.endMinuteOfDay
+            if end > start {
+                // Same-day block.
+                return [TimelineItem(id: "blk-\(b.id)", title: b.title,
+                                     startMin: start, endMin: end, isCalendar: false, color: color)]
+            } else if end < start {
+                // Overnight-wrapping block (e.g. Sleep 21:30→05:30): draw BOTH halves —
+                // start→midnight at the bottom AND midnight→end at the top of the day —
+                // instead of dropping the morning portion.
+                return [
+                    TimelineItem(id: "blk-\(b.id)-pm", title: b.title,
+                                 startMin: start, endMin: 1440, isCalendar: false, color: color),
+                    TimelineItem(id: "blk-\(b.id)-am", title: b.title,
+                                 startMin: 0, endMin: end, isCalendar: false, color: color)
+                ].filter { $0.endMin > $0.startMin }
+            } else {
+                // Zero-length block (e.g. a brand-new 00:00→00:00 Sleep): nothing to draw.
+                return []
+            }
         }
     }
 
@@ -230,11 +249,26 @@ struct TodayView: View {
         AppDateFormat.weekdayMonthDayYear(vm.viewingDate)
     }
 
+    // MARK: - Section header (underlined)
+
+    /// Underlined headline shared by the Schedule / Tasks / Exercise sections, so the
+    /// three headers stay identical. The rule is sized to the text (fixedSize) and sits
+    /// just under the baseline.
+    private func sectionHeader(_ title: String) -> some View {
+        DSText(title).dsTextStyle(.headline)
+            .fixedSize()
+            .overlay(alignment: .bottomLeading) {
+                Rectangle().fill(Color.primary.opacity(0.85))
+                    .frame(height: 1.5)
+                    .offset(y: 4)
+            }
+    }
+
     // MARK: - Schedule
 
     private var scheduleSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DSText("Schedule").dsTextStyle(.headline)
+            sectionHeader("Schedule")
             DailyTimeline(
                 items: scheduleItems + calendarItems,
                 showNow: vm.isToday,
@@ -247,7 +281,7 @@ struct TodayView: View {
 
     private var tasksSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            DSText("Tasks").dsTextStyle(.headline)
+            sectionHeader("Tasks")
 
             taskList
 
@@ -363,7 +397,7 @@ struct TodayView: View {
 
     private var exerciseSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            DSText("Exercise").dsTextStyle(.headline)
+            sectionHeader("Exercise")
             VStack(alignment: .leading, spacing: 8) {
                 if let routine = vm.exerciseRoutine, !routine.items.isEmpty {
                     ForEach(routine.items.sorted { $0.sortOrder < $1.sortOrder }) { item in

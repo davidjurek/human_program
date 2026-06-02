@@ -42,6 +42,7 @@ struct TemplateInputs {
             template.blocks.map { block in
                 ScheduleBlockInput(
                     id: block.id,
+                    templateId: template.id,
                     title: block.title,
                     startMinuteOfDay: block.startMinuteOfDay,
                     endMinuteOfDay: block.endMinuteOfDay,

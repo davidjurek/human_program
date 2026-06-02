@@ -75,10 +75,21 @@ public final class CalendarLocalStateRepository {
 
     private func fetchState(eventId: String, date: Date) throws -> CalendarEventLocalState? {
         let normalized = Calendar.current.startOfDay(for: date)
-        var descriptor = FetchDescriptor<CalendarEventLocalState>(
-            predicate: #Predicate { $0.eventId == eventId && $0.date == normalized }
+        let descriptor = FetchDescriptor<CalendarEventLocalState>(
+            predicate: #Predicate { $0.eventId == eventId && $0.date == normalized },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-        descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first
+        let matches = try context.fetch(descriptor)
+        guard let canonical = matches.first else { return nil }
+        // The model has no store-level unique constraint on (date, eventId): #Unique is
+        // unavailable at the iOS 17.6 deployment target and adding a unique attribute
+        // would risk an existing store. getOrCreate is the only creation path, so dupes
+        // shouldn't arise — but if any ever do, collapse them here into the most-recently
+        // updated row so per-event overrides are never ambiguous. [#2]
+        if matches.count > 1 {
+            for dup in matches.dropFirst() { context.delete(dup) }
+            try context.save()
+        }
+        return canonical
     }
 }

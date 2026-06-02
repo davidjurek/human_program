@@ -42,22 +42,9 @@ public struct BacklogMaintenanceService: Sendable {
         today: Date,
         calendar: Calendar = .current
     ) -> (itemId: String, newStatus: BacklogStatus)? {
-        guard task.sourceType == .backlog,
-              let sourceId = task.sourceId else { return nil }
-
-        guard let item = backlogItems.first(where: { $0.id == sourceId }) else { return nil }
-
-        let pageDayStart = calendar.startOfDay(for: pageDate)
-        let todayStart = calendar.startOfDay(for: today)
-
-        // Page must be today or in the future
-        guard pageDayStart >= todayStart else { return nil }
-
-        // Item's assignedDate must match the page date
-        guard let assigned = item.assignedDate else { return nil }
-        let assignedStart = calendar.startOfDay(for: assigned)
-        guard assignedStart == pageDayStart else { return nil }
-
+        guard let item = matchedBacklogItem(task: task, pageDate: pageDate,
+                                            backlogItems: backlogItems, today: today,
+                                            calendar: calendar) else { return nil }
         item.status = .done
         return (item.id, .done)
     }
@@ -72,23 +59,35 @@ public struct BacklogMaintenanceService: Sendable {
         today: Date,
         calendar: Calendar = .current
     ) -> (itemId: String, newStatus: BacklogStatus)? {
-        guard task.sourceType == .backlog,
-              let sourceId = task.sourceId else { return nil }
+        guard let item = matchedBacklogItem(task: task, pageDate: pageDate,
+                                            backlogItems: backlogItems, today: today,
+                                            calendar: calendar) else { return nil }
+        item.status = .backlog
+        return (item.id, .backlog)
+    }
 
-        guard let item = backlogItems.first(where: { $0.id == sourceId }) else { return nil }
+    // The completion/uncompletion pair share one set of eligibility checks and differ
+    // only in the final status they set: the task must be backlog-sourced, the page
+    // must be today or future, and the source item's assignedDate must match the page
+    // date. Returns the matched item, or nil if any check fails. [#19]
+    private func matchedBacklogItem(
+        task: DailyPageTask,
+        pageDate: Date,
+        backlogItems: [BacklogItem],
+        today: Date,
+        calendar: Calendar
+    ) -> BacklogItem? {
+        guard task.sourceType == .backlog,
+              let sourceId = task.sourceId,
+              let item = backlogItems.first(where: { $0.id == sourceId }) else { return nil }
 
         let pageDayStart = calendar.startOfDay(for: pageDate)
         let todayStart = calendar.startOfDay(for: today)
-
-        // Page must be today or in the future
         guard pageDayStart >= todayStart else { return nil }
 
-        // Item's assignedDate must match the page date
-        guard let assigned = item.assignedDate else { return nil }
-        let assignedStart = calendar.startOfDay(for: assigned)
-        guard assignedStart == pageDayStart else { return nil }
+        guard let assigned = item.assignedDate,
+              calendar.startOfDay(for: assigned) == pageDayStart else { return nil }
 
-        item.status = .backlog
-        return (item.id, .backlog)
+        return item
     }
 }

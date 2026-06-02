@@ -115,7 +115,10 @@ public final class AppLockRepository {
             kSecClass:       kSecClassGenericPassword,
             kSecAttrService: keychainService as CFString,
             kSecAttrAccount: keychainAccount as CFString,
-            kSecValueData:   data
+            kSecValueData:   data,
+            // This-device-only: the PIN is never included in an encrypted device backup
+            // and can't migrate to another device, honoring the "no PIN backup" decision. [#6]
+            kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {

@@ -187,12 +187,15 @@ public struct RollingReminderScheduler: Sendable {
         let cal = Calendar.current
         let now = Date()
 
-        // Start at the next interval boundary from now
+        // Start at the next interval boundary measured FROM THE WINDOW START, not from
+        // midnight — so fire times are windowStart, windowStart+interval, … every day
+        // (e.g. an 08:00 window with a 25-min interval fires 08:00, 08:25, 08:50…), and
+        // they don't drift to odd minutes or differ between the first day and later days. [#7]
         let secondsSinceMidnight = Int(now.timeIntervalSince(cal.startOfDay(for: now)))
         let minutesSinceMidnight = secondsSinceMidnight / 60
-        // Round up to next interval boundary
         let minutesFromWindow = max(minutesSinceMidnight, windowStart)
-        let remainderIntoInterval = minutesFromWindow % interval
+        let offsetIntoWindow = minutesFromWindow - windowStart
+        let remainderIntoInterval = offsetIntoWindow % interval
         var nextMinute = remainderIntoInterval == 0
             ? minutesFromWindow
             : minutesFromWindow + (interval - remainderIntoInterval)
