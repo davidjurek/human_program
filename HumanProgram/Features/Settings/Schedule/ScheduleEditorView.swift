@@ -882,7 +882,7 @@ struct ScheduleEditorView: View {
         // original it was copied from).
         let isNew = template == nil || forceNew
         let t = isNew ? ScheduleTemplate(name: trimmed) : template!
-        if isNew { context.insert(t) }
+        if isNew { repo.insert(t) }
 
         t.name = trimmed
         if repeatMode == "custom" {
@@ -899,7 +899,7 @@ struct ScheduleEditorView: View {
         do {
             if let conflict = try repo.save(t) {
                 conflictMessage = conflict.reason
-                if isNew { context.delete(t); try? context.save() }
+                if isNew { try? repo.delete(t) }
                 return
             }
             try PageRefreshService.refresh(context: context)

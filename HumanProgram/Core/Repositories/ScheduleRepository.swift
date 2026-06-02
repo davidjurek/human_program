@@ -42,6 +42,15 @@ public final class ScheduleRepository {
         return template
     }
 
+    // MARK: - insert
+
+    /// Insert a brand-new template into the store WITHOUT saving. Call `save(_:)`
+    /// afterward to persist + run conflict detection, or `delete(_:)` to roll it back
+    /// if it conflicts. Keeps ModelContext access inside the repository.
+    public func insert(_ template: ScheduleTemplate) {
+        context.insert(template)
+    }
+
     // MARK: - save
 
     /// Persist changes to an existing template after running conflict detection.

@@ -182,11 +182,7 @@ struct BacklogTaskDetailView: View {
         let project = projectId.flatMap { pid in projects.first(where: { $0.id == pid }) }
         let assigned = hasDate ? Calendar.current.startOfDay(for: date) : nil
         if let existing = effectiveItem {
-            try? repo.update(existing, title: trimmed, notes: notes, project: project, assignedDate: assigned)
-            // Clearing project/date isn't covered by update's non-nil contract; set directly.
-            existing.project = project
-            existing.assignedDate = assigned
-            try? context.save()
+            try? repo.setDetails(existing, title: trimmed, notes: notes, project: project, assignedDate: assigned)
         } else {
             // New task: create, then stay on the page in read mode. [#28]
             savedItem = try? repo.create(title: trimmed, notes: notes, project: project, assignedDate: assigned)

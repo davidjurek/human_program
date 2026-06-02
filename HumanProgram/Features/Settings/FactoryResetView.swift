@@ -159,8 +159,7 @@ struct FactoryResetView: View {
         isResetting = true
 
         do {
-            try deleteAllModels()
-            try context.save()
+            try AppDataRepository(context: context).deleteEverything()
 
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
 
@@ -176,30 +175,6 @@ struct FactoryResetView: View {
             // If save fails, still leave the screen — the deletes may be partial
             // but we don't want to strand the user here.
             dismiss()
-        }
-    }
-
-    private func deleteAllModels() throws {
-        try deleteAll(BacklogItem.self)
-        try deleteAll(ProjectBucket.self)
-        try deleteAll(RecurringTaskTemplate.self)
-        try deleteAll(ExerciseRoutineItem.self)
-        try deleteAll(ExerciseRoutine.self)
-        try deleteAll(ScheduleTemplate.self)
-        try deleteAll(DailyPageTask.self)
-        try deleteAll(DailyPage.self)
-        try deleteAll(NotificationReminder.self)
-        try deleteAll(GameAccessState.self)
-        try deleteAll(GameSaveMetadata.self)
-        try deleteAll(RoutineItem.self)
-        try deleteAll(Routine.self)
-        try deleteAll(CalendarEventLocalState.self)
-    }
-
-    private func deleteAll<T: PersistentModel>(_ type: T.Type) throws {
-        let items = try context.fetch(FetchDescriptor<T>())
-        for item in items {
-            context.delete(item)
         }
     }
 

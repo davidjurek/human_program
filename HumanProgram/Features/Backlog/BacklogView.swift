@@ -317,14 +317,12 @@ struct BacklogView: View {
 
     private func moveSelected(to destination: ProjectBucket?) {
         if mode == .tasks {
-            for item in allItems where selected.contains(item.id) { item.project = destination }
+            try? repo.move(allItems.filter { selected.contains($0.id) }, to: destination)
         } else {
             // Move ALL tasks of selected projects into the destination.
-            for project in projects where selected.contains(project.id) {
-                for item in project.items { item.project = destination }
-            }
+            let items = projects.filter { selected.contains($0.id) }.flatMap { $0.items }
+            try? repo.move(items, to: destination)
         }
-        try? context.save()
         showMove = false; selected = []; selecting = false
     }
 
@@ -447,7 +445,7 @@ struct BacklogFolderView: View {
         selected = []; selecting = false
     }
     private func moveSelected(to destination: ProjectBucket?) {
-        for item in allItems where selected.contains(item.id) { item.project = destination }
-        try? context.save(); showMove = false; selected = []; selecting = false
+        try? repo.move(allItems.filter { selected.contains($0.id) }, to: destination)
+        showMove = false; selected = []; selecting = false
     }
 }

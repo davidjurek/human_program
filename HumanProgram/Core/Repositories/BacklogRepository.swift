@@ -29,28 +29,30 @@ public final class BacklogRepository {
         return item
     }
 
-    /// Update mutable fields on an existing backlog item.
-    public func update(
+    /// Set all editable fields of an item in one save. `project`/`assignedDate` are set
+    /// exactly as given — passing nil CLEARS the field (the edit form always supplies the
+    /// full current state). Bumps `updatedAt`.
+    public func setDetails(
         _ item: BacklogItem,
-        title: String? = nil,
-        notes: String? = nil,
-        project: ProjectBucket? = nil,
-        assignedDate: Date? = nil
+        title: String,
+        notes: String,
+        project: ProjectBucket?,
+        assignedDate: Date?
     ) throws {
-        if let title = title { item.title = title }
-        if let notes = notes { item.notes = notes }
-        // project and assignedDate use explicit optionals; nil means "clear the field"
-        // Use a sentinel approach: only change if the parameter was actually supplied.
-        // Since Swift optional parameters default to nil, we use overloaded versions below.
-        // However, per the signature, both project and assignedDate are optional — meaning
-        // passing nil explicitly will NOT clear them; only a non-nil value changes them.
-        // If callers need to clear, they should pass an explicit nil via the typed variant.
-        // Per the contract in the header, we treat non-nil values as updates.
-        if let project = project { item.project = project }
-        if let assignedDate = assignedDate {
-            item.assignedDate = Calendar.current.startOfDay(for: assignedDate)
-        }
+        item.title = title
+        item.notes = notes
+        item.project = project
+        item.assignedDate = assignedDate.map { Calendar.current.startOfDay(for: $0) }
         item.updatedAt = Date()
+        try context.save()
+    }
+
+    /// Move items into a project bucket (nil = Unorganized). Bumps `updatedAt`.
+    public func move(_ items: [BacklogItem], to destination: ProjectBucket?) throws {
+        for item in items {
+            item.project = destination
+            item.updatedAt = Date()
+        }
         try context.save()
     }
 
