@@ -146,6 +146,37 @@ final class RecurrenceEngineTests: XCTestCase {
                       "week 2 Monday should match")
     }
 
+    // MARK: - 8b. everyNWeeks fires on ALL selected weekdays in a qualifying week
+
+    func test_everyNWeeks_multipleWeekdays_fireOnEverySelectedDayInQualifyingWeeks() {
+        // anchor = Monday 2025-01-06. "Every 2 weeks on Mon (2), Wed (4), Fri (6)".
+        let rule = RecurrenceRule.everyNWeeks(2, on: [2, 4, 6], anchor: anchor)
+
+        // Week 0 (the anchor's week): all three selected weekdays must fire — this is
+        // the regression: the old code only fired the anchor's own weekday (Monday).
+        XCTAssertTrue(engine.matches(rule, on: anchorPlus(0), calendar: gregorianUTC),
+                      "week 0 Monday should match")
+        XCTAssertTrue(engine.matches(rule, on: anchorPlus(2), calendar: gregorianUTC),
+                      "week 0 Wednesday should match (was dropped before the fix)")
+        XCTAssertTrue(engine.matches(rule, on: anchorPlus(4), calendar: gregorianUTC),
+                      "week 0 Friday should match (was dropped before the fix)")
+        // A non-selected weekday in week 0 must NOT fire.
+        XCTAssertFalse(engine.matches(rule, on: anchorPlus(1), calendar: gregorianUTC),
+                       "week 0 Tuesday is not selected")
+
+        // Week 1 is the OFF week (1 % 2 != 0): no selected weekday fires.
+        XCTAssertFalse(engine.matches(rule, on: anchorPlus(9), calendar: gregorianUTC),
+                       "week 1 Wednesday is in an off week")
+
+        // Week 2 is ON again (2 % 2 == 0): all three fire.
+        XCTAssertTrue(engine.matches(rule, on: anchorPlus(14), calendar: gregorianUTC),
+                      "week 2 Monday should match")
+        XCTAssertTrue(engine.matches(rule, on: anchorPlus(16), calendar: gregorianUTC),
+                      "week 2 Wednesday should match")
+        XCTAssertTrue(engine.matches(rule, on: anchorPlus(18), calendar: gregorianUTC),
+                      "week 2 Friday should match")
+    }
+
     // MARK: - 9. everyOtherDay matches alternating days (same as everyNDays(2))
 
     func test_everyOtherDay_matchesAlternate() {

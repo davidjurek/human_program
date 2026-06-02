@@ -22,24 +22,11 @@ public final class NotificationReminderRepository {
 
     // MARK: - Create
 
-    @discardableResult
-    public func create(
-        title: String,
-        message: String,
-        fireHour: Int,
-        fireMinute: Int,
-        recurrenceMode: NotificationRecurrenceMode,
-        weekdays: [Int] = [],
-        soundMode: NotificationSoundMode = .defaultSound
-    ) throws -> NotificationReminder {
-        let reminder = NotificationReminder(title: title, message: message)
-        reminder.fireHour = fireHour
-        reminder.fireMinute = fireMinute
-        reminder.recurrenceMode = recurrenceMode
-        reminder.weekdays = weekdays
-        reminder.soundMode = soundMode
+    /// Inserts a new, blank reminder WITHOUT saving. The caller sets its fields and then
+    /// calls `update(_:)` (a single save), so new and edit share one write path.
+    public func makeNew() -> NotificationReminder {
+        let reminder = NotificationReminder(title: "", message: "")
         context.insert(reminder)
-        try context.save()
         return reminder
     }
 

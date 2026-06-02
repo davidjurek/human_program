@@ -483,18 +483,9 @@ struct ReminderEditorView: View {
         let fm = (repeatMode == "multiple" ? startMinutes : onceMinutes) % 60
 
         do {
-            let target: NotificationReminder
-            if let existing = reminder {
-                target = existing
-            } else {
-                target = try repo.create(
-                    title: title, message: message,
-                    fireHour: fh, fireMinute: fm,
-                    recurrenceMode: mode,
-                    weekdays: weekdays.sorted(),
-                    soundMode: soundMode
-                )
-            }
+            // One write path for both new and edit: get-or-create the object, set every
+            // field once, then save once (no create()+update() double-write).
+            let target = reminder ?? repo.makeNew()
             target.title = title
             target.message = message
             target.recurrenceMode = mode

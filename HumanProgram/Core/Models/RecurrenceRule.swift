@@ -110,11 +110,13 @@ public struct RecurrenceRule: Codable, Hashable, Sendable {
             let anchor = resolvedAnchor(calendar: calendar)
             let days = daysBetween(anchor, and: date, calendar: calendar)
             guard days >= 0 else { return false }
-            let weeks = days / 7
-            let remainder = days % 7
-            // Must land on the same day-of-week alignment as anchor
-            // i.e. remainder == 0 means date is exactly N*7 days from anchor
-            guard remainder == 0 else { return false }
+            // Count whole weeks between the anchor's week and the date's week, both
+            // aligned to the start of their (Sunday-based) week. This fires EVERY
+            // selected weekday in a qualifying week — not just the anchor's own
+            // weekday, which the old `remainder == 0` gate incorrectly required.
+            let anchorWeekStart = startOfWeek(anchor, calendar: calendar)
+            let dateWeekStart = startOfWeek(dayStart, calendar: calendar)
+            let weeks = daysBetween(anchorWeekStart, and: dateWeekStart, calendar: calendar) / 7
             guard weeks % max(1, interval) == 0 else { return false }
             return self.weekdays.contains(weekday)
 
@@ -157,5 +159,13 @@ public struct RecurrenceRule: Codable, Hashable, Sendable {
         let toDay = calendar.startOfDay(for: to)
         let components = calendar.dateComponents([.day], from: fromDay, to: toDay)
         return components.day ?? 0
+    }
+
+    /// Start of the (Sunday-based) week containing `date`, using the app's
+    /// 1=Sun … 7=Sat weekday encoding. Locale-independent (always Sunday-aligned).
+    private func startOfWeek(_ date: Date, calendar: Calendar) -> Date {
+        let dayStart = calendar.startOfDay(for: date)
+        let weekday = calendar.component(.weekday, from: dayStart)   // 1=Sun … 7=Sat
+        return calendar.date(byAdding: .day, value: -(weekday - 1), to: dayStart) ?? dayStart
     }
 }

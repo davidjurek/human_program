@@ -65,6 +65,13 @@ struct ContentView: View {
             }
         }
         .onReceive(
+            NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
+        ) { _ in
+            // Stamp when the app was last active so the foreground check below measures
+            // time spent in the background — not time since launch.
+            lockVM.recordActivity()
+        }
+        .onReceive(
             NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
         ) { _ in
             lockVM.checkLockOnForeground()

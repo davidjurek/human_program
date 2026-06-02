@@ -24,7 +24,7 @@ struct BacklogView: View {
     @State private var newProjectName = ""
     @State private var newProjectError: String?
     @State private var showMove = false
-    @State private var showDeleteProjectConfirm: ProjectBucket?
+    @State private var projectsPendingDelete: [ProjectBucket] = []
     @State private var pushEditorForNew = false
 
     enum Mode { case tasks, projects }
@@ -252,12 +252,14 @@ struct BacklogView: View {
                                onPick: { moveSelected(to: $0) },
                                onCancel: { showMove = false })
         }
-        if let project = showDeleteProjectConfirm {
+        if !projectsPendingDelete.isEmpty {
             ConfirmPopup(
-                message: "Delete “\(project.name)” and its tasks?",
+                message: projectsPendingDelete.count == 1
+                    ? "Delete “\(projectsPendingDelete[0].name)” and its tasks?"
+                    : "Delete \(projectsPendingDelete.count) projects and their tasks?",
                 confirmTitle: "Delete",
-                onConfirm: { confirmDeleteProject(project) },
-                onCancel: { showDeleteProjectConfirm = nil }
+                onConfirm: confirmDeleteProjects,
+                onCancel: { projectsPendingDelete = [] }
             )
         }
     }
@@ -276,32 +278,40 @@ struct BacklogView: View {
     private func deleteSelected() {
         if mode == .tasks {
             for item in allItems where selected.contains(item.id) { try? repo.delete(item) }
+            selected = []; selecting = false
         } else {
-            for project in projects where selected.contains(project.id) {
-                if project.items.contains(where: { $0.status == .backlog }) {
-                    showDeleteProjectConfirm = project
-                    return
-                }
+            let chosen = projects.filter { selected.contains($0.id) }
+            let nonEmpty = chosen.filter { $0.items.contains(where: { $0.status == .backlog }) }
+            let nonEmptyIds = Set(nonEmpty.map { $0.id })
+            // Empty projects (no active tasks) delete immediately; the rest are queued
+            // into ONE confirmation covering all of them, so none are silently dropped.
+            for project in chosen where !nonEmptyIds.contains(project.id) {
                 try? repo.deleteProject(project)
             }
+            if nonEmpty.isEmpty {
+                selected = []; selecting = false
+            } else {
+                projectsPendingDelete = nonEmpty
+            }
         }
-        selected = []; selecting = false
     }
 
     private func attemptDeleteProject(_ project: ProjectBucket) {
         swipeOpen = nil
         if project.items.contains(where: { $0.status == .backlog }) {
-            showDeleteProjectConfirm = project
+            projectsPendingDelete = [project]
         } else {
             try? repo.deleteProject(project)
         }
     }
 
-    private func confirmDeleteProject(_ project: ProjectBucket) {
-        // "Yes, delete the project and its tasks": delete the tasks too.
-        for item in project.items { try? repo.delete(item) }
-        try? repo.deleteProject(project)
-        showDeleteProjectConfirm = nil
+    private func confirmDeleteProjects() {
+        // "Yes, delete the project(s) and their tasks": delete the tasks too.
+        for project in projectsPendingDelete {
+            for item in project.items { try? repo.delete(item) }
+            try? repo.deleteProject(project)
+        }
+        projectsPendingDelete = []
         selected = []; selecting = false
     }
 
