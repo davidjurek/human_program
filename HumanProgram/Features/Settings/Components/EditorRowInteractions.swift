@@ -237,6 +237,10 @@ struct SwipePanRecognizer<ID: Hashable>: UIViewRepresentable {
             let t = pan.translation(in: pan.view)
             guard abs(t.x) >= abs(t.y) else { return false }
             let loc = pan.location(in: nil)
+            // Leave the leading-edge zone to iOS's swipe-back gesture, so a swipe-back
+            // from the left edge of a list screen always works (and isn't eaten by a
+            // row's delete-swipe). [owner: edge swipe-back]
+            if loc.x < 24 { return false }
             return parent.rowFrames.contains(where: { $0.value.contains(loc) })
         }
 

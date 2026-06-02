@@ -15,11 +15,15 @@ struct BacklogView: View {
 
     // View mode and task sort persist across visits (owner request). [#2/#7]
     @AppStorage(DefaultsKey.backlogViewMode) private var mode: Mode = .tasks
-    @AppStorage(DefaultsKey.backlogTaskSort) private var taskSort: TaskSort = .az
+    @AppStorage(DefaultsKey.backlogTaskSort) private var taskSort: TaskSort = .created
     @State private var projectSort: ProjectSort = .az
     @State private var selecting = false
     @State private var selected: Set<String> = []
-    @State private var swipeOpen: String?
+
+    // Shared gesture engine (tap / scroll / swipe-left-to-delete), reorder OFF — Backlog
+    // is a sorted list. Same engine as Today/Schedule/Exercise/Routines. [owner]
+    @State private var rows = RowGestureCoordinator<String>(rowHeight: 48, trashWidth: 68, reorderEnabled: false)
+    @State private var route: Route?
 
     @State private var showNewProject = false
     @State private var newProjectName = ""
@@ -30,14 +34,29 @@ struct BacklogView: View {
 
     enum Mode: String { case tasks, projects }
     enum TaskSort: String, CaseIterable {
-        case az = "A–Z", za = "Z–A", date = "Assigned date", entered = "Order entered"
+        case created = "Date created", az = "A–Z", za = "Z–A", date = "Assigned date"
     }
     enum ProjectSort: String, CaseIterable { case az = "A–Z", za = "Z–A" }
+
+    /// Programmatic destination for a tapped row (replaces in-row NavigationLink so a
+    /// tap that began as a swipe / edge-back never fires it). [owner]
+    enum Route: Identifiable, Hashable {
+        case task(String), folder(String?)   // folder(nil) = Unorganized
+        var id: String {
+            switch self {
+            case .task(let i):   return "t-\(i)"
+            case .folder(let p): return "f-\(p ?? "_")"
+            }
+        }
+    }
 
     private var repo: BacklogRepository { BacklogRepository(context: context) }
 
     var body: some View {
-        ZStack {
+        rows.canInteract = { !selecting }
+        rows.deleteRow = { handleDelete(id: $0) }
+
+        return ZStack {
             SettingsBackground()
             content
         }
@@ -49,6 +68,17 @@ struct BacklogView: View {
         .navigationDestination(isPresented: $pushEditorForNew) {
             BacklogTaskDetailView(item: nil, startInEdit: true)
         }
+        .navigationDestination(item: $route) { route in
+            switch route {
+            case .task(let id):
+                if let item = allItems.first(where: { $0.id == id }) {
+                    BacklogTaskDetailView(item: item, startInEdit: false)
+                }
+            case .folder(let pid):
+                BacklogFolderView(project: pid.flatMap { id in projects.first(where: { $0.id == id }) })
+            }
+        }
+        .onChange(of: mode) { _, _ in rows.swipeOpenId = nil; selecting = false; selected = [] }
     }
 
     // MARK: - Content
@@ -65,19 +95,22 @@ struct BacklogView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
+            .rowGestures(rows)                              // shared tap/swipe engine [owner]
         }
         .scrollDismissesKeyboard(.interactively)           // [#46] drag-to-dismiss
+        .scrollDisabled(rows.isInteracting)                // suspend scroll only mid-swipe
     }
 
     private var sortedTasks: [BacklogItem] {
         let active = allItems.filter { $0.status == .backlog }
         switch taskSort {
+        // Creation order, newest at the BOTTOM (default). [owner]
+        case .created: return active.sorted { $0.createdAt < $1.createdAt }
         case .az: return active.sorted { $0.title.lowercased() < $1.title.lowercased() }
         case .za: return active.sorted { $0.title.lowercased() > $1.title.lowercased() }
         case .date: return active.sorted {
             ($0.assignedDate ?? .distantFuture) < ($1.assignedDate ?? .distantFuture)
         }
-        case .entered: return active.sorted { $0.createdAt > $1.createdAt }   // last entered on top [#7]
         }
     }
 
@@ -88,9 +121,10 @@ struct BacklogView: View {
                 .frame(maxWidth: .infinity, alignment: .center).padding(.top, 60)
         } else {
             ForEach(items, id: \.id) { item in
-                BacklogTaskRow(item: item, subtitle: taskSubtitle(item),
-                               selecting: $selecting, selected: $selected, swipeOpen: $swipeOpen,
-                               onDelete: { delete(item) })
+                BacklogRow(coordinator: rows, id: item.id, glyph: .bullet,
+                           title: item.title, subtitle: taskSubtitle(item),
+                           selecting: selecting, isSelected: selected.contains(item.id),
+                           onTap: { if selecting { toggleSelected(item.id) } else { route = .task(item.id) } })
             }
         }
     }
@@ -120,9 +154,7 @@ struct BacklogView: View {
     @ViewBuilder
     private var projectRows: some View {
         // "Unorganized" virtual bucket — always visible, never deletable, no select.
-        NavigationLink {
-            BacklogFolderView(project: nil)
-        } label: {
+        Button { if !selecting { route = .folder(nil) } } label: {
             projectRowContent(name: "Unorganized", count: unassignedCount)
         }
         .buttonStyle(.plain)
@@ -130,23 +162,17 @@ struct BacklogView: View {
         .disabled(selecting)
 
         ForEach(sortedProjects, id: \.id) { project in
-            BacklogRow(
-                title: project.name,
-                subtitle: "\(project.items.filter { $0.status == .backlog }.count) items",
-                selecting: selecting,
-                isSelected: selected.contains(project.id),
-                swipeOpen: swipeOpen == project.id,
-                onTapSelect: { toggleSelected(project.id) },
-                onOpenSwipe: { swipeOpen = project.id },
-                onCloseSwipe: { if swipeOpen == project.id { swipeOpen = nil } },
-                onDelete: { attemptDeleteProject(project) },
-                destination: { BacklogFolderView(project: project) }
-            )
+            BacklogRow(coordinator: rows, id: project.id, glyph: .folder,
+                       title: project.name,
+                       subtitle: "\(project.items.filter { $0.status == .backlog }.count) items",
+                       selecting: selecting, isSelected: selected.contains(project.id),
+                       onTap: { if selecting { toggleSelected(project.id) } else { route = .folder(project.id) } })
         }
     }
 
     private func projectRowContent(name: String, count: Int) -> some View {
         HStack(spacing: 12) {
+            DSImageView(systemName: "folder", size: 18, tint: .color(.secondary))
             VStack(alignment: .leading, spacing: 2) {
                 DSText(name).dsTextStyle(.title3).longTitle()
                 DSText("\(count) items").dsTextStyle(.subheadline)
@@ -253,9 +279,18 @@ struct BacklogView: View {
         if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
     }
 
+    /// Routed from the shared coordinator's trash tap (task id in Task view, project id
+    /// in Project view).
+    private func handleDelete(id: String) {
+        if mode == .tasks {
+            if let item = allItems.first(where: { $0.id == id }) { delete(item) }
+        } else {
+            if let project = projects.first(where: { $0.id == id }) { attemptDeleteProject(project) }
+        }
+    }
+
     private func delete(_ item: BacklogItem) {
         try? repo.delete(item)
-        swipeOpen = nil
     }
 
     private func deleteSelected() {
@@ -280,7 +315,6 @@ struct BacklogView: View {
     }
 
     private func attemptDeleteProject(_ project: ProjectBucket) {
-        swipeOpen = nil
         if project.items.contains(where: { $0.status == .backlog }) {
             projectsPendingDelete = [project]
         } else {
@@ -331,22 +365,30 @@ struct BacklogFolderView: View {
 
     @State private var selecting = false
     @State private var selected: Set<String> = []
-    @State private var swipeOpen: String?
     @State private var showMove = false
     @State private var pushEditorForNew = false
+
+    // Same shared gesture engine as the main backlog (tap/scroll/swipe-left, no reorder).
+    @State private var rows = RowGestureCoordinator<String>(rowHeight: 48, trashWidth: 68, reorderEnabled: false)
+    @State private var taskRoute: TaskRoute?
+    struct TaskRoute: Identifiable, Hashable { let id: String }
 
     private var repo: BacklogRepository { BacklogRepository(context: context) }
 
     private var items: [BacklogItem] {
+        // Creation order, newest at the bottom — same as the main Task view default.
         allItems.filter { $0.status == .backlog && $0.project?.id == project?.id }
-            .sorted { $0.title.lowercased() < $1.title.lowercased() }
+            .sorted { $0.createdAt < $1.createdAt }
     }
 
     var body: some View {
-        ZStack {
+        rows.canInteract = { !selecting }
+        rows.deleteRow = { id in if let it = allItems.first(where: { $0.id == id }) { try? repo.delete(it) } }
+
+        return ZStack {
             SettingsBackground()
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 7) {
                     DSText(project?.name ?? "Unorganized").dsTextStyle(.title2)
                         .padding(.bottom, 4)
                     if items.isEmpty {
@@ -354,16 +396,19 @@ struct BacklogFolderView: View {
                             .frame(maxWidth: .infinity, alignment: .center).padding(.top, 40)
                     } else {
                         ForEach(items, id: \.id) { item in
-                            BacklogTaskRow(item: item,
-                                           subtitle: item.assignedDate.map { AppDateFormat.monthDay($0) },
-                                           selecting: $selecting, selected: $selected, swipeOpen: $swipeOpen,
-                                           onDelete: { try? repo.delete(item); swipeOpen = nil })
+                            BacklogRow(coordinator: rows, id: item.id, glyph: .bullet,
+                                       title: item.title,
+                                       subtitle: item.assignedDate.map { AppDateFormat.monthDay($0) },
+                                       selecting: selecting, isSelected: selected.contains(item.id),
+                                       onTap: { if selecting { toggleSelected(item.id) } else { taskRoute = TaskRoute(id: item.id) } })
                         }
                     }
                     Color.clear.frame(height: 40)
                 }
                 .padding(.horizontal, 20).padding(.top, 8)
+                .rowGestures(rows)
             }
+            .scrollDisabled(rows.isInteracting)
         }
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
@@ -378,6 +423,15 @@ struct BacklogFolderView: View {
         .navigationDestination(isPresented: $pushEditorForNew) {
             BacklogTaskDetailView(item: nil, startInEdit: true, defaultProject: project)
         }
+        .navigationDestination(item: $taskRoute) { r in
+            if let item = allItems.first(where: { $0.id == r.id }) {
+                BacklogTaskDetailView(item: item, startInEdit: false)
+            }
+        }
+    }
+
+    private func toggleSelected(_ id: String) {
+        if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
     }
 
     private var topBar: some View {

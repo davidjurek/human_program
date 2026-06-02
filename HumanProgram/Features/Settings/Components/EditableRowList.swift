@@ -32,6 +32,9 @@ import UIKit
 final class RowGestureCoordinator<ID: Hashable> {
     let rowHeight: CGFloat
     let trashWidth: CGFloat
+    /// When false, hold-to-reorder is disabled entirely (e.g. Backlog is a sorted list,
+    /// not manually ordered) — only tap / swipe-to-delete / scroll are active.
+    let reorderEnabled: Bool
 
     // Reorder (vertical). dragId/dragDY are observed so rows animate.
     var dragId: ID?
@@ -59,9 +62,10 @@ final class RowGestureCoordinator<ID: Hashable> {
     /// Gate for reorder + swipe (e.g. a locked past day disables both).
     @ObservationIgnored var canInteract: () -> Bool = { true }
 
-    init(rowHeight: CGFloat, trashWidth: CGFloat = 72) {
+    init(rowHeight: CGFloat, trashWidth: CGFloat = 72, reorderEnabled: Bool = true) {
         self.rowHeight = rowHeight
         self.trashWidth = trashWidth
+        self.reorderEnabled = reorderEnabled
     }
 
     /// True while a row is being dragged or swiped — the host suspends native
@@ -71,7 +75,7 @@ final class RowGestureCoordinator<ID: Hashable> {
     // MARK: - Reorder
 
     func beginReorder(_ id: ID) {
-        guard canInteract() else { return }
+        guard reorderEnabled, canInteract() else { return }
         swipeOpenId = nil
         beginEditGesture()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -241,13 +245,18 @@ extension View {
         self
             .onPreferenceChange(RowFrameKey<ID>.self) { coordinator.rowFrames = $0 }
             .background(
-                ReorderRecognizer(
-                    rowFrames: coordinator.rowFrames,
-                    onBegan: { coordinator.beginReorder($0) },
-                    onChanged: { coordinator.dragChanged($0) },
-                    onEnded: { coordinator.endReorder($0) },
-                    onCancelled: { coordinator.cancelReorder() }
-                )
+                // Reorder recognizer only when the list supports manual ordering.
+                Group {
+                    if coordinator.reorderEnabled {
+                        ReorderRecognizer(
+                            rowFrames: coordinator.rowFrames,
+                            onBegan: { coordinator.beginReorder($0) },
+                            onChanged: { coordinator.dragChanged($0) },
+                            onEnded: { coordinator.endReorder($0) },
+                            onCancelled: { coordinator.cancelReorder() }
+                        )
+                    }
+                }
             )
             .background(
                 SwipePanRecognizer(
