@@ -122,11 +122,20 @@ enum FontChoice: String, CaseIterable, Identifiable {
     }
 }
 
-extension FontChoice {
-    /// This choice as a SwiftUI Font at an explicit size (for plain Text/TextField).
-    func font(size: CGFloat, bold: Bool = false) -> Font {
-        Font((bold ? boldSpec : regularSpec).uiFont(size))
-    }
+/// Cache of resolved `UIFont`s. Building a `UIFontDescriptor` + `UIFont` (in
+/// `FontSpec.uiFont`) is the expensive part of `appFont`/`appUIFont`, and these are
+/// called dozens of times per timeline render. `NSCache` is thread-safe and evicts
+/// under memory pressure. Keyed by the raw font-choice string, so changing the font in
+/// Settings yields a fresh key and the UI still updates live.
+private let uiFontCache = NSCache<NSString, UIFont>()
+
+private func resolvedUIFont(raw: String, size: CGFloat, bold: Bool) -> UIFont {
+    let key = "\(raw)|\(size)|\(bold)" as NSString
+    if let cached = uiFontCache.object(forKey: key) { return cached }
+    let choice = FontChoice.from(raw)
+    let font = (bold ? choice.boldSpec : choice.regularSpec).uiFont(size)
+    uiFontCache.setObject(font, forKey: key)
+    return font
 }
 
 /// The currently-selected app font as a SwiftUI Font. Reads the persisted choice
@@ -134,7 +143,7 @@ extension FontChoice {
 /// Re-reads on each render, so it updates when the font changes.
 func appFont(_ size: CGFloat, bold: Bool = false) -> Font {
     let raw = UserDefaults.standard.string(forKey: DefaultsKey.fontChoice) ?? FontChoice.default.rawValue
-    return FontChoice.from(raw).font(size: size, bold: bold)
+    return Font(resolvedUIFont(raw: raw, size: size, bold: bold))
 }
 
 /// The on-screen point size for a DSKit text-style base size at the current
@@ -150,8 +159,7 @@ func appScaledSize(_ base: CGFloat) -> CGFloat {
 /// The currently-selected app font as a UIFont (for UIKit-backed views).
 func appUIFont(_ size: CGFloat, bold: Bool = false) -> UIFont {
     let raw = UserDefaults.standard.string(forKey: DefaultsKey.fontChoice) ?? FontChoice.default.rawValue
-    let choice = FontChoice.from(raw)
-    return (bold ? choice.boldSpec : choice.regularSpec).uiFont(size)
+    return resolvedUIFont(raw: raw, size: size, bold: bold)
 }
 
 // MARK: - Clock time formatting (12h / 24h)
