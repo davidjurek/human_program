@@ -41,4 +41,31 @@ final class PastPageDecouplingTests: XCTestCase {
         XCTAssertEqual(todayPage.tasks.first?.sourceType, .backlog, "Today's task keeps its source")
         XCTAssertEqual(todayPage.tasks.first?.sourceId, "b2")
     }
+
+    /// A calendar-sourced past task is also detached, and an already-standalone
+    /// (manual, no sourceId) task is left untouched (the no-op branch). [#54]
+    func testSeverDetachesCalendar_andLeavesAlreadyManualUntouched() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let repo = DailyPageRepository(context: ctx)
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let yesterday = cal.date(byAdding: .day, value: -1, to: today)!
+
+        let past = DailyPage(date: yesterday)
+        ctx.insert(past)
+        let calTask = DailyPageTask(title: "calendar", sourceType: .calendar, sourceId: "evt-1")
+        calTask.page = past; past.tasks.append(calTask); ctx.insert(calTask)
+        let manualTask = DailyPageTask(title: "manual", sourceType: .manual, sourceId: nil)
+        manualTask.page = past; past.tasks.append(manualTask); ctx.insert(manualTask)
+
+        try repo.severPastTasks(today: today)
+
+        let cal2 = try XCTUnwrap(past.tasks.first { $0.title == "calendar" })
+        let man2 = try XCTUnwrap(past.tasks.first { $0.title == "manual" })
+        XCTAssertEqual(cal2.sourceType, .manual, "Calendar-sourced past task is detached to manual")
+        XCTAssertNil(cal2.sourceId)
+        XCTAssertEqual(man2.sourceType, .manual, "Already-manual task stays manual (no-op)")
+        XCTAssertNil(man2.sourceId)
+    }
 }

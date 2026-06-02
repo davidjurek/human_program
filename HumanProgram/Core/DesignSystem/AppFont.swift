@@ -219,6 +219,10 @@ let appCompleteGreen = Color(red: 0.18, green: 0.62, blue: 0.32)
 /// Fixed light blue for the calendar (right) lane on the Today/timeline gutter. [#31]
 let appCalendarLaneBlue = Color(red: 0.46, green: 0.67, blue: 0.96)
 
+/// Onboarding accent (the light-blue CTA buttons on Welcome / reset / restore /
+/// permissions). One token instead of the same Color(red:) repeated per screen. [#29/#101]
+let appOnboardingBlue = Color(red: 0.42, green: 0.69, blue: 0.99)
+
 /// Six fixed font-size steps for the size slider. Index 0…5; the value is a
 /// global scale multiplier applied to all typography.
 enum FontSizeStep {

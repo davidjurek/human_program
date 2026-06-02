@@ -10,8 +10,6 @@ struct AppInterstitialView: View {
     let mode: Mode
     let onAction: () -> Void
 
-    private let lightBlue = Color(red: 0.42, green: 0.69, blue: 0.99)
-
     private var title: String {
         switch mode {
         case .welcome:  return "Welcome to the Human Program!"
@@ -39,19 +37,9 @@ struct AppInterstitialView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 32)
                 Spacer()
-                Button(action: onAction) {
-                    Text(buttonLabel)
-                        .font(appFont(20))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                        .background(lightBlue, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .a11yTapBorder(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
+                OnboardingPrimaryButton(title: buttonLabel, action: onAction)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
             }
         }
     }
@@ -67,5 +55,29 @@ struct AppInterstitialView: View {
                 .font(.system(size: 90))
                 .foregroundStyle(.primary)
         }
+    }
+}
+
+/// Full-width light-blue onboarding CTA. Shared by the interstitials and the
+/// permissions screen so the accent + shape live in ONE place. [#29]
+struct OnboardingPrimaryButton: View {
+    let title: String
+    var enabled: Bool = true
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(appFont(20))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .background(enabled ? appOnboardingBlue : appOnboardingBlue.opacity(0.35),
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .a11yTapBorder(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .disabled(!enabled)
     }
 }

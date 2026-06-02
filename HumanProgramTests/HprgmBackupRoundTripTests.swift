@@ -202,4 +202,53 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         XCTAssertNoThrow(try HprgmImportService().importData(bundle, context: ctx))
         try? FileManager.default.removeItem(at: url)
     }
+
+    /// A POPULATED v1 backup (real backlog item + daily page with a task, no v2
+    /// sections) must import its rows correctly — proving legacy backups still
+    /// restore actual data, not just decode an empty file. [#55]
+    func testV1PopulatedBundleImportsRows() throws {
+        let json = """
+        {
+          "formatName": "Human Program Export",
+          "formatVersion": 1,
+          "exportedAt": "2026-01-01T00:00:00Z",
+          "appVersion": "1.0.0",
+          "backlogItems": [
+            {"id":"b1","title":"Old task","notes":"note","status":"backlog",
+             "createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}
+          ],
+          "projectBuckets": [],
+          "recurringTaskTemplates": [],
+          "exerciseRoutines": [],
+          "scheduleTemplates": [],
+          "dailyPages": [
+            {"id":"p1","date":"2026-01-01T00:00:00Z","createdAutomatically":true,
+             "dayComplete":false,"isPastLocked":true,"scheduleBlocks":[],
+             "createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z",
+             "tasks":[{"id":"t1","sourceType":"manual","title":"Did it","notes":"",
+                       "completed":true,"sortOrder":0}]}
+          ],
+          "notifications": []
+        }
+        """
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("v1full.hprgm")
+        try json.data(using: .utf8)!.write(to: url)
+        let bundle = try HprgmImportService().preview(fileURL: url)
+
+        let container = try makeTestModelContainer()
+        let ctx = ModelContext(container)
+        try HprgmImportService().importData(bundle, context: ctx)
+
+        let items = try ctx.fetch(FetchDescriptor<BacklogItem>())
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.title, "Old task")
+
+        let pages = try ctx.fetch(FetchDescriptor<DailyPage>())
+        XCTAssertEqual(pages.count, 1)
+        XCTAssertEqual(pages.first?.tasks.count, 1)
+        XCTAssertEqual(pages.first?.tasks.first?.title, "Did it")
+        XCTAssertTrue(pages.first?.tasks.first?.completed == true)
+
+        try? FileManager.default.removeItem(at: url)
+    }
 }

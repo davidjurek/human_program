@@ -15,7 +15,6 @@ struct PermissionsOnboardingView: View {
     @State private var calendarDone = false
     @State private var notifDone = false
 
-    private let lightBlue = Color(red: 0.42, green: 0.69, blue: 0.99)
     private let calendarService = CalendarAdapterService()
 
     private var bothGranted: Bool { calendarDone && notifDone }
@@ -60,18 +59,9 @@ struct PermissionsOnboardingView: View {
                 Spacer()
 
                 // Enter — disabled (greyed) until both accesses are granted.
-                Button(action: onFinish) {
-                    Text("Enter").font(appFont(20)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 18)
-                        .background(bothGranted ? lightBlue : lightBlue.opacity(0.35),
-                                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .a11yTapBorder(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .disabled(!bothGranted)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
+                OnboardingPrimaryButton(title: "Enter", enabled: bothGranted, action: onFinish)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
             }
         }
         .task { await refreshStatuses() }
@@ -89,7 +79,7 @@ struct PermissionsOnboardingView: View {
                 Text(done ? "Done!" : "Grant access")
                     .font(appFont(16)).foregroundStyle(.white)
                     .frame(width: 140).padding(.vertical, 12)
-                    .background(lightBlue, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(appOnboardingBlue, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain)

@@ -134,6 +134,23 @@ struct DSTimeField: View {
         Binding(get: { cal.component(.minute, from: date) },
                 set: { date = cal.date(bySettingHour: cal.component(.hour, from: date), minute: $0, second: 0, of: date) ?? date })
     }
+    private var is24: Bool { TimeFormatSetting.is24Hour }
+    /// Displayed hour 1…12 (12h mode), preserving the current AM/PM. [#50]
+    private var hour12: Binding<Int> {
+        Binding(get: { let h = cal.component(.hour, from: date) % 12; return h == 0 ? 12 : h },
+                set: { newH12 in
+                    let isPM = cal.component(.hour, from: date) >= 12
+                    let h = (newH12 % 12) + (isPM ? 12 : 0)
+                    date = cal.date(bySettingHour: h, minute: cal.component(.minute, from: date), second: 0, of: date) ?? date
+                })
+    }
+    private var isPM: Binding<Bool> {
+        Binding(get: { cal.component(.hour, from: date) >= 12 },
+                set: { pm in
+                    let h = (cal.component(.hour, from: date) % 12) + (pm ? 12 : 0)
+                    date = cal.date(bySettingHour: h, minute: cal.component(.minute, from: date), second: 0, of: date) ?? date
+                })
+    }
 
     var body: some View {
         Button { show = true } label: {
@@ -150,13 +167,28 @@ struct DSTimeField: View {
                         Button { show = false } label: { DSText("Done").dsTextStyle(.headline).contentShape(Rectangle()) }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
                     }
                     HStack(spacing: 0) {
-                        Picker("", selection: hour) {
-                            ForEach(0..<24, id: \.self) { Text(String(format: "%02d", $0)).font(appFont(20)).tag($0) }
-                        }.pickerStyle(.wheel).frame(maxWidth: .infinity)
-                        DSText(":").dsTextStyle(.title2)
-                        Picker("", selection: minute) {
-                            ForEach(0..<60, id: \.self) { Text(String(format: "%02d", $0)).font(appFont(20)).tag($0) }
-                        }.pickerStyle(.wheel).frame(maxWidth: .infinity)
+                        if is24 {
+                            Picker("", selection: hour) {
+                                ForEach(0..<24, id: \.self) { Text(String(format: "%02d", $0)).font(appFont(20)).tag($0) }
+                            }.pickerStyle(.wheel).frame(maxWidth: .infinity)
+                            DSText(":").dsTextStyle(.title2)
+                            Picker("", selection: minute) {
+                                ForEach(0..<60, id: \.self) { Text(String(format: "%02d", $0)).font(appFont(20)).tag($0) }
+                            }.pickerStyle(.wheel).frame(maxWidth: .infinity)
+                        } else {
+                            // 12-hour: 1–12 : minute + AM/PM, matching the 12h label.
+                            Picker("", selection: hour12) {
+                                ForEach(1...12, id: \.self) { Text("\($0)").font(appFont(20)).tag($0) }
+                            }.pickerStyle(.wheel).frame(maxWidth: .infinity)
+                            DSText(":").dsTextStyle(.title2)
+                            Picker("", selection: minute) {
+                                ForEach(0..<60, id: \.self) { Text(String(format: "%02d", $0)).font(appFont(20)).tag($0) }
+                            }.pickerStyle(.wheel).frame(maxWidth: .infinity)
+                            Picker("", selection: isPM) {
+                                Text("AM").font(appFont(20)).tag(false)
+                                Text("PM").font(appFont(20)).tag(true)
+                            }.pickerStyle(.wheel).frame(maxWidth: .infinity)
+                        }
                     }
                     Spacer()
                 }
