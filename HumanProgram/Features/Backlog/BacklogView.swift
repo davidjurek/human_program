@@ -84,18 +84,9 @@ struct BacklogView: View {
                 .frame(maxWidth: .infinity, alignment: .center).padding(.top, 60)
         } else {
             ForEach(items, id: \.id) { item in
-                BacklogRow(
-                    title: item.title,
-                    subtitle: taskSubtitle(item),
-                    selecting: selecting,
-                    isSelected: selected.contains(item.id),
-                    swipeOpen: swipeOpen == item.id,
-                    onTapSelect: { toggleSelected(item.id) },
-                    onOpenSwipe: { swipeOpen = item.id },
-                    onCloseSwipe: { if swipeOpen == item.id { swipeOpen = nil } },
-                    onDelete: { delete(item) },
-                    destination: { BacklogTaskDetailView(item: item, startInEdit: false) }
-                )
+                BacklogTaskRow(item: item, subtitle: taskSubtitle(item),
+                               selecting: $selecting, selected: $selected, swipeOpen: $swipeOpen,
+                               onDelete: { delete(item) })
             }
         }
     }
@@ -173,11 +164,9 @@ struct BacklogView: View {
                 .onTapGesture { dismiss() }
             Spacer()
             if selecting {
-                iconButton("arrow.right.arrow.left") { if !selected.isEmpty { showMove = true } }
-                iconButton("trash", tint: .red) { deleteSelected() }
-                Button { selecting = false; selected = [] } label: {
-                    DSText("Done").dsTextStyle(.headline).contentShape(Rectangle())
-                }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.horizontal, 6)
+                BacklogBarButton(icon: "arrow.right.arrow.left") { if !selected.isEmpty { showMove = true } }
+                BacklogBarButton(icon: "trash", tint: .red) { deleteSelected() }
+                BacklogTextBarButton(title: "Done") { selecting = false; selected = [] }
             } else {
                 // View toggle shows the CURRENT view as a word. Both words are
                 // left-aligned at the same x (fixed width); "Task" leaves a wide
@@ -188,23 +177,13 @@ struct BacklogView: View {
                         .frame(height: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain).a11yTapBorder(Rectangle())
                 sortMenu
-                iconButton("plus") { addTapped() }
-                Button { selecting = true } label: {
-                    DSText("Select").dsTextStyle(.headline).contentShape(Rectangle())
-                }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.horizontal, 6)
+                BacklogBarButton(icon: "plus") { addTapped() }
+                BacklogTextBarButton(title: "Select") { selecting = true }
             }
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 4)
         .topBarFrost()                                       // [#47]
-    }
-
-    private func iconButton(_ icon: String, tint: Color = .primary, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon).font(.system(size: 18, weight: .medium))
-                .foregroundStyle(tint).frame(width: 40, height: 44).contentShape(Rectangle())
-                .a11yTapBorder(Rectangle())
-        }.buttonStyle(.plain)
     }
 
     private var sortMenu: some View {
@@ -371,18 +350,10 @@ struct BacklogFolderView: View {
                             .frame(maxWidth: .infinity, alignment: .center).padding(.top, 40)
                     } else {
                         ForEach(items, id: \.id) { item in
-                            BacklogRow(
-                                title: item.title,
-                                subtitle: item.assignedDate.map { AppDateFormat.monthDay($0) },
-                                selecting: selecting,
-                                isSelected: selected.contains(item.id),
-                                swipeOpen: swipeOpen == item.id,
-                                onTapSelect: { toggle(item.id) },
-                                onOpenSwipe: { swipeOpen = item.id },
-                                onCloseSwipe: { if swipeOpen == item.id { swipeOpen = nil } },
-                                onDelete: { try? repo.delete(item); swipeOpen = nil },
-                                destination: { BacklogTaskDetailView(item: item, startInEdit: false) }
-                            )
+                            BacklogTaskRow(item: item,
+                                           subtitle: item.assignedDate.map { AppDateFormat.monthDay($0) },
+                                           selecting: $selecting, selected: $selected, swipeOpen: $swipeOpen,
+                                           onDelete: { try? repo.delete(item); swipeOpen = nil })
                         }
                     }
                     Color.clear.frame(height: 40)
@@ -413,33 +384,18 @@ struct BacklogFolderView: View {
                 .onTapGesture { dismiss() }
             Spacer()
             if selecting {
-                Button { if !selected.isEmpty { showMove = true } } label: {
-                    Image(systemName: "arrow.right.arrow.left").font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.primary).frame(width: 40, height: 44).contentShape(Rectangle())
-                        .a11yTapBorder(Rectangle())
-                }.buttonStyle(.plain)
-                Button { deleteSelected() } label: {
-                    Image(systemName: "trash").font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.red).frame(width: 40, height: 44).contentShape(Rectangle())
-                        .a11yTapBorder(Rectangle())
-                }.buttonStyle(.plain)
-                Button { selecting = false; selected = [] } label: { DSText("Done").dsTextStyle(.headline).contentShape(Rectangle()) }
-                    .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.horizontal, 6)
+                BacklogBarButton(icon: "arrow.right.arrow.left") { if !selected.isEmpty { showMove = true } }
+                BacklogBarButton(icon: "trash", tint: .red) { deleteSelected() }
+                BacklogTextBarButton(title: "Done") { selecting = false; selected = [] }
             } else {
-                Button { pushEditorForNew = true } label: {
-                    Image(systemName: "plus").font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.primary).frame(width: 40, height: 44).contentShape(Rectangle())
-                        .a11yTapBorder(Rectangle())
-                }.buttonStyle(.plain)
-                Button { selecting = true } label: { DSText("Select").dsTextStyle(.headline).contentShape(Rectangle()) }
-                    .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.horizontal, 6)
+                BacklogBarButton(icon: "plus") { pushEditorForNew = true }
+                BacklogTextBarButton(title: "Select") { selecting = true }
             }
         }
         .padding(.horizontal, 12).padding(.bottom, 4)
         .topBarFrost()                                       // [#47]
     }
 
-    private func toggle(_ id: String) { if selected.contains(id) { selected.remove(id) } else { selected.insert(id) } }
     private func deleteSelected() {
         for item in allItems where selected.contains(item.id) { try? repo.delete(item) }
         selected = []; selecting = false

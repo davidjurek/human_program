@@ -93,6 +93,65 @@ struct BacklogRow<Destination: View>: View {
     }
 }
 
+// ── Shared backlog task row + top-bar buttons (used by Task view AND folders) ────
+
+/// One backlog task row: `BacklogRow` wired for a task — whole-row selection toggle,
+/// swipe state, delete, and a push to the task detail. Kept as a single row (callers
+/// keep their own `ForEach`) so each screen's row spacing is preserved.
+struct BacklogTaskRow: View {
+    let item: BacklogItem
+    let subtitle: String?
+    @Binding var selecting: Bool
+    @Binding var selected: Set<String>
+    @Binding var swipeOpen: String?
+    let onDelete: () -> Void
+
+    var body: some View {
+        BacklogRow(
+            title: item.title,
+            subtitle: subtitle,
+            selecting: selecting,
+            isSelected: selected.contains(item.id),
+            swipeOpen: swipeOpen == item.id,
+            onTapSelect: {
+                if selected.contains(item.id) { selected.remove(item.id) } else { selected.insert(item.id) }
+            },
+            onOpenSwipe: { swipeOpen = item.id },
+            onCloseSwipe: { if swipeOpen == item.id { swipeOpen = nil } },
+            onDelete: onDelete,
+            destination: { BacklogTaskDetailView(item: item, startInEdit: false) }
+        )
+    }
+}
+
+/// Top-bar icon button (44pt tall, 40pt wide tap target with the documented
+/// contentShape + a11y border). Shared by both backlog top bars.
+struct BacklogBarButton: View {
+    let icon: String
+    var tint: Color = .primary
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: 18, weight: .medium))
+                .foregroundStyle(tint).frame(width: 40, height: 44).contentShape(Rectangle())
+                .a11yTapBorder(Rectangle())
+        }.buttonStyle(.plain)
+    }
+}
+
+/// Top-bar text button ("Select" / "Done"). Shared by both backlog top bars.
+struct BacklogTextBarButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            DSText(title).dsTextStyle(.headline).contentShape(Rectangle())
+        }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.horizontal, 6)
+    }
+}
+
 // ── New project popup (DSKit glass, duplicate-title block) ───────────────────────
 struct NewProjectPopup: View {
     @Binding var name: String
