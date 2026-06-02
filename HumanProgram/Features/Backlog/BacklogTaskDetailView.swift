@@ -26,6 +26,7 @@ struct BacklogTaskDetailView: View {
     @State private var savedItem: BacklogItem?
     @State private var showDiscard = false
     @State private var showProjectPicker = false
+    @State private var keyboardSpacer: CGFloat = 0
 
     private var repo: BacklogRepository { BacklogRepository(context: context) }
     private var effectiveItem: BacklogItem? { item ?? savedItem }
@@ -52,6 +53,7 @@ struct BacklogTaskDetailView: View {
         SettingsScreen(centered: true,
                        onBack: handleBack,
                        swipeBackBlocked: { editing && isDirty },
+                       manualKeyboardAvoidance: true,
                        trailing: { trailingButton }) {
             SettingsSectionLabel(title: "Task")
             if editing {
@@ -125,11 +127,16 @@ struct BacklogTaskDetailView: View {
             if editing {
                 AppTextField(text: $notes, placeholder: "Note", fontSize: appScaledSize(17), multiline: true)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(KeyboardScrollNudge())   // lift the focused field above the keyboard
             } else {
                 DSText(notes).dsTextStyle(.body)   // blank when empty [#24]
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            // Scroll room so the focused field can lift clear of the keyboard.
+            Color.clear.frame(height: keyboardSpacer)
         }
+        .keyboardSpacer($keyboardSpacer)
         .overlay {
             if showDiscard {
                 ConfirmPopup(message: "Discard changes?",

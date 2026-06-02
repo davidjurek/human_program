@@ -27,6 +27,7 @@ struct AddCalendarEventView: View {
     @State private var allCalendars: [EKCalendar] = []
     @State private var selectedCalendarId: String? = nil
     @State private var errorMessage: String? = nil
+    @State private var keyboardSpacer: CGFloat = 0
 
     enum RepeatRule: String, CaseIterable, Identifiable {
         case never = "Never", daily = "Daily", weekly = "Weekly", monthly = "Monthly", yearly = "Yearly"
@@ -112,7 +113,7 @@ struct AddCalendarEventView: View {
     private var isEditing: Bool { eventToEdit != nil }
 
     var body: some View {
-        SettingsScreen(centered: true, trailing: {
+        SettingsScreen(centered: true, manualKeyboardAvoidance: true, trailing: {
             Button { saveEvent() } label: {
                 DSText(isEditing ? "Save" : "Add").dsTextStyle(.body, canSave ? Color.primary : Color.secondary)
                     .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
@@ -164,11 +165,15 @@ struct AddCalendarEventView: View {
             AppTextField(text: $notes, placeholder: "Note", fontSize: 17, multiline: true)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             AppTextField(text: $urlText, placeholder: "URL", fontSize: 17)
+                .background(KeyboardScrollNudge())   // lift the focused field above the keyboard
 
             if let error = errorMessage {
                 DSText(error).dsTextStyle(.subheadline, Color.red)
             }
+
+            Color.clear.frame(height: keyboardSpacer)   // scroll room for the nudge
         }
+        .keyboardSpacer($keyboardSpacer)
         .onAppear {
             allCalendars = calendarService.fetchAllCalendars()
             if selectedCalendarId == nil { selectedCalendarId = allCalendars.first?.calendarIdentifier }
