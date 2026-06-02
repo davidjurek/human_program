@@ -17,14 +17,52 @@ struct FontSpec {
     var variations: [Int: Double] = [:]
     var sizeMultiplier: CGFloat = 1.0
 
-    func uiFont(_ size: CGFloat) -> UIFont {
+    /// Builds the descriptor at an exact point size (no normalization). Used to
+    /// measure metrics for the cap-height normalization below.
+    func rawUIFont(_ size: CGFloat) -> UIFont {
         var attrs: [UIFontDescriptor.AttributeName: Any] = [.name: psName]
         if !variations.isEmpty {
             attrs[UIFontDescriptor.AttributeName(rawValue: kCTFontVariationAttribute as String)] = variations
         }
-        let descriptor = UIFontDescriptor(fontAttributes: attrs)
-        return UIFont(descriptor: descriptor, size: size * sizeMultiplier)
+        return UIFont(descriptor: UIFontDescriptor(fontAttributes: attrs), size: size)
     }
+
+    func uiFont(_ size: CGFloat) -> UIFont {
+        // Normalize so every font renders at the SAME vertical (cap) height for a given
+        // point size — so switching fonts never changes how tall the text is, only its
+        // style/width. Each font is scaled so its cap height matches the default font's.
+        // [owner: every font same vertical height per size]
+        rawUIFont(size * sizeMultiplier * capHeightNormalization(psName: psName, variations: variations))
+    }
+}
+
+/// Cache of each font's cap-height ÷ point-size ratio (constant per typeface).
+private let capRatioCache = NSCache<NSString, NSNumber>()
+
+private func capHeightRatio(psName: String, variations: [Int: Double]) -> CGFloat {
+    let key = "\(psName)|\(variations)" as NSString
+    if let c = capRatioCache.object(forKey: key) { return CGFloat(truncating: c) }
+    var attrs: [UIFontDescriptor.AttributeName: Any] = [.name: psName]
+    if !variations.isEmpty {
+        attrs[UIFontDescriptor.AttributeName(rawValue: kCTFontVariationAttribute as String)] = variations
+    }
+    let f = UIFont(descriptor: UIFontDescriptor(fontAttributes: attrs), size: 100)
+    let ratio = f.capHeight > 0 ? f.capHeight / 100 : 0.7
+    capRatioCache.setObject(NSNumber(value: Double(ratio)), forKey: key)
+    return ratio
+}
+
+/// Cap-height ratio of the DEFAULT font — the reference every other font matches, so
+/// the default install's sizing is unchanged and the rest line up to it.
+private let referenceCapRatio: CGFloat = {
+    let s = FontChoice.default.regularSpec
+    return capHeightRatio(psName: s.psName, variations: s.variations)
+}()
+
+/// Scale factor that makes this font's cap height equal the reference font's.
+private func capHeightNormalization(psName: String, variations: [Int: Double]) -> CGFloat {
+    let r = capHeightRatio(psName: psName, variations: variations)
+    return r > 0 ? referenceCapRatio / r : 1
 }
 
 /// A DSKit fonts implementation backed by a custom font (regular + bold specs),

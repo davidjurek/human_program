@@ -39,6 +39,7 @@ struct CalendarView: View {
     @State private var showEventDetail = false
     @State private var showAddEvent = false
     @State private var showReconciliation = false
+    @State private var syncDiffCount = 0
     // Edit flow: tapping "Edit" in the detail sheet dismisses it, then (after the
     // dismiss completes) presents the editor pre-filled with this event.
     @State private var pendingEditEvent: EKEvent?
@@ -100,13 +101,16 @@ struct CalendarView: View {
         .navigationDestination(isPresented: $showReconciliation) {
             CalendarReconciliationView()
         }
+        .onChange(of: showReconciliation) { _, shown in
+            if !shown { refreshSyncCount() }   // count may have changed via Restore
+        }
         .sheet(item: $editTarget, onDismiss: loadEvents) { target in
             AddCalendarEventView(eventToEdit: target.event, defaultDate: selectedDate,
                                  calendarService: calendarService, onSave: loadEvents)
         }
         // All-day events list popup (Week/Day band tap). [#cal-allday]
         .overlay { allDayListPopup }
-        .task { await checkAuthAndLoad() }
+        .task { await checkAuthAndLoad(); refreshSyncCount() }
     }
 
     private var topBar: some View {
@@ -116,21 +120,42 @@ struct CalendarView: View {
                 .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
-            Button { goToday() } label: { DSText("Today").dsTextStyle(.subheadline).contentShape(Rectangle()) }
-                .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
-            Button { showReconciliation = true } label: {
-                Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
-                    .a11yTapBorder(Rectangle())
-            }.buttonStyle(.plain)
+            Button { goToday() } label: {
+                DSText("Today").dsTextStyle(.subheadline)
+                    .frame(height: 44)   // full top-bar height [owner]
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
+            Spacer()
             Button { showAddEvent = true } label: {
                 Image(systemName: "plus").font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
                     .a11yTapBorder(Rectangle())
             }.buttonStyle(.plain)
         }
+        // Centered sync status — blue when in sync, orange when there are differences.
+        .overlay { syncCenterButton }
         .padding(.horizontal, 12).padding(.bottom, 4)
         .topBarFrost()                                       // [#47]
+    }
+
+    private var syncCenterButton: some View {
+        Button { showReconciliation = true } label: {
+            Text("Sync: \(syncDiffCount) \(syncDiffCount == 1 ? "difference" : "differences")")
+                .font(appFont(15))
+                .foregroundStyle(syncDiffCount == 0 ? appOnboardingBlue : Color.orange)
+                .frame(height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .a11yTapBorder(cornerRadius: 4)
+    }
+
+    private func refreshSyncCount() {
+        syncDiffCount = CalendarReconciliation.discrepancies(
+            calendarService: calendarService,
+            stateRepo: CalendarLocalStateRepository(context: context),
+            selectedCalendarIds: selectedCalendarIds).count
     }
 
     private func goToday() {
@@ -729,40 +754,36 @@ struct CalendarView: View {
     private var weekAllDayBandHeight: CGFloat { weekHourHeight * 1.4 }
     private var dayAllDayBandHeight: CGFloat { 56 * 1.4 }
 
-    /// Week all-day band: a fixed-height row with one column per day. Shown only
-    /// when some day in the week has an all-day event; size never grows with count.
-    @ViewBuilder
+    /// Week all-day band: a fixed-height row with one column per day. ALWAYS shown at
+    /// its fixed height (even when empty) so the timeline below doesn't jump as events
+    /// come and go. [owner: all-day section stays even if empty]
     private func weekAllDayBand(weekStart displayedWeekStart: Date, colW: CGFloat) -> some View {
         let cal = Calendar.current
         let weekDays = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: displayedWeekStart) }
-        if weekDays.contains(where: { !allDayEventsForDay($0).isEmpty }) {
-            HStack(spacing: 0) {
-                Color.clear.frame(width: weekTimeColW, height: weekAllDayBandHeight)
-                ForEach(Array(weekDays.enumerated()), id: \.offset) { _, day in
-                    allDayColumn(allDayEventsForDay(day), height: weekAllDayBandHeight,
-                                 font: 9, chipHeight: 15) { allDayPopupDate = day }
-                        .frame(width: colW)
-                }
+        return HStack(spacing: 0) {
+            Color.clear.frame(width: weekTimeColW, height: weekAllDayBandHeight)
+            ForEach(Array(weekDays.enumerated()), id: \.offset) { _, day in
+                allDayColumn(allDayEventsForDay(day), height: weekAllDayBandHeight,
+                             font: 9, chipHeight: 15) { allDayPopupDate = day }
+                    .frame(width: colW)
             }
-            .frame(height: weekAllDayBandHeight)
         }
+        .frame(height: weekAllDayBandHeight)
     }
 
-    /// Day all-day band: a single fixed-height column, aligned to the timeline's
-    /// event area (gutter + trailing inset). Shown only when the day has all-day events.
-    @ViewBuilder
+    /// Day all-day band: a single fixed-height column, aligned to the timeline's event
+    /// area. ALWAYS shown at its fixed height (even when empty). [owner]
     private func dayAllDayBand(day: Date) -> some View {
         let items = allDayEventsForDay(day)
-        if !items.isEmpty {
-            HStack(spacing: 8) {
-                Color.clear.frame(width: 48, height: dayAllDayBandHeight)
-                allDayColumn(items, height: dayAllDayBandHeight, font: 12, chipHeight: 22) {
-                    allDayPopupDate = day
-                }
-                .padding(.trailing, 16)
+        return HStack(spacing: 8) {
+            Color.clear.frame(width: 48, height: dayAllDayBandHeight)
+            allDayColumn(items, height: dayAllDayBandHeight, font: 12, chipHeight: 22) {
+                allDayPopupDate = day
             }
-            .padding(.horizontal, 4)
+            .padding(.trailing, 16)
         }
+        .padding(.horizontal, 4)
+        .frame(height: dayAllDayBandHeight)
     }
 
     /// One day's stacked all-day chips (max 3), with a "+" badge at the bottom-right

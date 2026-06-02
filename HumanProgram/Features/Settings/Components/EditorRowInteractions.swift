@@ -522,6 +522,14 @@ struct GlassKeypad: View {
         }
     }
 
+    /// Key fill — light in light mode, dark grey in dark mode (so the keys don't glare
+    /// against the dark glass). One adaptive color for every key. [owner: numpad dark mode]
+    static let keyFill = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(white: 0.22, alpha: 1.0)
+            : UIColor(white: 1.0, alpha: 0.8)
+    })
+
     @ViewBuilder
     private func keyButton(_ key: KeypadKey) -> some View {
         switch key {
@@ -534,30 +542,34 @@ struct GlassKeypad: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity).frame(height: 50)
-                .background(Capsule().fill(Color.white.opacity(0.8)))
+                .keypadKeyChrome()
             }
             .buttonStyle(.plain)
             .a11yTapBorder(Capsule())
         case .backspace:
             Button(action: onBackspace) {
                 Image(systemName: "delete.left").font(.system(size: 20))
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity).frame(height: 50)
-                    .background(Capsule().fill(Color.white.opacity(0.8)))
+                    .keypadKeyChrome()
             }
             .buttonStyle(.plain)
             .a11yTapBorder(Capsule())
         case .done:
             Button(action: onDone) {
                 Image(systemName: "checkmark").font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity).frame(height: 50)
-                    .background(Capsule().fill(Color.white.opacity(0.8)))
+                    .keypadKeyChrome()
             }
             .buttonStyle(.plain)
             .a11yTapBorder(Capsule())
         }
+    }
+}
+
+private extension View {
+    /// Shared key chrome (primary glyph, full-width, 50pt tall, adaptive capsule fill)
+    /// so the three key types can't drift. [#146]
+    func keypadKeyChrome() -> some View {
+        self.foregroundStyle(.primary)
+            .frame(maxWidth: .infinity).frame(height: 50)
+            .background(Capsule().fill(GlassKeypad.keyFill))
     }
 }

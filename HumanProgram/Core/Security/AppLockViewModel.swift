@@ -12,6 +12,20 @@ public final class AppLockViewModel {
     // ── Lock state ─────────────────────────────────────────────────────────────
     public var isLocked = false
     public var lastActiveAt = Date()
+    /// Armed when the app locks; the lock screen auto-prompts Face ID once per lock
+    /// (so it can't loop on a Face ID cancel, but always engages on each fresh lock).
+    public var autoBiometricArmed = false
+
+    public init() {
+        // Cold launch: if the lock is enabled, start LOCKED. A terminated app (e.g.
+        // swiped away in the app switcher) relaunches fresh, so there's no background/
+        // foreground pair to drive the timeout check — without this, a kill+reopen
+        // showed the app unlocked. [owner: lock inconsistent after force-quit]
+        if repo.isLockEnabled && repo.hasPIN() {
+            isLocked = true
+            autoBiometricArmed = true
+        }
+    }
 
     // ── PIN entry ──────────────────────────────────────────────────────────────
     /// Digits the user has entered so far on the numpad.
@@ -26,10 +40,8 @@ public final class AppLockViewModel {
     public var errorMessage: String? = nil
     public var shakeCounter: Int = 0   // increment to trigger shake animation
 
-    // ── Auth / rate limiting ───────────────────────────────────────────────────
+    // ── Auth ─────────────────────────────────────────────────────────────────────
     public var isAuthenticating = false
-    public var wrongAttempts = 0
-    public var lockoutUntil: Date? = nil
 
     // ── PIN setup phases ───────────────────────────────────────────────────────
     public enum PINSetupPhase: Equatable {
@@ -51,8 +63,19 @@ public final class AppLockViewModel {
         guard repo.isLockEnabled && repo.hasPIN() else { return }
         let elapsed = Date().timeIntervalSince(lastActiveAt)
         if elapsed >= Double(repo.lockTimeoutSeconds) {
+            if !isLocked { autoBiometricArmed = true }
             isLocked = true
         }
+    }
+
+    /// Auto-engage Face ID if it's enabled and this lock hasn't prompted yet. Called
+    /// when the lock screen appears AND when the app becomes active (so a warm return
+    /// engages Face ID without the user tapping a button). Disarms after one prompt so
+    /// a Face ID cancel doesn't re-loop. [owner: Face ID should auto-engage]
+    public func autoPromptBiometricIfArmed() {
+        guard isLocked, repo.isBiometricEnabled, autoBiometricArmed, !isAuthenticating else { return }
+        autoBiometricArmed = false
+        Task { await unlockWithBiometrics() }
     }
 
     /// Call the moment the app enters the background. Stamps the away-time AND, for a
@@ -64,6 +87,7 @@ public final class AppLockViewModel {
         lastActiveAt = Date()
         guard repo.isLockEnabled && repo.hasPIN() else { return }
         if repo.lockTimeoutSeconds == 0 {
+            if !isLocked { autoBiometricArmed = true }
             isLocked = true
         }
     }
@@ -74,7 +98,6 @@ public final class AppLockViewModel {
     /// like the user has finished (caller may also call submitUnlockPIN manually).
     public func appendDigit(_ digit: String) {
         guard pinInput.count < maxPINLength else { return }
-        guard isInLockout == false else { return }
         pinInput += digit
     }
 
@@ -83,56 +106,21 @@ public final class AppLockViewModel {
         pinInput.removeLast()
     }
 
-    /// True when the lockout timer is active and the user must wait.
-    public var isInLockout: Bool {
-        guard let until = lockoutUntil else { return false }
-        return Date() < until
-    }
-
-    /// Seconds remaining in the current lockout period (0 if not locked out).
-    public var lockoutSecondsRemaining: Int {
-        guard let until = lockoutUntil, Date() < until else { return 0 }
-        return max(0, Int(until.timeIntervalSinceNow.rounded(.up)))
-    }
-
     /// Attempt to unlock with the current pinInput. Returns true on success.
+    /// There is NO lockout / wait-after-N-failures and no reset-after-N — a wrong PIN
+    /// just shakes and clears, and the user can retry immediately. [owner: remove lockout]
     @discardableResult
     public func submitUnlockPIN() -> Bool {
-        // If locked out, reject immediately.
-        if isInLockout {
-            errorMessage = "Try again in \(lockoutSecondsRemaining)s"
-            shakeCounter += 1
-            pinInput = ""
-            return false
-        }
-
         if repo.verifyPIN(pinInput) {
             isLocked = false
             pinInput = ""
-            wrongAttempts = 0
-            lockoutUntil = nil
             errorMessage = nil
             return true
         }
-
-        // Wrong PIN
-        wrongAttempts += 1
+        // Wrong PIN — shake, clear, allow immediate retry.
         pinInput = ""
         shakeCounter += 1
-
-        if wrongAttempts >= 10 {
-            lockoutUntil = Date().addingTimeInterval(60)
-            errorMessage = "Too many attempts. Wait 60 seconds."
-        } else if wrongAttempts >= 5 {
-            lockoutUntil = Date().addingTimeInterval(30)
-            errorMessage = "Too many attempts. Wait 30 seconds."
-        } else if wrongAttempts >= 3 {
-            lockoutUntil = Date().addingTimeInterval(5)
-            errorMessage = "Incorrect PIN. Wait 5 seconds."
-        } else {
-            errorMessage = "Incorrect PIN"
-        }
-
+        errorMessage = "Incorrect PIN"
         return false
     }
 
@@ -145,8 +133,6 @@ public final class AppLockViewModel {
         if ok {
             isLocked = false
             pinInput = ""
-            wrongAttempts = 0
-            lockoutUntil = nil
             errorMessage = nil
         }
     }

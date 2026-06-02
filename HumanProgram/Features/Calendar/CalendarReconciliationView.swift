@@ -33,12 +33,7 @@ struct CalendarReconciliationView: View {
     }
     private var stateRepo: CalendarLocalStateRepository { CalendarLocalStateRepository(context: context) }
 
-    /// One event that is in the calendar but removed from its Today page.
-    struct Discrepancy: Identifiable {
-        let id: String          // "eventId|day"
-        let event: EKEvent
-        let date: Date          // start-of-day
-    }
+    typealias Discrepancy = CalendarReconciliation.Discrepancy
 
     var body: some View {
         SettingsScreen(centered: true, trailing: { restoreButton }) {
@@ -128,32 +123,9 @@ struct CalendarReconciliationView: View {
     }
 
     private func reload() {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let end = cal.date(byAdding: .day, value: windowDays, to: today) ?? today
-        guard !selectedCalendarIds.isEmpty else { discrepancies = []; return }
-
-        let events = calendarService.fetchEvents(from: today, to: end, calendarIds: selectedCalendarIds)
-
-        // Build per-day hidden-id sets once from all hidden rows.
-        var hiddenByDay: [Date: Set<String>] = [:]
-        for state in (try? stateRepo.fetchAllHidden()) ?? [] {
-            hiddenByDay[cal.startOfDay(for: state.date), default: []].insert(state.eventId)
-        }
-
-        var result: [Discrepancy] = []
-        for ev in events {
-            guard let eid = ev.eventIdentifier, let start = ev.startDate else { continue }
-            let day = cal.startOfDay(for: start)
-            guard day >= today else { continue }                 // today/future only
-            if hiddenByDay[day]?.contains(eid) == true {
-                result.append(Discrepancy(id: "\(eid)|\(day.timeIntervalSince1970)", event: ev, date: day))
-            }
-        }
-        discrepancies = result.sorted {
-            $0.date != $1.date ? $0.date < $1.date
-                : (($0.event.startDate ?? .distantPast) < ($1.event.startDate ?? .distantPast))
-        }
+        discrepancies = CalendarReconciliation.discrepancies(
+            calendarService: calendarService, stateRepo: stateRepo,
+            selectedCalendarIds: selectedCalendarIds, windowDays: windowDays)
         selected = selected.intersection(Set(discrepancies.map { $0.id }))
     }
 
@@ -173,4 +145,49 @@ struct CalendarReconciliationView: View {
 
     private func restoreSelected() { restore(discrepancies.filter { selected.contains($0.id) }) }
     private func restoreAll() { restore(discrepancies) }
+}
+
+// MARK: - Shared discrepancy computation
+
+/// Computes the calendar↔Today discrepancies (today/future calendar events the user
+/// removed from Today). Shared by the reconciliation page AND the Calendar top-bar
+/// "Sync: N differences" count so both agree.
+enum CalendarReconciliation {
+    struct Discrepancy: Identifiable {
+        let id: String          // "eventId|day"
+        let event: EKEvent
+        let date: Date          // start-of-day
+    }
+
+    @MainActor
+    static func discrepancies(calendarService: CalendarAdapterService,
+                              stateRepo: CalendarLocalStateRepository,
+                              selectedCalendarIds: [String],
+                              windowDays: Int = 120) -> [Discrepancy] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let end = cal.date(byAdding: .day, value: windowDays, to: today) ?? today
+        guard !selectedCalendarIds.isEmpty else { return [] }
+
+        let events = calendarService.fetchEvents(from: today, to: end, calendarIds: selectedCalendarIds)
+
+        var hiddenByDay: [Date: Set<String>] = [:]
+        for state in (try? stateRepo.fetchAllHidden()) ?? [] {
+            hiddenByDay[cal.startOfDay(for: state.date), default: []].insert(state.eventId)
+        }
+
+        var result: [Discrepancy] = []
+        for ev in events {
+            guard let eid = ev.eventIdentifier, let start = ev.startDate else { continue }
+            let day = cal.startOfDay(for: start)
+            guard day >= today else { continue }                 // today/future only
+            if hiddenByDay[day]?.contains(eid) == true {
+                result.append(Discrepancy(id: "\(eid)|\(day.timeIntervalSince1970)", event: ev, date: day))
+            }
+        }
+        return result.sorted {
+            $0.date != $1.date ? $0.date < $1.date
+                : (($0.event.startDate ?? .distantPast) < ($1.event.startDate ?? .distantPast))
+        }
+    }
 }

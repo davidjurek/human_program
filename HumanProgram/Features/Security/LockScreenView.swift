@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // ── LockScreenView ─────────────────────────────────────────────────────────────
 // The app-unlock gate, shown full-screen whenever AppLockViewModel.isLocked == true.
@@ -23,10 +24,13 @@ struct LockScreenView: View {
                 vm.submitUnlockPIN()
             }
         )
-        .task {
-            if vm.repo.isBiometricEnabled && !vm.isAuthenticating {
-                await vm.unlockWithBiometrics()
-            }
+        // Auto-engage Face ID when the lock appears AND every time the app becomes
+        // active while locked — so a warm return (or cold launch) prompts Face ID
+        // without the user tapping the button. The VM disarms after one prompt per
+        // lock so a Face ID cancel can't loop.
+        .task { vm.autoPromptBiometricIfArmed() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            vm.autoPromptBiometricIfArmed()
         }
     }
 }

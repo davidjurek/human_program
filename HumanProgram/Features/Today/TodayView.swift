@@ -60,13 +60,13 @@ struct TodayView: View {
         return ZStack {
             SettingsBackground()
             ScrollView {
+                // Uniform spacing: 22pt between every section (date→Schedule→Tasks→
+                // Exercise), and 10pt between each section header and its content (set
+                // on each section's own VStack). Every gap type is consistent. [owner]
                 VStack(alignment: .leading, spacing: 22) {
                     titleRow
                     scheduleSection
-                    // Triple the default 22pt gap (→ ~66pt) between the schedule timeline
-                    // and the Tasks header so they don't read as cramped together.
                     tasksSection
-                        .padding(.top, 44)
                     exerciseSection
                     Color.clear.frame(height: 32)              // [#41] bottom inset
                     // Keyboard safety-gap room (= keyboard height). SwiftUI avoidance
@@ -209,7 +209,7 @@ struct TodayView: View {
                 navButton("arrow.right") { vm.goToNextDay() }
                 Button { if dismissAddIfOpen() { return }; vm.goToToday() } label: {
                     DSText("Today").dsTextStyle(.subheadline)
-                        .frame(height: 30)   // match the nav buttons' height [owner]
+                        .frame(height: 44)   // full top-bar height, not just the text [owner]
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain)
                 .a11yTapBorder(cornerRadius: 4)
@@ -256,19 +256,11 @@ struct TodayView: View {
         AppDateFormat.weekdayMonthDayYear(vm.viewingDate)
     }
 
-    // MARK: - Section header (underlined)
+    // MARK: - Section header
 
-    /// Underlined headline shared by the Schedule / Tasks / Exercise sections, so the
-    /// three headers stay identical. The rule is sized to the text (fixedSize) and sits
-    /// just under the baseline.
+    /// Plain headline shared by the Schedule / Tasks / Exercise sections (no underline).
     private func sectionHeader(_ title: String) -> some View {
         DSText(title).dsTextStyle(.headline)
-            .fixedSize()
-            .overlay(alignment: .bottomLeading) {
-                Rectangle().fill(Color.primary.opacity(0.85))
-                    .frame(height: 1.5)
-                    .offset(y: 4)
-            }
     }
 
     // MARK: - Schedule
@@ -287,7 +279,7 @@ struct TodayView: View {
     // MARK: - Tasks
 
     private var tasksSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             sectionHeader("Tasks")
 
             taskList
