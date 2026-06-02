@@ -1,5 +1,6 @@
 import SwiftUI
 import EventKit
+import DSKit
 
 // MARK: - Month day cell
 
@@ -23,14 +24,12 @@ struct MonthDayCell: View {
                             .fill(Color.accentColor.opacity(0.15))
                             .frame(width: 30, height: 30)
                     }
-                    Text("\(Calendar.current.component(.day, from: day))")
-                        .font(appFont(17))
-                        .foregroundStyle(
+                    DSText("\(Calendar.current.component(.day, from: day))")
+                        .dsTextStyle(.body,
                             isSelected ? .white :
                             isToday ? Color.accentColor :
                             Color.primary
                         )
-                        .fontWeight(isToday ? .semibold : .regular)
                 }
                 if hasEvents {
                     Circle()
@@ -64,26 +63,21 @@ struct EventRowView: View {
                     .clipShape(Capsule())
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(event.title ?? "(No title)")
-                        .font(appFont(17))
-                        .foregroundStyle(Color.primary)
+                    DSText(event.title ?? "(No title)")
+                        .dsTextStyle(.body)
                         .lineLimit(1)
                     if !event.isAllDay {
-                        Text("\(event.startDate, format: .dateTime.hour().minute()) – \(event.endDate, format: .dateTime.hour().minute())")
-                            .font(appFont(11))
-                            .foregroundStyle(Color.secondary)
+                        DSText("\(clockString(date: event.startDate)) – \(clockString(date: event.endDate))")
+                            .dsTextStyle(.caption1)
                     } else {
-                        Text("All day")
-                            .font(appFont(11))
-                            .foregroundStyle(Color.secondary)
+                        DSText("All day")
+                            .dsTextStyle(.caption1)
                     }
                 }
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.secondary)
+                DSImageView(systemName: "chevron.right", size: .font(.caption1), tint: .color(.secondary))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -110,7 +104,7 @@ struct DayEventBlock: View {
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                 if !event.isAllDay {
-                    Text("\(event.startDate, format: .dateTime.hour().minute())")
+                    Text(clockString(date: event.startDate))
                         .font(appFont(11))
                         .foregroundStyle(.secondary)
                 }

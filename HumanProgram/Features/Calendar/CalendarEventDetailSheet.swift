@@ -1,6 +1,7 @@
 import SwiftUI
 import EventKit
 import SwiftData
+import DSKit
 
 /// Sheet showing event detail with local override controls.
 /// Does NOT modify the underlying EKEvent — all local state goes through CalendarLocalStateRepository.
@@ -49,7 +50,7 @@ struct CalendarEventDetailSheet: View {
             // left, Done on the right; pushed down from the top edge.
             HStack {
                 Button { onEdit() } label: {
-                    Text("Edit").font(appFont(18)).foregroundStyle(Color.accentColor)
+                    DSText("Edit").dsTextStyle(.body, Color.accentColor)
                         .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
                         .contentShape(Rectangle())
                 }
@@ -57,7 +58,7 @@ struct CalendarEventDetailSheet: View {
                 .a11yTapBorder(Rectangle())
                 Spacer()
                 Button { dismiss() } label: {
-                    Text("Done").font(appFont(18)).foregroundStyle(Color.accentColor)
+                    DSText("Done").dsTextStyle(.body, Color.accentColor)
                         .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
                         .contentShape(Rectangle())
                 }
@@ -87,13 +88,11 @@ struct CalendarEventDetailSheet: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // Title: use override if set, otherwise event title
                     let displayTitle = titleOverride.isEmpty ? (event.title ?? "(No title)") : titleOverride
-                    Text(displayTitle)
-                        .font(appFont(24, bold: true))
-                        .foregroundStyle(Color.primary)
+                    DSText(displayTitle)
+                        .dsTextStyle(.title2)
 
-                    Text(event.calendar.title)
-                        .font(appFont(14))
-                        .foregroundStyle(Color(cgColor: event.calendar.cgColor))
+                    DSText(event.calendar.title)
+                        .dsTextStyle(.subheadline, Color(cgColor: event.calendar.cgColor))
                 }
 
                 Spacer()
@@ -110,23 +109,18 @@ struct CalendarEventDetailSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             // Date / time
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "clock")
-                    .font(.system(size: 18))
-                    .foregroundStyle(Color.secondary)
+                DSImageView(systemName: "clock", size: 18, tint: .color(.secondary))
                     .frame(width: 20)
 
                 if event.isAllDay {
-                    Text("All day · \(event.startDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())")
-                        .font(appFont(17))
-                        .foregroundStyle(Color.primary)
+                    DSText("All day · \(event.startDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))")
+                        .dsTextStyle(.body)
                 } else {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(event.startDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())
-                            .font(appFont(17))
-                            .foregroundStyle(Color.primary)
-                        Text("\(event.startDate, format: .dateTime.hour().minute()) – \(event.endDate, format: .dateTime.hour().minute())")
-                            .font(appFont(14))
-                            .foregroundStyle(Color.secondary)
+                        DSText(event.startDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))
+                            .dsTextStyle(.body)
+                        DSText("\(clockString(date: event.startDate)) – \(clockString(date: event.endDate))")
+                            .dsTextStyle(.subheadline)
                     }
                 }
             }
@@ -135,26 +129,20 @@ struct CalendarEventDetailSheet: View {
             let notes = localState?.notesOverride ?? event.notes
             if let notes = notes, !notes.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "note.text")
-                        .font(.system(size: 18))
-                        .foregroundStyle(Color.secondary)
+                    DSImageView(systemName: "note.text", size: 18, tint: .color(.secondary))
                         .frame(width: 20)
-                    Text(notes)
-                        .font(appFont(17))
-                        .foregroundStyle(Color.primary)
+                    DSText(notes)
+                        .dsTextStyle(.body)
                 }
             }
 
             // Location
             if let location = event.location, !location.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "location")
-                        .font(.system(size: 18))
-                        .foregroundStyle(Color.secondary)
+                    DSImageView(systemName: "location", size: 18, tint: .color(.secondary))
                         .frame(width: 20)
-                    Text(location)
-                        .font(appFont(17))
-                        .foregroundStyle(Color.primary)
+                    DSText(location)
+                        .dsTextStyle(.body)
                 }
             }
         }
@@ -168,10 +156,8 @@ struct CalendarEventDetailSheet: View {
         // Card-less section (matches the Add-event editor look). [#31/#32/#34/#35]
         VStack(alignment: .leading, spacing: 0) {
             // Section header — "OVERRIDES" only (no "Affects Today only").
-            Text("OVERRIDES")
-                .font(appFont(13, bold: true))
-                .foregroundStyle(Color.secondary)
-                .kerning(0.5)
+            DSText("OVERRIDES")
+                .dsTextStyle(.caption1)
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
                 .padding(.bottom, 10)
@@ -180,9 +166,8 @@ struct CalendarEventDetailSheet: View {
 
                 // Display title override — card-less plain field. [#33/#34]
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Display title")
-                        .font(appFont(15))
-                        .foregroundStyle(Color.secondary)
+                    DSText("Display title")
+                        .dsTextStyle(.subheadline)
 
                     HStack(spacing: 8) {
                         TextField("Same as event title", text: $titleOverride)
@@ -196,8 +181,8 @@ struct CalendarEventDetailSheet: View {
                                 titleOverride = ""
                                 saveTitleOverride()
                             } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(Color.secondary)
+                                DSImageView(systemName: "xmark.circle.fill", size: .font(.body),
+                                            tint: .color(.secondary))
                                     .contentShape(Circle())
                             }
                             .a11yTapBorder(Circle())
@@ -205,10 +190,10 @@ struct CalendarEventDetailSheet: View {
                     }
 
                     if !titleOverride.isEmpty {
-                        Button("Save title") { saveTitleOverride() }
-                            .font(appFont(17))
-                            .foregroundStyle(Color.accentColor)
-                            .a11yTapBorder(cornerRadius: 4)
+                        Button { saveTitleOverride() } label: {
+                            DSText("Save title").dsTextStyle(.body, Color.accentColor)
+                        }
+                        .a11yTapBorder(cornerRadius: 4)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -227,9 +212,8 @@ struct CalendarEventDetailSheet: View {
             }
 
             if let error = errorMessage {
-                Text(error)
-                    .font(appFont(14))
-                    .foregroundStyle(Color.red)
+                DSText(error)
+                    .dsTextStyle(.subheadline, Color.red)
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
             }
@@ -285,18 +269,14 @@ private struct OverrideToggleRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 18))
-                .foregroundStyle(Color.secondary)
+            DSImageView(systemName: icon, size: 18, tint: .color(.secondary))
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(appFont(17))
-                    .foregroundStyle(Color.primary)
-                Text(caption)
-                    .font(appFont(14))
-                    .foregroundStyle(Color.secondary)
+                DSText(label)
+                    .dsTextStyle(.body)
+                DSText(caption)
+                    .dsTextStyle(.subheadline)
             }
 
             Spacer()

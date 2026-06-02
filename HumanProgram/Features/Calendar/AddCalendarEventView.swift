@@ -114,8 +114,7 @@ struct AddCalendarEventView: View {
     var body: some View {
         SettingsScreen(centered: true, trailing: {
             Button { saveEvent() } label: {
-                Text(isEditing ? "Save" : "Add").font(appFont(18))
-                    .foregroundStyle(canSave ? .primary : .secondary)
+                DSText(isEditing ? "Save" : "Add").dsTextStyle(.body, canSave ? Color.primary : Color.secondary)
                     .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
                     .contentShape(Rectangle())
                     .a11yTapBorder(Rectangle())
@@ -189,8 +188,9 @@ struct AddCalendarEventView: View {
                 menu()
             } label: {
                 HStack(spacing: 4) {
-                    Text(value).font(appFont(17)).foregroundStyle(.primary)
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 12)).foregroundStyle(.secondary)
+                    DSText(value).dsTextStyle(.body)
+                    DSImageView(systemName: "chevron.up.chevron.down", size: .font(.caption1),
+                                tint: .color(.secondary))
                 }
                 .contentShape(Rectangle())
             }.tint(.primary)

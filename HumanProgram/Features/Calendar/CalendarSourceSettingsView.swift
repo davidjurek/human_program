@@ -175,8 +175,9 @@ private struct CalendarSelectRow: View {
 // MARK: - Centered message state (permission / empty)
 
 /// A centered icon + title + message with an optional capsule action button.
-/// Reused for the calendar permission-request, denied, and empty states.
-private struct CalendarMessageState: View {
+/// Reused for the calendar permission-request, denied, and empty states — here
+/// and in `CalendarView` (so the two screens' permission UX stays in one place).
+struct CalendarMessageState: View {
     let icon: String
     let title: String
     let message: String

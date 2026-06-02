@@ -46,13 +46,13 @@ Done before the "10 big items" plan, as low-risk cleanups:
 | #8 | `occurrenceLimit` expansion O(range×origin) → O(range) | ✅ done + test | `9d852f1` |
 | #4 | Backup field-coverage safety net | ✅ done + test | `8a47d97` |
 
-### Phase 3 — the two big, delicate ones — 🟡 partly done
+### Phase 3 — the two big, delicate ones — ✅ all done
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | #1 | Shared editor engine — **toolbar Save/Delete buttons** | ✅ done | `dc1dafa` — pure views |
 | #1 | Shared editor engine — **keypad HHMM rule** (`TimeKeypad`) | ✅ done + tests | `0b8d636` — pure logic |
 | #1 | Shared editor engine — **drag-reorder + swipe-delete state machine** | ✅ done | One `RowGestureCoordinator` + `EditableRow` + `.rowGestures()` (`EditableRowList.swift`); Schedule, Exercise, Today **and Routines** all consume it (Routines was a 4th hand-rolled copy with no reorder animation + an ungated trash). Tap-tested on device. Fixed: small-swipe-as-tap + accidental-delete-on-pull via deterministic suppression in the coordinator. |
-| #9 | Calendar DSKit migration (`CalendarView` + `CalendarEventDetailSheet`) | ⬜ deferred | Reflow-sensitive; simulator has **no calendar events**, so event rendering + the font-scale change can't be verified by the agent. Do in a pairing session against the real calendar. |
+| #9 | Calendar DSKit migration (`CalendarView` + `CalendarEventDetailSheet`) | ✅ done | Migrated the scalable chrome (nav headers, month grid, agenda/day-list rows, detail sheet, add/edit form, permission states → shared `CalendarMessageState`) to `DSText`/`DSImageView`; event times now route through `clockString` (12/24h setting). The pixel-tuned Week/Day timeline (hour gutter, event chips, now-pill, column header, all-day chips) is deliberately kept fixed-size so it doesn't reflow with the font-scale setting — same rule as Today's gutter. Eyeballed on device against a real calendar. |
 
 **To resume the deferred work:** start a session and say *"let's do #1"* or *"let's do #9"* — I tap/eyeball alongside you, piece by piece.
 

@@ -157,61 +157,33 @@ struct CalendarView: View {
     // MARK: - Auth states
 
     private var permissionRequestView: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            Image(systemName: "calendar.badge.exclamationmark")
-                .font(.system(size: 48))
-                .foregroundStyle(Color.secondary)
-            Text("Calendar Access Needed")
-                .font(appFont(17))
-                .foregroundStyle(Color.primary)
-            Text("Grant access so Human Program can display your calendar events.")
-                .font(appFont(14))
-                .foregroundStyle(Color.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button("Grant Calendar Access") {
+        CalendarMessageState(
+            icon: "calendar.badge.exclamationmark",
+            title: "Calendar Access Needed",
+            message: "Grant access so Human Program can display your calendar events.",
+            actionTitle: "Grant Calendar Access",
+            action: {
                 Task {
                     _ = await calendarService.requestAccess()
                     authStatus = calendarService.authorizationStatus
                     if calendarService.isAuthorized { loadEvents() }
                 }
             }
-            .font(appFont(16))
-            .foregroundStyle(Color.accentColor)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 10)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor, lineWidth: 1))
-            Spacer()
-        }
+        )
     }
 
     private var permissionDeniedView: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            Image(systemName: "calendar.badge.exclamationmark")
-                .font(.system(size: 48))
-                .foregroundStyle(Color.secondary)
-            Text("Calendar Access Denied")
-                .font(appFont(17))
-                .foregroundStyle(Color.primary)
-            Text("Open Settings to allow calendar access for Human Program.")
-                .font(appFont(14))
-                .foregroundStyle(Color.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button("Open Settings") {
+        CalendarMessageState(
+            icon: "calendar.badge.exclamationmark",
+            title: "Calendar Access Denied",
+            message: "Open Settings to allow calendar access for Human Program.",
+            actionTitle: "Open Settings",
+            action: {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)
                 }
             }
-            .font(appFont(16))
-            .foregroundStyle(Color.accentColor)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 10)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accentColor, lineWidth: 1))
-            Spacer()
-        }
+        )
     }
 
     // MARK: - Calendar content
@@ -256,9 +228,8 @@ struct CalendarView: View {
     private var monthNavHeader: some View {
         HStack {
             Spacer()
-            Text(displayedMonthStart, format: .dateTime.month(.wide).year())
-                .font(appFont(20, bold: true))
-                .foregroundStyle(Color.primary)
+            DSText(displayedMonthStart.formatted(.dateTime.month(.wide).year()))
+                .dsTextStyle(.title3)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -267,10 +238,9 @@ struct CalendarView: View {
 
     private var weekdayHeaderRow: some View {
         HStack(spacing: 0) {
-            ForEach(["S", "M", "T", "W", "T", "F", "S"], id: \.self) { day in
-                Text(day)
-                    .font(appFont(13, bold: true))
-                    .foregroundStyle(Color.secondary)
+            ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { _, day in
+                DSText(day)
+                    .dsTextStyle(.caption1)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -301,9 +271,8 @@ struct CalendarView: View {
                     }
                 } else {
                     // Filler cell from adjacent month
-                    Text(String(Calendar.current.component(.day, from: day)))
-                        .font(appFont(17))
-                        .foregroundStyle(Color.gray.opacity(0.4))
+                    DSText(String(Calendar.current.component(.day, from: day)))
+                        .dsTextStyle(.body, Color.gray.opacity(0.4))
                         .frame(maxWidth: .infinity, minHeight: 40)
                 }
             }
@@ -315,17 +284,15 @@ struct CalendarView: View {
         let dayEvents = eventsForDay(selectedDate)
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(selectedDate, format: .dateTime.weekday(.wide).month(.abbreviated).day())
-                    .font(appFont(15, bold: true))
-                    .foregroundStyle(Color.primary)
+                DSText(selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                    .dsTextStyle(.headline)
                 Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             if dayEvents.isEmpty {
-                Text("No events")
-                    .font(appFont(14))
-                    .foregroundStyle(Color.secondary)
+                DSText("No events")
+                    .dsTextStyle(.subheadline)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
             } else {
@@ -379,9 +346,8 @@ struct CalendarView: View {
         let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: displayedWeekStart) ?? displayedWeekStart
         return HStack {
             Spacer()
-            Text("\(displayedWeekStart, format: .dateTime.month(.abbreviated).day()) – \(weekEnd, format: .dateTime.month(.abbreviated).day().year())")
-                .font(appFont(20, bold: true))
-                .foregroundStyle(Color.primary)
+            DSText("\(displayedWeekStart.formatted(.dateTime.month(.abbreviated).day())) – \(weekEnd.formatted(.dateTime.month(.abbreviated).day().year()))")
+                .dsTextStyle(.title3)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -511,9 +477,8 @@ struct CalendarView: View {
     private func dayNavHeader(day selectedDate: Date) -> some View {
         HStack {
             Spacer()
-            Text(selectedDate, format: .dateTime.weekday(.wide).month(.abbreviated).day().year())
-                .font(appFont(20, bold: true))
-                .foregroundStyle(Color.primary)
+            DSText(selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))
+                .dsTextStyle(.title3)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -624,7 +589,7 @@ struct CalendarView: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 if daysWithEvents.isEmpty {
-                    Text("No events").font(appFont(14)).foregroundStyle(Color.secondary)
+                    DSText("No events").dsTextStyle(.subheadline)
                         .frame(maxWidth: .infinity).padding(.top, 60)
                 } else {
                     LazyVStack(alignment: .leading, pinnedViews: [.sectionHeaders]) {
@@ -646,9 +611,8 @@ struct CalendarView: View {
                                 .padding(.bottom, 8)
                             } header: {
                                 HStack {
-                                    Text(day, format: .dateTime.weekday(.wide).month(.abbreviated).day())
-                                        .font(appFont(15, bold: true))
-                                        .foregroundStyle(cal.isDateInToday(day) ? Color.accentColor : Color.primary)
+                                    DSText(day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                                        .dsTextStyle(.headline, cal.isDateInToday(day) ? Color.accentColor : Color.primary)
                                     Spacer()
                                 }
                                 .padding(.horizontal, 16)
@@ -846,7 +810,7 @@ struct CalendarView: View {
                                     RoundedRectangle(cornerRadius: 2)
                                         .fill(Color(cgColor: e.calendar.cgColor))
                                         .frame(width: 4, height: 20)
-                                    Text(e.title ?? "").font(appFont(16)).foregroundStyle(.primary)
+                                    DSText(e.title ?? "").dsTextStyle(.body)
                                         .lineLimit(1)
                                     Spacer(minLength: 8)
                                 }
