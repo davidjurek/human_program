@@ -23,11 +23,12 @@ struct StatsView: View {
     }
 
     var body: some View {
-        ZStack {
+        let pageIndex = pageByDate          // build the date→page index ONCE per render
+        return ZStack {
             SettingsBackground()
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    weekSection                                    // [#36] Tasks Done on top
+                    weekSection(pageIndex)                         // [#36] Tasks Done on top
                     streakRow(title: "Completion Streak", runs: completionRuns)
                     streakRow(title: "Exercise Streak", runs: exerciseRuns)
                     Color.clear.frame(height: 40)
@@ -110,12 +111,14 @@ struct StatsView: View {
 
     // MARK: - Streak runs (consecutive qualifying days, with date ranges)
 
-    private func runs(qualifies: (Date) -> Bool) -> [StreakRun] {
-        let dates = allPages.map { cal.startOfDay(for: $0.date) }.sorted()
+    private func runs(qualifies: (DailyPage) -> Bool) -> [StreakRun] {
+        // allPages is already ascending by date (@Query sort), so iterate it directly —
+        // no date→page dictionary and no re-sort needed.
         var result: [StreakRun] = []
         var start: Date?
         var last: Date?
-        for d in dates where qualifies(d) {
+        for page in allPages where qualifies(page) {
+            let d = cal.startOfDay(for: page.date)
             if let l = last, cal.date(byAdding: .day, value: 1, to: l) == d {
                 last = d
             } else {
@@ -128,13 +131,12 @@ struct StatsView: View {
     }
 
     private var completionRuns: [StreakRun] {
-        runs { pageByDate[$0]?.dayComplete == true }
+        runs { $0.dayComplete }
     }
 
     private var exerciseRuns: [StreakRun] {
-        runs { d in
-            guard let page = pageByDate[d] else { return false }
-            return page.tasks.contains { $0.completed && $0.title.lowercased().contains("exercise") }
+        runs { page in
+            page.tasks.contains { $0.completed && $0.title.lowercased().contains("exercise") }
         }
     }
 
@@ -146,11 +148,11 @@ struct StatsView: View {
     }
     private var weekStart: Date { weekStart(offset: weekOffset) }
 
-    private func weekDays(offset: Int) -> [WeekBar] {
+    private func weekDays(offset: Int, pageIndex: [Date: DailyPage]) -> [WeekBar] {
         let ws = weekStart(offset: offset)
         return (0..<7).map { off in
             let day = cal.date(byAdding: .day, value: off, to: ws)!
-            let page = pageByDate[cal.startOfDay(for: day)]
+            let page = pageIndex[cal.startOfDay(for: day)]
             let done = page?.tasks.filter { $0.completed }.count ?? 0
             return WeekBar(date: day, count: done, future: day > today)
         }
@@ -168,7 +170,7 @@ struct StatsView: View {
         min(max(0, o + (statsPageCount - 1)), statsPageCount - 1)
     }
 
-    private var weekSection: some View {
+    private func weekSection(_ pageIndex: [Date: DailyPage]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 SettingsSectionLabel(title: "Tasks Done")
@@ -179,7 +181,7 @@ struct StatsView: View {
             // Finger-tracked flip between weeks (Photos-style paging). [#5/#38]
             TabView(selection: $statsPage) {
                 ForEach(0..<statsPageCount, id: \.self) { i in
-                    weekChart(offset: offset(forStatsPage: i)).tag(i)
+                    weekChart(offset: offset(forStatsPage: i), pageIndex: pageIndex).tag(i)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
@@ -188,8 +190,8 @@ struct StatsView: View {
         }
     }
 
-    private func weekChart(offset: Int) -> some View {
-        let bars = weekDays(offset: offset)
+    private func weekChart(offset: Int, pageIndex: [Date: DailyPage]) -> some View {
+        let bars = weekDays(offset: offset, pageIndex: pageIndex)
         return Chart(bars) { bar in
             BarMark(x: .value("Day", bar.shortDay), y: .value("Done", bar.count))
                 .foregroundStyle(bar.future ? Color.secondary.opacity(0.25) : weekdaySelectedColor)
