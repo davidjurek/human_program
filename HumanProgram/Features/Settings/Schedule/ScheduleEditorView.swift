@@ -58,18 +58,11 @@ struct ScheduleEditorView: View {
     @State private var original = ScheduleSnapshot()
     @State private var didLoad = false
 
-    // Drag-to-reorder (vertical). Driven by a UIKit long-press recognizer (real
-    // 0.4s hold + small allowable movement) so it can't be triggered by a tap, a
-    // scroll, or a swipe — only a deliberate stationary hold. The recognizer
-    // reliably reports began/changed/ended/cancelled, so the pop never sticks and
-    // scrolling/tapping stay free. The array is moved once on release.
-    @State private var dragInfo: BlockDragInfo?
-    @State private var reorderRowFrames: [UUID: CGRect] = [:]   // window coords, for hit-testing
-
-    // Swipe-to-delete (horizontal)
-    @State private var swipeOpenId: UUID?              // row showing the trash
-    @State private var swipeDragId: UUID?              // row being dragged now
-    @State private var swipeDragX: CGFloat = 0
+    // Hold-to-reorder + swipe-to-delete: the shared gesture engine (see
+    // EditableRowList). All the state, geometry, thresholds and animations live in
+    // the coordinator so this screen behaves identically to the Exercise and Today
+    // lists. Wired to the block array in `body`.
+    @State private var rows = RowGestureCoordinator<UUID>(rowHeight: 60)
 
     // Inline title editing
     @State private var editingTitleId: UUID?
@@ -83,8 +76,7 @@ struct ScheduleEditorView: View {
     // SwiftUI's native avoidance can lift bottom fields above it consistently.
     @State private var keyboardSpacer: CGFloat = 0
 
-    private let rowHeight: CGFloat = 60
-    private let trashWidth: CGFloat = 72
+    private var rowHeight: CGFloat { rows.rowHeight }
     /// One coordinate space shared by the anchor tags and the popups so they
     /// line up exactly (the screen-level `.global` space was unreliable here).
     private let anchorSpace = "scheduleAnchorSpace"
@@ -160,9 +152,21 @@ struct ScheduleEditorView: View {
     // MARK: - Body
 
     var body: some View {
-        SettingsScreen(centered: true, onBack: attemptBack,
+        // Keep the shared gesture engine pointed at the CURRENT block array + edit
+        // state (reassigned each render; closures are @ObservationIgnored so this
+        // doesn't loop). One place owns the reorder/swipe/tap behaviour.
+        rows.orderedIds = { blocks.map(\.id) }
+        rows.moveRow = { from, to in
+            let moved = blocks.remove(at: from); blocks.insert(moved, at: to)
+        }
+        rows.deleteRow = { id in
+            withAnimation(.snappy(duration: 0.2)) { blocks.removeAll { $0.id == id } }
+        }
+        rows.beginEditGesture = { editingTitleId = nil; titleFieldFocused = false }
+
+        return SettingsScreen(centered: true, onBack: attemptBack,
                        swipeBackBlocked: { hasUnsavedChanges },
-                       scrollDisabled: dragInfo != nil || swipeDragId != nil,
+                       scrollDisabled: rows.isInteracting,
                        manualKeyboardAvoidance: true,
                        trailing: { editorButtons }) {
             AppTextField(text: $name, placeholder: "Schedule name", fontSize: appScaledSize(20))
@@ -236,26 +240,21 @@ struct ScheduleEditorView: View {
         // changing repeat, the name field, adding a block) auto-closes an open
         // swipe — but scrolling, which changes none of these, leaves it open.
         .onChange(of: activePicker) { _, v in
-            closeSwipeIfOpen()
+            rows.closeSwipeIfOpen()
             if v == nil, keypadVisible {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { keypadVisible = false }
             }
         }
-        .onChange(of: editingTitleId) { _, v in if v != nil { closeSwipeIfOpen() } }
-        .onChange(of: weekdays) { _, _ in closeSwipeIfOpen() }
-        .onChange(of: repeatMode) { _, _ in closeSwipeIfOpen() }
-        .onChange(of: sleepStart) { _, _ in closeSwipeIfOpen() }
-        .onChange(of: sleepEnd) { _, _ in closeSwipeIfOpen() }
-        .onChange(of: name) { _, _ in closeSwipeIfOpen() }
-        .onChange(of: newTitle) { _, _ in closeSwipeIfOpen() }
-        .onChange(of: newDuration) { _, _ in closeSwipeIfOpen() }
+        .onChange(of: editingTitleId) { _, v in if v != nil { rows.closeSwipeIfOpen() } }
+        .onChange(of: weekdays) { _, _ in rows.closeSwipeIfOpen() }
+        .onChange(of: repeatMode) { _, _ in rows.closeSwipeIfOpen() }
+        .onChange(of: sleepStart) { _, _ in rows.closeSwipeIfOpen() }
+        .onChange(of: sleepEnd) { _, _ in rows.closeSwipeIfOpen() }
+        .onChange(of: name) { _, _ in rows.closeSwipeIfOpen() }
+        .onChange(of: newTitle) { _, _ in rows.closeSwipeIfOpen() }
+        .onChange(of: newDuration) { _, _ in rows.closeSwipeIfOpen() }
         .onPreferenceChange(KeypadHeightKey.self) { keypadMeasuredHeight = $0 }
         .onAppear(perform: loadIfNeeded)
-    }
-
-    private func closeSwipeIfOpen() {
-        guard swipeOpenId != nil else { return }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipeOpenId = nil }
     }
 
     // Repeat picker — tappable value that opens a floating anchored popup.
@@ -479,40 +478,13 @@ struct ScheduleEditorView: View {
         VStack(spacing: 0) {
             sleepRow
             ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
-                blockRow(block: block, index: index)
-                    // Report each row's window frame so the reorder recognizer
-                    // can tell which row a long-press landed on.
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: RowFrameKey<UUID>.self,
-                                                   value: [block.id: proxy.frame(in: .global)])
-                        }
-                    )
+                EditableRow(coordinator: rows, id: block.id, index: index) {
+                    blockRowContent(block: block, index: index)
+                }
             }
         }
-        .onPreferenceChange(RowFrameKey<UUID>.self) { reorderRowFrames = $0 }
-        // UIKit long-press drives reorder (reliable delay; never fires on tap/
-        // scroll/swipe). Installed on the enclosing scroll view.
-        .background(
-            ReorderRecognizer(
-                rowFrames: reorderRowFrames,
-                onBegan: beginReorder,
-                onChanged: { dy in dragInfo?.dy = dy },
-                onEnded: endReorder,
-                onCancelled: { dragInfo = nil }
-            )
-        )
-        // UIKit pan drives swipe-to-delete. It only begins for horizontal drags,
-        // so vertical drags fall through to native scrolling.
-        .background(
-            SwipePanRecognizer(
-                rowFrames: reorderRowFrames,
-                canStart: { dragInfo == nil },
-                onBegan: swipeBegan,
-                onChanged: swipeChanged,
-                onEnded: swipeEnded
-            )
-        )
+        // ONE shared install of the reorder + swipe recognizers (see EditableRowList).
+        .rowGestures(rows)
         // Leaving the title field (tapped elsewhere / keyboard dismissed) ends edit.
         .onChange(of: titleFieldFocused) { _, focused in
             if !focused { editingTitleId = nil }
@@ -526,56 +498,6 @@ struct ScheduleEditorView: View {
         // native avoidance (only fires for text fields — the wheel uses the
         // custom keypad, which isn't a system keyboard).
         .keyboardSpacer($keyboardSpacer)
-    }
-
-    private func swipeBegan(_ id: UUID) {
-        if swipeOpenId != id, swipeOpenId != nil {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipeOpenId = nil }
-        }
-        editingTitleId = nil
-        titleFieldFocused = false
-        swipeDragId = id
-        swipeDragX = 0
-    }
-
-    private func swipeChanged(_ tx: CGFloat) {
-        guard swipeDragId != nil else { return }
-        swipeDragX = tx
-    }
-
-    private func swipeEnded(_ tx: CGFloat, _ vx: CGFloat) {
-        guard let id = swipeDragId else { return }
-        let base: CGFloat = (swipeOpenId == id) ? -trashWidth : 0
-        let total = base + tx
-        // No swipe-to-delete: just snap open or closed. Delete is via the trash.
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-            swipeOpenId = (total < -trashWidth / 2) ? id : nil
-            swipeDragId = nil
-            swipeDragX = 0
-        }
-    }
-
-    private func beginReorder(_ id: UUID) {
-        // Close any open swipe and end title editing; pop + haptic.
-        swipeOpenId = nil
-        editingTitleId = nil
-        titleFieldFocused = false
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.snappy(duration: 0.18)) { dragInfo = BlockDragInfo(id: id, dy: 0) }
-    }
-
-    private func endReorder(_ dy: CGFloat) {
-        guard let info = dragInfo, let base = blocks.firstIndex(where: { $0.id == info.id }) else {
-            dragInfo = nil; return
-        }
-        let proj = projectedIndex(from: base, dy: dy)
-        withAnimation(.snappy(duration: 0.22)) {
-            if proj != base {
-                let moved = blocks.remove(at: base)
-                blocks.insert(moved, at: proj)
-            }
-            dragInfo = nil
-        }
     }
 
     /// Sleep — fixed first, not draggable / deletable / renamable. Its duration
@@ -594,43 +516,6 @@ struct ScheduleEditorView: View {
         .padding(.vertical, 8)
         .frame(height: rowHeight)
         .contentShape(Rectangle())
-    }
-
-    private func blockRow(block: DraftBlock, index: Int) -> some View {
-        let isDragging = dragInfo?.id == block.id
-        let shiftY = shiftOffset(forIndex: index)
-
-        return GeometryReader { geo in
-            // Content + trash lane move together and the row is clipped, so the
-            // red circle slides IN from the right edge as you swipe (it never
-            // flashes in over the content).
-            HStack(spacing: 0) {
-                blockRowContent(block: block, index: index)
-                    .frame(width: geo.size.width, height: rowHeight)
-                Button { deleteBlock(id: block.id) } label: {
-                    ZStack {
-                        Circle().fill(Color.red).frame(width: 40, height: 40)
-                        Image(systemName: "trash")
-                            .font(.system(size: 17)).foregroundStyle(.white)
-                    }
-                    .frame(width: trashWidth, height: rowHeight)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            .offset(x: swipeOffset(for: block.id))
-            .frame(width: geo.size.width, height: rowHeight, alignment: .leading)
-            .clipped()
-        }
-        .frame(height: rowHeight)
-        .offset(y: isDragging ? (dragInfo?.dy ?? 0) : shiftY)
-        .animation(.snappy(duration: 0.2), value: isDragging)
-        .animation(isDragging ? nil : .snappy(duration: 0.2), value: shiftY)
-        .scaleEffect(isDragging ? 1.04 : 1)
-        .shadow(color: .black.opacity(isDragging ? 0.18 : 0), radius: 8, y: 4)
-        .zIndex(isDragging ? 1 : 0)
-        // Reorder (long-press) and swipe-to-delete (horizontal pan) are both UIKit
-        // recognizers installed in blockList, so vertical drags scroll natively.
     }
 
     private func blockRowContent(block: DraftBlock, index: Int) -> some View {
@@ -676,9 +561,10 @@ struct ScheduleEditorView: View {
         .contentShape(Rectangle())
     }
 
-    /// Clean tap on the title/time → edit the title inline (or close an open swipe).
+    /// Clean tap on the title/time → edit the title inline. `consumeTap()` absorbs
+    /// the tap if a swipe engaged or an open row needs closing first.
     private func tapTitle(_ block: DraftBlock) {
-        if swipeOpenId != nil { closeSwipe(); return }
+        guard rows.consumeTap() else { return }
         // If editing a DIFFERENT title, or a keypad/popup is open, just dismiss.
         if editingTitleId != block.id, dismissOpenInputIfAny() { return }
         editingTitleId = block.id
@@ -686,48 +572,12 @@ struct ScheduleEditorView: View {
         DispatchQueue.main.async { titleFieldFocused = true }
     }
 
-    /// Clean tap on the duration → open the wheel popup (or close an open swipe).
+    /// Clean tap on the duration → open the wheel popup.
     private func tapDuration(_ block: DraftBlock) {
-        if swipeOpenId != nil { closeSwipe(); return }
+        guard rows.consumeTap() else { return }
         if dismissOpenInputIfAny() { return }
         activePicker = .blockDuration(block.id)
     }
-
-    // MARK: - Reorder / swipe geometry
-
-    private func projectedIndex(from base: Int, dy: CGFloat) -> Int {
-        let shift = Int((dy / rowHeight).rounded())
-        return max(0, min(blocks.count - 1, base + shift))
-    }
-
-    /// Offset that makes room for the dragged row by shifting the rows it has
-    /// passed over (the array isn't mutated until the drag ends).
-    private func shiftOffset(forIndex i: Int) -> CGFloat {
-        guard let info = dragInfo,
-              let base = blocks.firstIndex(where: { $0.id == info.id }),
-              base != i else { return 0 }
-        let proj = projectedIndex(from: base, dy: info.dy)
-        if base < proj, (base + 1 ... proj).contains(i) { return -rowHeight }
-        if proj < base, (proj ..< base).contains(i) { return rowHeight }
-        return 0
-    }
-
-    /// Live horizontal offset. Clamps at the open position (no full-swipe), with
-    /// a little rubber-band past it.
-    private func swipeOffset(for id: UUID) -> CGFloat {
-        let base: CGFloat = (swipeOpenId == id) ? -trashWidth : 0
-        let raw = base + ((swipeDragId == id) ? swipeDragX : 0)
-        if raw < -trashWidth {
-            // Rubber-band resistance past the open position.
-            return -trashWidth - (-trashWidth - raw) * 0.2
-        }
-        return min(0, raw)
-    }
-
-    private func closeSwipe() {
-        withAnimation(.snappy(duration: 0.2)) { swipeOpenId = nil }
-    }
-
 
     // MARK: - Add-block row
 
@@ -781,13 +631,6 @@ struct ScheduleEditorView: View {
         blocks.append(DraftBlock(title: newTitle.trimmingCharacters(in: .whitespaces), duration: newDuration))
         newTitle = ""
         newDuration = 60
-    }
-
-    private func deleteBlock(id: UUID) {
-        withAnimation(.snappy(duration: 0.2)) {
-            blocks.removeAll { $0.id == id }
-            swipeOpenId = nil
-        }
     }
 
     // MARK: - Reusable value row (label + tappable value that opens a popup)
@@ -904,7 +747,7 @@ struct ScheduleEditorView: View {
         fromDate = Calendar.current.startOfDay(for: Date())
         toDate = fromDate
         conflictMessage = nil
-        swipeOpenId = nil
+        rows.swipeOpenId = nil
     }
 
     private func deleteSchedule() {
@@ -944,12 +787,6 @@ struct DraftBlock: Identifiable, Equatable, Hashable {
     var title: String
     var duration: Int   // minutes
     var colorHex: String? = nil   // assigned block colour [#20]
-}
-
-/// Transient drag-reorder state. Driven by the UIKit reorder recognizer.
-struct BlockDragInfo: Equatable {
-    var id: UUID
-    var dy: CGFloat
 }
 
 /// Snapshot of the editable fields, to detect unsaved changes.

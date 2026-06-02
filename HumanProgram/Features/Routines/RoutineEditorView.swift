@@ -18,11 +18,11 @@ struct RoutineEditorView: View {
     @State private var emoji = ""
     @State private var items: [DraftRoutineItem] = []
     @State private var newText = ""
-    @State private var dragInfo: RDrag?
-    @State private var reorderRowFrames: [UUID: CGRect] = [:]
-    @State private var swipeOpenId: UUID?
-    @State private var swipeDragX: CGFloat = 0
-    @State private var swipeDragId: UUID?
+    // Hold-to-reorder + swipe-to-delete: the SAME shared gesture engine the Schedule,
+    // Exercise and Today lists use (see EditableRowList). Wired in `body`. This was
+    // the last screen still re-deriving the gesture combo by hand — which is why its
+    // reorder lacked the smooth animation and a small swipe could mis-fire.
+    @State private var rows = RowGestureCoordinator<UUID>(rowHeight: 56)
     @State private var editingTitleId: UUID?
     @FocusState private var titleFocused: Bool
     @State private var keyboardSpacer: CGFloat = 0
@@ -30,8 +30,6 @@ struct RoutineEditorView: View {
     @State private var showDiscard = false
     @State private var discarded = false
 
-    private let rowHeight: CGFloat = 56
-    private let trashWidth: CGFloat = 68
     private var repo: RoutineRepository { RoutineRepository(context: context) }
 
     private var isDirty: Bool {
@@ -51,10 +49,23 @@ struct RoutineEditorView: View {
     }
 
     var body: some View {
-        SettingsScreen(centered: true,
+        // Point the shared gesture engine at the current item array + edit state.
+        // Reorder/swipe are gated to edit mode via canInteract.
+        rows.orderedIds = { items.map(\.id) }
+        rows.moveRow = { from, to in
+            let moved = items.remove(at: from); items.insert(moved, at: to)
+            if let r = working { try? repo.reorderItems(items.map { $0.item }, in: r) }
+        }
+        rows.deleteRow = { id in
+            if let it = items.first(where: { $0.id == id }) { deleteItem(it) }
+        }
+        rows.beginEditGesture = { commitTitleEditing(); editingTitleId = nil; titleFocused = false }
+        rows.canInteract = { editing }
+
+        return SettingsScreen(centered: true,
                        onBack: handleBack,
                        swipeBackBlocked: { isDirty },
-                       scrollDisabled: dragInfo != nil || swipeDragId != nil,
+                       scrollDisabled: rows.isInteracting,
                        manualKeyboardAvoidance: true,
                        trailing: { trailing }) {
             if editing {
@@ -123,48 +134,15 @@ struct RoutineEditorView: View {
                 EmptyView()
             } else {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, it in
-                    row(it: it, index: index)
-                        .background(GeometryReader { p in
-                            Color.clear.preference(key: RowFrameKey<UUID>.self, value: [it.id: p.frame(in: .global)])
-                        })
+                    EditableRow(coordinator: rows, id: it.id, index: index) {
+                        rowFace(it: it)
+                    }
                 }
             }
         }
-        .onPreferenceChange(RowFrameKey<UUID>.self) { reorderRowFrames = $0 }
-        .background(editing ? AnyView(reorderAndSwipe) : AnyView(Color.clear))
+        .rowGestures(rows)
         .background(KeyboardScrollNudge())
         .keyboardSpacer($keyboardSpacer)
-    }
-
-    private var reorderAndSwipe: some View {
-        ZStack {
-            ReorderRecognizer(rowFrames: reorderRowFrames, onBegan: beginReorder,
-                              onChanged: { dy in dragInfo?.dy = dy }, onEnded: endReorder,
-                              onCancelled: { dragInfo = nil })
-            SwipePanRecognizer(rowFrames: reorderRowFrames, canStart: { dragInfo == nil },
-                               onBegan: swipeBegan, onChanged: { swipeDragX = $0 }, onEnded: swipeEnded)
-        }
-    }
-
-    private func row(it: DraftRoutineItem, index: Int) -> some View {
-        let dragging = dragInfo?.id == it.id
-        return GeometryReader { geo in
-            HStack(spacing: 0) {
-                rowFace(it: it).frame(width: geo.size.width, height: rowHeight)
-                Button { deleteItem(it) } label: {
-                    ZStack { Circle().fill(Color.red).frame(width: 38, height: 38)
-                        Image(systemName: "trash").font(.system(size: 16)).foregroundStyle(.white) }
-                        .frame(width: trashWidth, height: rowHeight).contentShape(Rectangle())
-                }.buttonStyle(.plain)
-            }
-            .offset(x: swipeOffset(it.id))
-            .frame(width: geo.size.width, height: rowHeight, alignment: .leading)
-            .clipped()
-        }
-        .frame(height: rowHeight)
-        .offset(y: dragging ? (dragInfo?.dy ?? 0) : shiftOffset(index))
-        .scaleEffect(dragging ? 1.04 : 1)
-        .zIndex(dragging ? 1 : 0)
     }
 
     private func rowFace(it: DraftRoutineItem) -> some View {
@@ -179,7 +157,7 @@ struct RoutineEditorView: View {
             }
             Spacer()
         }
-        .padding(.vertical, 8).frame(height: rowHeight)
+        .padding(.vertical, 8).frame(height: rows.rowHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture { if editing { tapText(it) } }
@@ -207,52 +185,9 @@ struct RoutineEditorView: View {
     }
 
     private func tapText(_ it: DraftRoutineItem) {
-        if swipeOpenId != nil { withAnimation { swipeOpenId = nil }; return }
+        guard rows.consumeTap() else { return }
         editingTitleId = it.id
         DispatchQueue.main.async { titleFocused = true }
-    }
-
-    private func swipeOffset(_ id: UUID) -> CGFloat {
-        let base: CGFloat = (swipeOpenId == id) ? -trashWidth : 0
-        let raw = base + ((swipeDragId == id) ? swipeDragX : 0)
-        return raw < -trashWidth ? -trashWidth - (-trashWidth - raw) * 0.2 : min(0, raw)
-    }
-    private func shiftOffset(_ i: Int) -> CGFloat {
-        guard let info = dragInfo, let base = items.firstIndex(where: { $0.id == info.id }), base != i else { return 0 }
-        let proj = projected(base, info.dy)
-        if base < proj, (base + 1 ... proj).contains(i) { return -rowHeight }
-        if proj < base, (proj ..< base).contains(i) { return rowHeight }
-        return 0
-    }
-    private func projected(_ base: Int, _ dy: CGFloat) -> Int {
-        max(0, min(items.count - 1, base + Int((dy / rowHeight).rounded())))
-    }
-
-    private func beginReorder(_ id: UUID) {
-        swipeOpenId = nil; commitTitleEditing(); editingTitleId = nil; titleFocused = false
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.snappy(duration: 0.18)) { dragInfo = RDrag(id: id, dy: 0) }
-    }
-    private func endReorder(_ dy: CGFloat) {
-        guard let info = dragInfo, let base = items.firstIndex(where: { $0.id == info.id }) else { dragInfo = nil; return }
-        let proj = projected(base, dy)
-        withAnimation(.snappy(duration: 0.22)) {
-            if proj != base { let m = items.remove(at: base); items.insert(m, at: proj) }
-            dragInfo = nil
-        }
-        if proj != base, let r = working { try? repo.reorderItems(items.map { $0.item }, in: r) }
-    }
-    private func swipeBegan(_ id: UUID) {
-        if swipeOpenId != id { withAnimation { swipeOpenId = nil } }
-        commitTitleEditing(); editingTitleId = nil; titleFocused = false
-        swipeDragId = id; swipeDragX = 0
-    }
-    private func swipeEnded(_ tx: CGFloat, _ vx: CGFloat) {
-        guard let id = swipeDragId else { return }
-        let total = ((swipeOpenId == id) ? -trashWidth : 0) + tx
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-            swipeOpenId = total < -trashWidth / 2 ? id : nil; swipeDragId = nil; swipeDragX = 0
-        }
     }
 
     // MARK: - Persistence
@@ -314,7 +249,7 @@ struct RoutineEditorView: View {
         newText = ""
     }
     private func deleteItem(_ it: DraftRoutineItem) {
-        withAnimation(.snappy(duration: 0.2)) { items.removeAll { $0.id == it.id }; swipeOpenId = nil }
+        withAnimation(.snappy(duration: 0.2)) { items.removeAll { $0.id == it.id } }
         if let r = working { try? repo.deleteItem(it.item, from: r) }
     }
     private func deleteRoutine() {
@@ -341,5 +276,3 @@ struct DraftRoutineItem: Identifiable, Equatable {
     var text: String
     static func == (l: DraftRoutineItem, r: DraftRoutineItem) -> Bool { l.id == r.id && l.text == r.text }
 }
-
-struct RDrag: Equatable { var id: UUID; var dy: CGFloat }

@@ -51,7 +51,7 @@ Done before the "10 big items" plan, as low-risk cleanups:
 |---|------|--------|-------|
 | #1 | Shared editor engine — **toolbar Save/Delete buttons** | ✅ done | `dc1dafa` — pure views |
 | #1 | Shared editor engine — **keypad HHMM rule** (`TimeKeypad`) | ✅ done + tests | `0b8d636` — pure logic |
-| #1 | Shared editor engine — **drag-reorder + swipe-delete state machine** | ⬜ deferred | Needs hands-on **tap-testing** (no UI automation here). Do in a pairing session. Includes #10a (TodayView split). |
+| #1 | Shared editor engine — **drag-reorder + swipe-delete state machine** | ✅ done | One `RowGestureCoordinator` + `EditableRow` + `.rowGestures()` (`EditableRowList.swift`); Schedule, Exercise, Today **and Routines** all consume it (Routines was a 4th hand-rolled copy with no reorder animation + an ungated trash). Tap-tested on device. Fixed: small-swipe-as-tap + accidental-delete-on-pull via deterministic suppression in the coordinator. |
 | #9 | Calendar DSKit migration (`CalendarView` + `CalendarEventDetailSheet`) | ⬜ deferred | Reflow-sensitive; simulator has **no calendar events**, so event rendering + the font-scale change can't be verified by the agent. Do in a pairing session against the real calendar. |
 
 **To resume the deferred work:** start a session and say *"let's do #1"* or *"let's do #9"* — I tap/eyeball alongside you, piece by piece.

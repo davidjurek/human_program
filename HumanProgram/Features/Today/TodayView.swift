@@ -23,19 +23,11 @@ struct TodayView: View {
     // range for KeyboardScrollNudge to lift the focused field (mirrors Schedule).
     @State private var keyboardSpacer: CGFloat = 0
 
-    // Hold-to-reorder (vertical) + swipe-to-delete (horizontal) for the task rows,
-    // mirroring the Schedule editor's block list. Both are UIKit recognizers
-    // installed on the enclosing scroll view (see EditorRowInteractions). Tapping a
-    // row opens its detail; a vertical drag scrolls the page.
-    @State private var dragInfo: TaskDragInfo?
-    @State private var reorderRowFrames: [String: CGRect] = [:]   // window coords
-    @State private var swipeOpenId: String?
-    @State private var swipeDragId: String?
-    @State private var swipeDragX: CGFloat = 0
+    // Hold-to-reorder + swipe-to-delete for the task rows — the SAME shared gesture
+    // engine the Schedule and Exercise editors use (see EditableRowList). Tapping a
+    // row opens its detail; a vertical drag scrolls the page. Wired in `body`.
+    @State private var rows = RowGestureCoordinator<String>(rowHeight: 52)
     @State private var navTask: DailyPageTask?
-
-    private let taskRowHeight: CGFloat = 52
-    private let trashWidth: CGFloat = 72
 
     // Live "now" line moves while the page stays open.
     private let ticker = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
@@ -49,7 +41,23 @@ struct TodayView: View {
     }
 
     var body: some View {
-        ZStack {
+        // Point the shared gesture engine at the current task order + lock state.
+        rows.orderedIds = { vm.sortedTasks.map(\.id) }
+        rows.moveRow = { from, to in
+            var order = vm.sortedTasks
+            let moved = order.remove(at: from); order.insert(moved, at: to)
+            // Synchronous write so sortedTasks reflects the new order within this
+            // same transaction (rows animate without flashing back first).
+            vm.reorderTasks(order)
+        }
+        rows.deleteRow = { id in
+            if let task = vm.sortedTasks.first(where: { $0.id == id }) {
+                Task { await vm.deleteTask(task) }
+            }
+        }
+        rows.canInteract = { !vm.isPastLocked }
+
+        return ZStack {
             SettingsBackground()
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
@@ -71,7 +79,7 @@ struct TodayView: View {
             .scrollDismissesKeyboard(.interactively)           // [#46] drag-to-dismiss
             // Suspend native scrolling while a row is being dragged-to-reorder or
             // swiped, so the gesture owns the touch (Schedule does the same).
-            .scrollDisabled(dragInfo != nil || swipeDragId != nil)
+            .scrollDisabled(rows.isInteracting)
             .keyboardSpacer($keyboardSpacer)
             .navigationDestination(item: $navTask) { task in
                 TaskDetailView(task: task,
@@ -288,69 +296,13 @@ struct TodayView: View {
     // frame to hit-test which row a gesture began on. [reuse: EditorRowInteractions]
     private var taskList: some View {
         VStack(spacing: 0) {
-            ForEach(vm.sortedTasks, id: \.id) { task in
-                taskRow(task)
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(key: RowFrameKey<String>.self,
-                                                   value: [task.id: proxy.frame(in: .global)])
-                        }
-                    )
-            }
-        }
-        .onPreferenceChange(RowFrameKey<String>.self) { reorderRowFrames = $0 }
-        .background(
-            ReorderRecognizer(
-                rowFrames: reorderRowFrames,
-                onBegan: beginReorder,
-                onChanged: { dy in dragInfo?.dy = dy },
-                onEnded: endReorder,
-                onCancelled: { dragInfo = nil }
-            )
-        )
-        .background(
-            SwipePanRecognizer(
-                rowFrames: reorderRowFrames,
-                canStart: { dragInfo == nil && !vm.isPastLocked },
-                onBegan: swipeBegan,
-                onChanged: swipeChanged,
-                onEnded: swipeEnded
-            )
-        )
-    }
-
-    private func taskRow(_ task: DailyPageTask) -> some View {
-        let isDragging = dragInfo?.id == task.id
-        let index = vm.sortedTasks.firstIndex(where: { $0.id == task.id }) ?? 0
-        let shiftY = shiftOffset(forIndex: index)
-
-        return GeometryReader { geo in
-            // Content + trash lane move together, clipped, so the red trash slides in
-            // from the trailing edge as you swipe (never flashes over the content).
-            HStack(spacing: 0) {
-                taskRowContent(task)
-                    .frame(width: geo.size.width, height: taskRowHeight)
-                Button { Task { await deleteTask(task) } } label: {
-                    ZStack {
-                        Circle().fill(Color.red).frame(width: 40, height: 40)
-                        Image(systemName: "trash").font(.system(size: 17)).foregroundStyle(.white)
-                    }
-                    .frame(width: trashWidth, height: taskRowHeight)
-                    .contentShape(Rectangle())
+            ForEach(Array(vm.sortedTasks.enumerated()), id: \.element.id) { index, task in
+                EditableRow(coordinator: rows, id: task.id, index: index) {
+                    taskRowContent(task)
                 }
-                .buttonStyle(.plain)
             }
-            .offset(x: swipeOffset(for: task.id))
-            .frame(width: geo.size.width, height: taskRowHeight, alignment: .leading)
-            .clipped()
         }
-        .frame(height: taskRowHeight)
-        .offset(y: isDragging ? (dragInfo?.dy ?? 0) : shiftY)
-        .animation(.snappy(duration: 0.2), value: isDragging)
-        .animation(isDragging ? nil : .snappy(duration: 0.2), value: shiftY)
-        .scaleEffect(isDragging ? 1.04 : 1)
-        .shadow(color: .black.opacity(isDragging ? 0.18 : 0), radius: 8, y: 4)
-        .zIndex(isDragging ? 1 : 0)
+        .rowGestures(rows)
     }
 
     private func taskRowContent(_ task: DailyPageTask) -> some View {
@@ -371,101 +323,16 @@ struct TodayView: View {
                 .onTapGesture { tapTask(task) }
         }
         .padding(.vertical, 8)
-        .frame(height: taskRowHeight)
+        .frame(height: rows.rowHeight)
         .contentShape(Rectangle())
     }
 
-    /// Clean tap on a row → open its detail (or just close an open swipe).
+    /// Clean tap on a row → open its detail. `consumeTap()` absorbs the tap if a
+    /// swipe engaged or an open row needs closing first.
     private func tapTask(_ task: DailyPageTask) {
         if dismissAddIfOpen() { return }
-        if swipeOpenId != nil { closeSwipe(); return }
+        guard rows.consumeTap() else { return }
         navTask = task
-    }
-
-    // MARK: - Reorder / swipe handlers (mirrors ScheduleEditor)
-
-    private func beginReorder(_ id: String) {
-        guard !vm.isPastLocked else { return }
-        swipeOpenId = nil
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.snappy(duration: 0.18)) { dragInfo = TaskDragInfo(id: id, dy: 0) }
-    }
-
-    private func endReorder(_ dy: CGFloat) {
-        guard let info = dragInfo else { return }
-        var order = vm.sortedTasks
-        guard let base = order.firstIndex(where: { $0.id == info.id }) else { dragInfo = nil; return }
-        let proj = projectedIndex(from: base, dy: dy, count: order.count)
-        withAnimation(.snappy(duration: 0.22)) {
-            if proj != base {
-                let moved = order.remove(at: base)
-                order.insert(moved, at: proj)
-                // Synchronous write: sortedTasks reflects the new order within this
-                // same transaction, so the rows animate into place without flashing
-                // back to the old order first.
-                vm.reorderTasks(order)
-            }
-            dragInfo = nil
-        }
-    }
-
-    private func swipeBegan(_ id: String) {
-        if swipeOpenId != id, swipeOpenId != nil {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipeOpenId = nil }
-        }
-        swipeDragId = id
-        swipeDragX = 0
-    }
-    private func swipeChanged(_ tx: CGFloat) {
-        guard swipeDragId != nil else { return }
-        swipeDragX = tx
-    }
-    private func swipeEnded(_ tx: CGFloat, _ vx: CGFloat) {
-        guard let id = swipeDragId else { return }
-        let base: CGFloat = (swipeOpenId == id) ? -trashWidth : 0
-        let total = base + tx
-        // Snap open or closed; delete is via the revealed trash, never full-swipe.
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-            swipeOpenId = (total < -trashWidth / 2) ? id : nil
-            swipeDragId = nil
-            swipeDragX = 0
-        }
-    }
-
-    private func deleteTask(_ task: DailyPageTask) async {
-        swipeOpenId = nil
-        await vm.deleteTask(task)
-    }
-
-    private func closeSwipe() {
-        withAnimation(.snappy(duration: 0.2)) { swipeOpenId = nil }
-    }
-
-    // MARK: - Reorder / swipe geometry
-
-    private func projectedIndex(from base: Int, dy: CGFloat, count: Int) -> Int {
-        let shift = Int((dy / taskRowHeight).rounded())
-        return max(0, min(count - 1, base + shift))
-    }
-
-    /// Shift rows the dragged row has passed over to open a gap (array isn't mutated
-    /// until the drag ends).
-    private func shiftOffset(forIndex i: Int) -> CGFloat {
-        guard let info = dragInfo else { return 0 }
-        let order = vm.sortedTasks
-        guard let base = order.firstIndex(where: { $0.id == info.id }), base != i else { return 0 }
-        let proj = projectedIndex(from: base, dy: info.dy, count: order.count)
-        if base < proj, (base + 1 ... proj).contains(i) { return -taskRowHeight }
-        if proj < base, (proj ..< base).contains(i) { return taskRowHeight }
-        return 0
-    }
-
-    /// Live horizontal offset. Clamps at the open position with a little rubber-band.
-    private func swipeOffset(for id: String) -> CGFloat {
-        let base: CGFloat = (swipeOpenId == id) ? -trashWidth : 0
-        let raw = base + ((swipeDragId == id) ? swipeDragX : 0)
-        if raw < -trashWidth { return -trashWidth - (-trashWidth - raw) * 0.2 }
-        return min(0, raw)
     }
 
     /// While the "New task" field/keyboard is open, the first tap anywhere just
@@ -553,13 +420,6 @@ struct PastLockButton: View {
             onToggle()
         })
     }
-}
-
-/// Transient drag-reorder state for a task row (driven by the UIKit reorder
-/// recognizer). Keyed by the task's String id.
-struct TaskDragInfo: Equatable {
-    var id: String
-    var dy: CGFloat
 }
 
 // ── Date picker (jump to a date) ────────────────────────────────────────────────

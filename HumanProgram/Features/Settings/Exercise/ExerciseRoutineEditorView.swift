@@ -24,14 +24,10 @@ struct ExerciseRoutineEditorView: View {
     @State private var activePopup: ActivePopup?
     @State private var anchorFrames: [String: CGRect] = [:]
 
-    // Drag-to-reorder (vertical) — UIKit long-press, shared recognizer.
-    @State private var dragInfo: ExDragInfo?
-    @State private var reorderRowFrames: [UUID: CGRect] = [:]
-
-    // Swipe-to-delete (horizontal) — UIKit pan, shared recognizer.
-    @State private var swipeOpenId: UUID?
-    @State private var swipeDragId: UUID?
-    @State private var swipeDragX: CGFloat = 0
+    // Hold-to-reorder + swipe-to-delete: the shared gesture engine (see
+    // EditableRowList) — same state/geometry/animations as Schedule and Today.
+    // Wired to the item array in `body`.
+    @State private var rows = RowGestureCoordinator<UUID>(rowHeight: 56)
 
     // Inline title editing.
     @State private var editingTitleId: UUID?
@@ -40,8 +36,6 @@ struct ExerciseRoutineEditorView: View {
     @State private var keyboardSpacer: CGFloat = 0
     @State private var didLoad = false
 
-    private let rowHeight: CGFloat = 56
-    private let trashWidth: CGFloat = 72
     private let anchorSpace = "exerciseAnchorSpace"
 
     private enum ActivePopup: Equatable { case counts(UUID) }
@@ -54,8 +48,23 @@ struct ExerciseRoutineEditorView: View {
     // MARK: - Body
 
     var body: some View {
-        SettingsScreen(centered: true,
-                       scrollDisabled: dragInfo != nil || swipeDragId != nil,
+        // Point the shared gesture engine at the current item array + edit state.
+        rows.orderedIds = { items.map(\.id) }
+        rows.moveRow = { from, to in
+            let moved = items.remove(at: from); items.insert(moved, at: to)
+            // Persist AFTER the drop animation runs — PageRefreshService.refresh is
+            // heavy and, run synchronously inside the reorder animation, made the
+            // settle abrupt (Schedule/Today don't refresh on reorder, so they're
+            // smooth). The local `items` array already reflects the new order.
+            DispatchQueue.main.async { persistOrder() }
+        }
+        rows.deleteRow = { deleteExercise(id: $0) }
+        rows.beginEditGesture = {
+            commitTitleEditing(); editingTitleId = nil; titleFieldFocused = false
+        }
+
+        return SettingsScreen(centered: true,
+                       scrollDisabled: rows.isInteracting,
                        manualKeyboardAvoidance: true) {
             DSText(weekdayTitle)
                 .dsTextStyle(.title2)
@@ -76,11 +85,11 @@ struct ExerciseRoutineEditorView: View {
         .coordinateSpace(.named(anchorSpace))
         .onChange(of: activePopup) { old, new in
             if case .counts(let id)? = old, new == nil { commitCounts(id) }
-            if new != nil { closeSwipeIfOpen() }
+            if new != nil { rows.closeSwipeIfOpen() }
         }
-        .onChange(of: editingTitleId) { _, v in if v != nil { closeSwipeIfOpen() } }
-        .onChange(of: name) { _, _ in closeSwipeIfOpen() }
-        .onChange(of: newText) { _, _ in closeSwipeIfOpen() }
+        .onChange(of: editingTitleId) { _, v in if v != nil { rows.closeSwipeIfOpen() } }
+        .onChange(of: name) { _, _ in rows.closeSwipeIfOpen() }
+        .onChange(of: newText) { _, _ in rows.closeSwipeIfOpen() }
         .onAppear(perform: loadIfNeeded)
         .onDisappear(perform: commitOnLeave)
     }
@@ -96,73 +105,18 @@ struct ExerciseRoutineEditorView: View {
                     .frame(height: 44)
             } else {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, ex in
-                    exerciseRow(ex: ex, index: index)
-                        .background(
-                            GeometryReader { proxy in
-                                Color.clear.preference(key: RowFrameKey<UUID>.self,
-                                                       value: [ex.id: proxy.frame(in: .global)])
-                            }
-                        )
+                    EditableRow(coordinator: rows, id: ex.id, index: index) {
+                        exerciseRowContent(ex: ex)
+                    }
                 }
             }
         }
-        .onPreferenceChange(RowFrameKey<UUID>.self) { reorderRowFrames = $0 }
-        .background(
-            ReorderRecognizer(
-                rowFrames: reorderRowFrames,
-                onBegan: beginReorder,
-                onChanged: { dy in dragInfo?.dy = dy },
-                onEnded: endReorder,
-                onCancelled: { dragInfo = nil }
-            )
-        )
-        .background(
-            SwipePanRecognizer(
-                rowFrames: reorderRowFrames,
-                canStart: { dragInfo == nil },
-                onBegan: swipeBegan,
-                onChanged: swipeChanged,
-                onEnded: swipeEnded
-            )
-        )
+        .rowGestures(rows)
         .onChange(of: titleFieldFocused) { _, focused in
             if !focused { commitTitleEditing(); editingTitleId = nil }
         }
         .background(KeyboardScrollNudge())
         .keyboardSpacer($keyboardSpacer)
-    }
-
-    private func exerciseRow(ex: DraftExercise, index: Int) -> some View {
-        let isDragging = dragInfo?.id == ex.id
-        let shiftY = shiftOffset(forIndex: index)
-
-        return GeometryReader { geo in
-            HStack(spacing: 0) {
-                exerciseRowContent(ex: ex)
-                    .frame(width: geo.size.width, height: rowHeight)
-                Button { deleteExercise(id: ex.id) } label: {
-                    ZStack {
-                        Circle().fill(Color.red).frame(width: 40, height: 40)
-                        Image(systemName: "trash")
-                            .font(.system(size: 17)).foregroundStyle(.white)
-                    }
-                    .frame(width: trashWidth, height: rowHeight)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .a11yTapBorder(Circle())
-            }
-            .offset(x: swipeOffset(for: ex.id))
-            .frame(width: geo.size.width, height: rowHeight, alignment: .leading)
-            .clipped()
-        }
-        .frame(height: rowHeight)
-        .offset(y: isDragging ? (dragInfo?.dy ?? 0) : shiftY)
-        .animation(.snappy(duration: 0.2), value: isDragging)
-        .animation(isDragging ? nil : .snappy(duration: 0.2), value: shiftY)
-        .scaleEffect(isDragging ? 1.04 : 1)
-        .shadow(color: .black.opacity(isDragging ? 0.18 : 0), radius: 8, y: 4)
-        .zIndex(isDragging ? 1 : 0)
     }
 
     private func exerciseRowContent(ex: DraftExercise) -> some View {
@@ -191,7 +145,7 @@ struct ExerciseRoutineEditorView: View {
                 .anchorFrame("counts-\(ex.id)", in: .named(anchorSpace))
         }
         .padding(.vertical, 8)
-        .frame(height: rowHeight)
+        .frame(height: rows.rowHeight)
         .contentShape(Rectangle())
     }
 
@@ -204,9 +158,10 @@ struct ExerciseRoutineEditorView: View {
         }
     }
 
-    /// Clean tap on the exercise text → edit it inline (or close an open swipe).
+    /// Clean tap on the exercise text → edit it inline. `consumeTap()` absorbs the
+    /// tap if a swipe engaged or an open row needs closing first.
     private func tapText(_ ex: DraftExercise) {
-        if swipeOpenId != nil { closeSwipe(); return }
+        guard rows.consumeTap() else { return }
         if editingTitleId != ex.id, dismissOpenInputIfAny() { return }
         editingTitleId = ex.id
         DispatchQueue.main.async { titleFieldFocused = true }
@@ -214,7 +169,7 @@ struct ExerciseRoutineEditorView: View {
 
     /// Clean tap on the counts value → open the sets/reps wheel popup.
     private func tapCounts(_ ex: DraftExercise) {
-        if swipeOpenId != nil { closeSwipe(); return }
+        guard rows.consumeTap() else { return }
         if dismissOpenInputIfAny() { return }
         activePopup = .counts(ex.id)
     }
@@ -307,93 +262,6 @@ struct ExerciseRoutineEditorView: View {
         return false
     }
 
-    // MARK: - Reorder
-
-    private func beginReorder(_ id: UUID) {
-        swipeOpenId = nil
-        commitTitleEditing()
-        editingTitleId = nil
-        titleFieldFocused = false
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.snappy(duration: 0.18)) { dragInfo = ExDragInfo(id: id, dy: 0) }
-    }
-
-    private func endReorder(_ dy: CGFloat) {
-        guard let info = dragInfo, let base = items.firstIndex(where: { $0.id == info.id }) else {
-            dragInfo = nil; return
-        }
-        let proj = projectedIndex(from: base, dy: dy)
-        withAnimation(.snappy(duration: 0.22)) {
-            if proj != base {
-                let moved = items.remove(at: base)
-                items.insert(moved, at: proj)
-            }
-            dragInfo = nil
-        }
-        if proj != base { persistOrder() }
-    }
-
-    private func projectedIndex(from base: Int, dy: CGFloat) -> Int {
-        let shift = Int((dy / rowHeight).rounded())
-        return max(0, min(items.count - 1, base + shift))
-    }
-
-    private func shiftOffset(forIndex i: Int) -> CGFloat {
-        guard let info = dragInfo,
-              let base = items.firstIndex(where: { $0.id == info.id }),
-              base != i else { return 0 }
-        let proj = projectedIndex(from: base, dy: info.dy)
-        if base < proj, (base + 1 ... proj).contains(i) { return -rowHeight }
-        if proj < base, (proj ..< base).contains(i) { return rowHeight }
-        return 0
-    }
-
-    // MARK: - Swipe
-
-    private func swipeBegan(_ id: UUID) {
-        if swipeOpenId != id, swipeOpenId != nil {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipeOpenId = nil }
-        }
-        commitTitleEditing()
-        editingTitleId = nil
-        titleFieldFocused = false
-        swipeDragId = id
-        swipeDragX = 0
-    }
-
-    private func swipeChanged(_ tx: CGFloat) {
-        guard swipeDragId != nil else { return }
-        swipeDragX = tx
-    }
-
-    private func swipeEnded(_ tx: CGFloat, _ vx: CGFloat) {
-        guard let id = swipeDragId else { return }
-        let base: CGFloat = (swipeOpenId == id) ? -trashWidth : 0
-        let total = base + tx
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-            swipeOpenId = (total < -trashWidth / 2) ? id : nil
-            swipeDragId = nil
-            swipeDragX = 0
-        }
-    }
-
-    private func swipeOffset(for id: UUID) -> CGFloat {
-        let base: CGFloat = (swipeOpenId == id) ? -trashWidth : 0
-        let raw = base + ((swipeDragId == id) ? swipeDragX : 0)
-        if raw < -trashWidth {
-            return -trashWidth - (-trashWidth - raw) * 0.2
-        }
-        return min(0, raw)
-    }
-
-    private func closeSwipe() {
-        withAnimation(.snappy(duration: 0.2)) { swipeOpenId = nil }
-    }
-    private func closeSwipeIfOpen() {
-        guard swipeOpenId != nil else { return }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { swipeOpenId = nil }
-    }
-
     // MARK: - Load / persist
 
     private func loadIfNeeded() {
@@ -461,7 +329,6 @@ struct ExerciseRoutineEditorView: View {
         guard let ex = items.first(where: { $0.id == id }) else { return }
         withAnimation(.snappy(duration: 0.2)) {
             items.removeAll { $0.id == id }
-            swipeOpenId = nil
         }
         try? ExerciseRepository(context: context).deleteItem(ex.item, from: routine)
         try? PageRefreshService.refresh(context: context)
@@ -480,10 +347,4 @@ struct DraftExercise: Identifiable, Equatable {
     static func == (lhs: DraftExercise, rhs: DraftExercise) -> Bool {
         lhs.id == rhs.id && lhs.text == rhs.text && lhs.sets == rhs.sets && lhs.reps == rhs.reps
     }
-}
-
-/// Transient drag-reorder state for the exercise list.
-struct ExDragInfo: Equatable {
-    var id: UUID
-    var dy: CGFloat
 }
