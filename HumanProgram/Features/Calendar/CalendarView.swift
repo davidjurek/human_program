@@ -28,6 +28,11 @@ struct CalendarView: View {
     @State private var selectedDate: Date = Calendar.current.startOfDay(for: Date())
     @State private var calendarService = CalendarAdapterService()
     @State private var events: [EKEvent] = []
+    // `events` indexed for O(1) per-day lookups, rebuilt by indexEvents() whenever
+    // `events` changes. eventsByStartDay: bucketed by start-of-day(startDate), sorted by
+    // start. allDayByDay: all-day events under EVERY day they overlap, sorted by title.
+    @State private var eventsByStartDay: [Date: [EKEvent]] = [:]
+    @State private var allDayByDay: [Date: [EKEvent]] = [:]
     @State private var displayedMonthStart: Date = CalendarView.monthStart(for: Date())
     @State private var displayedWeekStart: Date = CalendarView.weekStart(for: Date())
     @State private var selectedEvent: EKEvent? = nil
@@ -282,7 +287,7 @@ struct CalendarView: View {
         return LazyVGrid(columns: columns, spacing: 0) {
             ForEach(days, id: \.self) { day in
                 if cal.component(.month, from: day) == cal.component(.month, from: monthStart) {
-                    let hasEvents = events.contains { cal.isDate($0.startDate, inSameDayAs: day) }
+                    let hasEvents = eventsByStartDay[cal.startOfDay(for: day)] != nil
                     let isToday = cal.isDate(day, inSameDayAs: today)
                     let isSelected = cal.isDate(day, inSameDayAs: selectedDate)
 
@@ -613,7 +618,7 @@ struct CalendarView: View {
         let today = cal.startOfDay(for: Date())
         // Every day in the loaded ±2yr window that has events, sorted. Today (or
         // the next day with events) is the scroll anchor. [#list]
-        let daysWithEvents = Set(events.map { cal.startOfDay(for: $0.startDate) }).sorted()
+        let daysWithEvents = eventsByStartDay.keys.sorted()
         let anchorDay = daysWithEvents.first(where: { $0 >= today }) ?? daysWithEvents.last
 
         return ScrollViewReader { proxy in
@@ -702,15 +707,35 @@ struct CalendarView: View {
         // Only sync events from calendars the user checked in Settings → Calendar.
         // None checked → show nothing (an empty list means "all" to fetchEvents, so
         // we must guard here, exactly like Today does).
-        guard !selectedCalendarIds.isEmpty else { events = []; return }
+        guard !selectedCalendarIds.isEmpty else { events = []; indexEvents(); return }
         events = calendarService.fetchEvents(from: start, to: end, calendarIds: selectedCalendarIds)
+        indexEvents()
+    }
+
+    /// Rebuilds the per-day lookup indexes from `events` so the grid/columns do O(1)
+    /// lookups instead of re-filtering the whole array per cell/column.
+    private func indexEvents() {
+        let cal = Calendar.current
+        var byStart: [Date: [EKEvent]] = [:]
+        var allDay: [Date: [EKEvent]] = [:]
+        for event in events {
+            byStart[cal.startOfDay(for: event.startDate), default: []].append(event)
+            guard event.isAllDay else { continue }
+            // An all-day event shows on every day it overlaps, so bucket it under each
+            // day in [startDay, endDate) — matching the old overlap filter exactly.
+            var day = cal.startOfDay(for: event.startDate)
+            while day < event.endDate {
+                allDay[day, default: []].append(event)
+                guard let next = cal.date(byAdding: .day, value: 1, to: day) else { break }
+                day = next
+            }
+        }
+        eventsByStartDay = byStart.mapValues { $0.sorted { $0.startDate < $1.startDate } }
+        allDayByDay = allDay.mapValues { $0.sorted { ($0.title ?? "") < ($1.title ?? "") } }
     }
 
     private func eventsForDay(_ date: Date) -> [EKEvent] {
-        let cal = Calendar.current
-        return events
-            .filter { cal.isDate($0.startDate, inSameDayAs: date) }
-            .sorted { $0.startDate < $1.startDate }
+        eventsByStartDay[Calendar.current.startOfDay(for: date)] ?? []
     }
 
     /// Timed (non-all-day) events that START on `date` — the ones placed in the
@@ -722,12 +747,7 @@ struct CalendarView: View {
     /// All-day events that OVERLAP `date` (so a multi-day holiday shows a chip on
     /// every day it covers — one chip per day, per spec). [#cal-allday]
     private func allDayEventsForDay(_ date: Date) -> [EKEvent] {
-        let cal = Calendar.current
-        let dayStart = cal.startOfDay(for: date)
-        guard let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart) else { return [] }
-        return events
-            .filter { $0.isAllDay && $0.startDate < dayEnd && $0.endDate > dayStart }
-            .sorted { ($0.title ?? "") < ($1.title ?? "") }
+        allDayByDay[Calendar.current.startOfDay(for: date)] ?? []
     }
 
     // MARK: - All-day band (fixed-height row above the timeline) [#cal-allday]
