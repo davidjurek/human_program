@@ -59,6 +59,26 @@ All of **P0, P1, and P2** were swept, plus the owner's separate bug/feature list
 
 **Deferred (with reason):** editor keypad-controller/value-row dedup (#42/#43/#45/#47 — pure dedup on the fragile, un-tap-testable reference editors; behavior already correct); full Backlog gesture-engine unification + edge-swipe-back (#8 owner item — needs on-device tap-testing to avoid regressing navigation); a fully-thorough app-wide keyboard-avoidance retrofit of the remaining sheets (the primary editors already use the shared nudge); most cosmetic P3s.
 
+---
+
+## Overnight run #2 — 2026-06-02
+
+The three deferred items + a second owner bug/feature list. Build green, **71 tests pass** throughout.
+
+**Backlog (now on the shared gesture engine):** rows use the SAME `RowGestureCoordinator` as Today/Schedule/Exercise/Routines (tap / scroll / swipe-left-to-delete), reorder disabled (sorted list). Fixed: **can't-scroll-from-rest** (no per-row DragGesture stealing vertical scroll), **swipe-to-delete not working** in Task view, **accidental edge-tap deletes** (trash only hittable when fully open), and **edge swipe-back** (programmatic nav via `consumeTap` instead of in-row `NavigationLink`; the shared swipe pan now ignores the left-edge zone). Default sort is now **creation order, newest at the bottom** (added as "Date created"); bullets on task rows (shared with folder rows), folder icons on project rows; rows grow to a **3-line** title.
+
+**App-wide:** numpad keys **adapt to dark mode** (single `GlassKeypad` engine, deduped key chrome #146); every font **normalizes to the default font's cap height** so switching fonts changes style/width but not vertical height; **app lock** locks on cold launch (force-quit→reopen) and respects timeouts, **Face ID auto-engages** on appear and on becoming-active (re-armed per lock, no loop), the **PIN lockout was removed**; the **"Today" top-bar button** is full 44pt height in Today + Calendar.
+
+**Today:** uniform spacing (22pt between sections, 10pt header→content); **header underlines removed**.
+
+**Calendar:** **all-day band keeps a fixed height** even when empty; **sync moved to the top-bar center** as "Sync: N differences" — blue in sync, orange when not (shared count via `CalendarReconciliation`).
+
+**Keyboard avoidance:** shared nudge applied to `BacklogTaskDetailView` and `AddCalendarEventView`.
+
+**Engine:** `RowGestureCoordinator` gained `reorderEnabled`; the swipe pan carves out the leading-edge zone for swipe-back — flows to all five list screens.
+
+**Still deferred (internal-only, needs on-device verification):** the editor value-row/keypad-overlay view dedup (#43/#47) and binding helper (#45). `TimeKeypad` already shares the time-entry RULE (the substance of #42). These are zero-behavior-change view-structure cleanups on the fragile, un-tap-testable planning editors — left for when they can be verified live.
+
 | Category (raw sweep) | Count | Plain meaning |
 |----------|------:|---------------|
 | Near-duplication | 52 | "Almost the same code" that should be merged into one shared piece |
