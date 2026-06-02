@@ -324,7 +324,7 @@ struct ReminderEditorView: View {
     }
 
     private func keypadDigit(_ d: String) {
-        typedDigits = String((typedDigits + d).filter(\.isNumber).suffix(4))
+        typedDigits = TimeKeypad.appending(d, to: typedDigits)
         applyTypedToActive()
     }
     private func keypadBackspace() {
@@ -333,12 +333,8 @@ struct ReminderEditorView: View {
     }
     /// HHMM entry (24-hour, unambiguous), minutes snapped to the nearest 5.
     private func applyTypedToActive() {
-        guard let binding = activeMinutesBinding, !typedDigits.isEmpty else { return }
-        let s = typedDigits
-        let hh = min(23, Int(String(s.prefix(2))) ?? 0)
-        var mm = s.count >= 3 ? (Int(String(s.dropFirst(2))) ?? 0) : 0
-        mm = min(55, Int((Double(mm) / 5).rounded()) * 5)
-        binding.wrappedValue = hh * 60 + mm
+        guard let binding = activeMinutesBinding, let m = TimeKeypad.minutes(from: typedDigits) else { return }
+        binding.wrappedValue = m
     }
     private func keypadDone() { dismissKeypadAndPopup() }
 

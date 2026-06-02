@@ -1,6 +1,26 @@
 import SwiftUI
 import UIKit
 
+/// Shared numeric-keypad text logic for the planning editors' time fields. Pure
+/// string/Int math (no view state), so the Schedule and Reminder editors share ONE
+/// HHMM rule instead of each keeping a byte-identical copy that could drift.
+enum TimeKeypad {
+    /// Append a digit, keep only digits, cap at the last 4 (HHMM).
+    static func appending(_ digit: String, to typed: String) -> String {
+        String((typed + digit).filter(\.isNumber).suffix(4))
+    }
+
+    /// Parse typed "HHMM" digits to minutes-of-day, minutes snapped to the nearest 5
+    /// (the same rule as the wheel). Returns nil if `typed` is empty.
+    static func minutes(from typed: String) -> Int? {
+        guard !typed.isEmpty else { return nil }
+        let hh = min(23, Int(String(typed.prefix(2))) ?? 0)
+        var mm = typed.count >= 3 ? (Int(String(typed.dropFirst(2))) ?? 0) : 0
+        mm = min(55, Int((Double(mm) / 5).rounded()) * 5)
+        return hh * 60 + mm
+    }
+}
+
 // Shared interaction infrastructure for the planning editors (Schedule, Exercise,
 // …). These pieces were first written for the Schedule editor; they live here so
 // every editable-row screen reuses the SAME hold-to-reorder, swipe-to-delete,
