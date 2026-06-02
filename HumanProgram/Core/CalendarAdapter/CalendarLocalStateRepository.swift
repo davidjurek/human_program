@@ -71,6 +71,22 @@ public final class CalendarLocalStateRepository {
         return try context.fetch(descriptor)
     }
 
+    /// Event ids the user has hidden/removed from Today on the given date — so the
+    /// Today screen can exclude them and they won't be re-added on the next sync.
+    public func hiddenEventIds(for date: Date) throws -> Set<String> {
+        Set(try fetchStates(for: date).filter { $0.hidden }.map { $0.eventId })
+    }
+
+    /// Every hidden row across all dates — the reconciliation page reads this to find
+    /// calendar events the user removed from Today (the today/future ones are the
+    /// recoverable discrepancies).
+    public func fetchAllHidden() throws -> [CalendarEventLocalState] {
+        let descriptor = FetchDescriptor<CalendarEventLocalState>(
+            predicate: #Predicate { $0.hidden == true }
+        )
+        return try context.fetch(descriptor)
+    }
+
     // MARK: - Private
 
     private func fetchState(eventId: String, date: Date) throws -> CalendarEventLocalState? {

@@ -134,7 +134,13 @@ struct TodayView: View {
             events = calendarService.fetchEvents(from: start, to: end, calendarIds: selectedCalendarIds)
         }
 
-        calendarItems = events.map { ev in
+        // Events the user removed/hid from Today on this date are excluded from BOTH the
+        // timeline and the Tasks list, and won't be re-added on sync. The Calendar
+        // reconciliation page lists them and can restore them. [calendar sync]
+        let hidden = vm.hiddenCalendarIds(for: start)
+        let visible = events.filter { ev in !(ev.eventIdentifier.map { hidden.contains($0) } ?? false) }
+
+        calendarItems = visible.map { ev in
             TimelineItem(id: ev.eventIdentifier ?? UUID().uuidString,
                          title: ev.title ?? "(no title)",
                          startMin: minutesOfDay(ev.startDate, dayStart: start),
@@ -145,7 +151,7 @@ struct TodayView: View {
         // Flow chosen-calendar events into the Tasks list (only events with a stable
         // identifier; sorted into the calendar group by start time). An empty
         // selection syncs an empty list, which clears any prior calendar tasks.
-        let taskInputs: [CalendarTaskInput] = events.compactMap { ev in
+        let taskInputs: [CalendarTaskInput] = visible.compactMap { ev in
             guard let id = ev.eventIdentifier else { return nil }
             return CalendarTaskInput(eventId: id,
                                      title: ev.title ?? "(no title)",

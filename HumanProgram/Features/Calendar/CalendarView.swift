@@ -38,6 +38,7 @@ struct CalendarView: View {
     @State private var selectedEvent: EKEvent? = nil
     @State private var showEventDetail = false
     @State private var showAddEvent = false
+    @State private var showReconciliation = false
     // Edit flow: tapping "Edit" in the detail sheet dismisses it, then (after the
     // dismiss completes) presents the editor pre-filled with this event.
     @State private var pendingEditEvent: EKEvent?
@@ -96,6 +97,9 @@ struct CalendarView: View {
         .navigationDestination(isPresented: $showAddEvent) {
             AddCalendarEventView(defaultDate: selectedDate, calendarService: calendarService, onSave: loadEvents)
         }
+        .navigationDestination(isPresented: $showReconciliation) {
+            CalendarReconciliationView()
+        }
         .sheet(item: $editTarget, onDismiss: loadEvents) { target in
             AddCalendarEventView(eventToEdit: target.event, defaultDate: selectedDate,
                                  calendarService: calendarService, onSave: loadEvents)
@@ -114,6 +118,11 @@ struct CalendarView: View {
             Spacer()
             Button { goToday() } label: { DSText("Today").dsTextStyle(.subheadline).contentShape(Rectangle()) }
                 .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
+            Button { showReconciliation = true } label: {
+                Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
+            }.buttonStyle(.plain)
             Button { showAddEvent = true } label: {
                 Image(systemName: "plus").font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())

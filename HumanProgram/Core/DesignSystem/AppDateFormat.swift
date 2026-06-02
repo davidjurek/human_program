@@ -18,6 +18,8 @@ enum AppDateFormat {
     static func monthYear(_ date: Date) -> String { monthYearFormatter.string(from: date) }
     /// "Monday, Jun 1, 2026"
     static func weekdayMonthDayYear(_ date: Date) -> String { weekdayMonthDayYearFormatter.string(from: date) }
+    /// "Monday, Jun 1"
+    static func weekdayMonthDay(_ date: Date) -> String { weekdayMonthDayFormatter.string(from: date) }
     /// "Mon" — short weekday, unique within a week.
     static func weekdayShort(_ date: Date) -> String { weekdayShortFormatter.string(from: date) }
     /// "Jun 1 – Jun 7"
@@ -31,6 +33,7 @@ enum AppDateFormat {
     private static let monthDayYearFormatter        = make("MMM d, yyyy")
     private static let monthYearFormatter           = make("MMMM yyyy")
     private static let weekdayMonthDayYearFormatter = make("EEEE, MMM d, yyyy")
+    private static let weekdayMonthDayFormatter     = make("EEEE, MMM d")
     private static let weekdayShortFormatter        = make("EEE")
 
     private static func make(_ format: String) -> DateFormatter {

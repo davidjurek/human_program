@@ -36,6 +36,7 @@ public final class TodayViewModel {
     private let pageRepo: DailyPageRepository
     private let backlogRepo: BacklogRepository
     private let exerciseRepo: ExerciseRepository
+    private let calendarStateRepo: CalendarLocalStateRepository
     private let context: ModelContext
 
     public init(context: ModelContext) {
@@ -44,6 +45,13 @@ public final class TodayViewModel {
         self.pageRepo = DailyPageRepository(context: context)
         self.backlogRepo = BacklogRepository(context: context)
         self.exerciseRepo = ExerciseRepository(context: context)   // held, not rebuilt per load [#113]
+        self.calendarStateRepo = CalendarLocalStateRepository(context: context)
+    }
+
+    /// Event ids the user has removed/hidden from Today on `date` — excluded from the
+    /// schedule timeline and Tasks list, and surfaced in the Calendar reconciliation.
+    public func hiddenCalendarIds(for date: Date) -> Set<String> {
+        (try? calendarStateRepo.hiddenEventIds(for: date)) ?? []
     }
 
     public var isToday: Bool {
@@ -150,6 +158,13 @@ public final class TodayViewModel {
 
     public func deleteTask(_ task: DailyPageTask) async {
         guard let p = page else { return }
+        // Deleting a calendar-sourced task on today/future records the event as hidden
+        // so the next sync doesn't re-add it; the Calendar reconciliation page can
+        // restore it later. (Past pages are frozen snapshots — leave them alone.)
+        if task.sourceType == .calendar, let eventId = task.sourceId,
+           p.date >= Calendar.current.startOfDay(for: Date()) {
+            try? calendarStateRepo.setHidden(true, eventId: eventId, date: p.date)
+        }
         do {
             try pageRepo.deleteTask(task, from: p)
         } catch {
