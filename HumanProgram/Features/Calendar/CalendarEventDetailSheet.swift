@@ -203,7 +203,6 @@ struct CalendarEventDetailSheet: View {
                 OverrideToggleRow(
                     icon: "eye.slash",
                     label: "Hide from Today",
-                    caption: "This event won't appear in your task list",
                     isOn: $isHidden
                 )
                 .onChange(of: isHidden) { _, newValue in
@@ -264,7 +263,7 @@ struct CalendarEventDetailSheet: View {
 private struct OverrideToggleRow: View {
     let icon: String
     let label: String
-    let caption: String
+    var caption: String? = nil   // no-filler rule: usually just icon + label + toggle [#122]
     @Binding var isOn: Bool
 
     var body: some View {
@@ -275,8 +274,10 @@ private struct OverrideToggleRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 DSText(label)
                     .dsTextStyle(.body)
-                DSText(caption)
-                    .dsTextStyle(.subheadline)
+                if let caption, !caption.isEmpty {
+                    DSText(caption)
+                        .dsTextStyle(.subheadline)
+                }
             }
 
             Spacer()
