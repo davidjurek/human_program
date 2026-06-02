@@ -111,13 +111,19 @@ struct PINEntryView: View {
 
     private var maskedField: some View {
         let chars = Array(entry)
+        // Tighter gap between marks (single space, was two). Left-aligned, and once the
+        // entry overflows the field, head-truncation keeps the LAST typed digit visible
+        // by scrolling the start off to the left. [owner]
         let masked = chars.enumerated()
             .map { i, c in i == chars.count - 1 ? String(c) : "•" }
-            .joined(separator: "  ")
-        return Text(masked)
+            .joined(separator: " ")
+        return Text(masked.isEmpty ? " " : masked)
             .font(appFont(30))
             .foregroundStyle(.primary)
-            .frame(maxWidth: .infinity)
+            .lineLimit(1)
+            .truncationMode(.head)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 18)
             .frame(height: 58)
             .background(Color.primary.opacity(0.06),
                         in: RoundedRectangle(cornerRadius: 14, style: .continuous))

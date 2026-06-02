@@ -68,11 +68,16 @@ public struct RollingReminderScheduler: Sendable {
     // MARK: - Build UNNotificationRequests
 
     private func buildRequests(for reminder: NotificationReminder) -> [UNNotificationRequest] {
-        let content = makeContent(for: reminder)
         let fireTimes = computeFireTimes(for: reminder)
 
         return fireTimes.enumerated().compactMap { index, date in
             guard date > Date() else { return nil }
+            // Build a FRESH content (and a fresh image attachment, each with its own temp
+            // file) per request. iOS MOVES an attachment's file into its store when the
+            // request is added, so a single shared content/attachment reused across all
+            // ~20 requests left every notification after the first with a dangling file —
+            // they fired without the image. One attachment per request fixes that. [#image]
+            let content = makeContent(for: reminder)
             let components = Calendar.current.dateComponents(
                 [.year, .month, .day, .hour, .minute],
                 from: date

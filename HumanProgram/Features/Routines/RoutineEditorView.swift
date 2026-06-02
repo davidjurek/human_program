@@ -68,19 +68,22 @@ struct RoutineEditorView: View {
                        scrollDisabled: rows.isInteracting,
                        manualKeyboardAvoidance: true,
                        trailing: { trailing }) {
-            if editing {
-                // Match read mode's .title2 size so the title doesn't reflow.
-                AppTextField(text: $name, placeholder: "Routine name", fontSize: appScaledSize(22))
-                HStack {
-                    DSText("Emoji").dsTextStyle(.title3)
-                    Spacer()
-                    EmojiField(emoji: $emoji)
+            // Title + emoji share ONE line (emoji trailing); no separate "Emoji" row.
+            // Edit and read modes use the same layout/sizes so nothing reflows. [owner]
+            HStack(spacing: 8) {
+                Group {
+                    if editing {
+                        // appScaledSize(22) matches read mode's .title2 — no size jump.
+                        AppTextField(text: $name, placeholder: "Routine name", fontSize: appScaledSize(22))
+                    } else {
+                        DSText(name.isEmpty ? "Untitled" : name).dsTextStyle(.title2).longTitle()
+                    }
                 }
-            } else {
-                DSText(name.isEmpty ? "Untitled" : name).dsTextStyle(.title2).longTitle()
-                HStack {
-                    DSText("Emoji").dsTextStyle(.title3)
-                    Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if editing {
+                    EmojiField(emoji: $emoji)
+                } else if !emoji.isEmpty {
                     Text(emoji).font(.system(size: 28))
                 }
             }

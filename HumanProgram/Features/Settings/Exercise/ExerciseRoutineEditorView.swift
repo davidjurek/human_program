@@ -24,6 +24,12 @@ struct ExerciseRoutineEditorView: View {
     @State private var activePopup: ActivePopup?
     @State private var anchorFrames: [String: CGRect] = [:]
 
+    // Tap a sets/reps wheel value → numeric keypad entry (max 30). [owner]
+    @State private var countKeypad: CountTarget?
+    @State private var countTyped = ""
+    private struct CountTarget: Equatable { let id: UUID; let isSets: Bool }
+    private let maxCount = 30
+
     // Hold-to-reorder + swipe-to-delete: the shared gesture engine (see
     // EditableRowList) — same state/geometry/animations as Schedule and Today.
     // Wired to the item array in `body`.
@@ -82,10 +88,26 @@ struct ExerciseRoutineEditorView: View {
         }
         .onPreferenceChange(AnchorFrameKey.self) { anchorFrames = $0 }
         .overlay { anchoredPopup }
+        .overlay(alignment: .bottom) {
+            if countKeypad != nil {
+                GlassKeypad(
+                    onDigit: { d in
+                        countTyped = String((countTyped + d).filter(\.isNumber).suffix(2))
+                        applyCountTyped()
+                    },
+                    onBackspace: { countTyped = String(countTyped.dropLast()); applyCountTyped() },
+                    onDone: { countKeypad = nil; countTyped = "" }
+                )
+                .transition(.move(edge: .bottom))
+                .ignoresSafeArea(edges: .bottom)
+            }
+        }
         .coordinateSpace(.named(anchorSpace))
         .onChange(of: activePopup) { old, new in
             if case .counts(let id)? = old, new == nil { commitCounts(id) }
             if new != nil { rows.closeSwipeIfOpen() }
+            // Closing the wheel popup also dismisses the keypad.
+            if new == nil { countKeypad = nil; countTyped = "" }
         }
         .onChange(of: editingTitleId) { _, v in if v != nil { rows.closeSwipeIfOpen() } }
         .onChange(of: name) { _, _ in rows.closeSwipeIfOpen() }
@@ -214,17 +236,34 @@ struct ExerciseRoutineEditorView: View {
     }
 
     private func countsEditor(id: UUID) -> some View {
-        HStack(spacing: 0) {
+        // Sets × Reps, sat close together with the × sign between (max 30 each). Tapping
+        // a wheel's value opens the numeric keypad for direct entry. [owner]
+        HStack(spacing: 4) {
             VStack(spacing: 0) {
                 DSText("Sets").dsTextStyle(.caption1)
-                CountWheel(value: setsBinding(for: id), range: 0...99, onRequestKeypad: {})
+                CountWheel(value: setsBinding(for: id), range: 0...maxCount,
+                           onRequestKeypad: { openCountKeypad(id: id, isSets: true) })
             }
+            DSText("×").dsTextStyle(.title3)
             VStack(spacing: 0) {
                 DSText("Reps").dsTextStyle(.caption1)
-                CountWheel(value: repsBinding(for: id), range: 0...999, onRequestKeypad: {})
+                CountWheel(value: repsBinding(for: id), range: 0...maxCount,
+                           onRequestKeypad: { openCountKeypad(id: id, isSets: false) })
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func openCountKeypad(id: UUID, isSets: Bool) {
+        countKeypad = CountTarget(id: id, isSets: isSets)
+        countTyped = ""
+    }
+
+    private func applyCountTyped() {
+        guard let t = countKeypad else { return }
+        let v = min(maxCount, Int(countTyped) ?? 0)
+        if t.isSets { setsBinding(for: t.id).wrappedValue = v }
+        else { repsBinding(for: t.id).wrappedValue = v }
     }
 
     // MARK: - Bindings

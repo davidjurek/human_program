@@ -55,15 +55,17 @@ public final class AppLockViewModel {
         }
     }
 
-    /// Force the lock screen on immediately (e.g. from Settings "Lock Now" button).
-    public func lockNow() {
-        guard repo.isLockEnabled && repo.hasPIN() else { return }
-        isLocked = true
-    }
-
-    /// Call on meaningful user interaction so the timeout clock resets.
-    public func recordActivity() {
+    /// Call the moment the app enters the background. Stamps the away-time AND, for a
+    /// zero-second ("Lock immediately") timeout, locks right away — so the lock is
+    /// already up before the app is shown again (and the app-switcher snapshot is the
+    /// lock screen, not your data). This is what makes "Lock immediately" reliable
+    /// instead of depending solely on the foreground check firing. [owner: stabilize lock]
+    public func handleEnterBackground() {
         lastActiveAt = Date()
+        guard repo.isLockEnabled && repo.hasPIN() else { return }
+        if repo.lockTimeoutSeconds == 0 {
+            isLocked = true
+        }
     }
 
     // ── Unlock via PIN ─────────────────────────────────────────────────────────

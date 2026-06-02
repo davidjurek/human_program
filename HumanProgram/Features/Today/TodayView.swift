@@ -203,6 +203,7 @@ struct TodayView: View {
                 navButton("arrow.right") { vm.goToNextDay() }
                 Button { if dismissAddIfOpen() { return }; vm.goToToday() } label: {
                     DSText("Today").dsTextStyle(.subheadline)
+                        .frame(height: 30)   // match the nav buttons' height [owner]
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain)
                 .a11yTapBorder(cornerRadius: 4)
