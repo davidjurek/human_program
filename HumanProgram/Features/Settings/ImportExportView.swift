@@ -309,49 +309,20 @@ struct HprgmRestoreConfirmView: View {
     let url: URL
     @Environment(\.modelContext) private var context
     @Environment(AppState.self) private var appState
-    @State private var confirm = ""
     @State private var error: String?
-    // The block is parked this far up the page (a fixed physical shift, no keyboard
-    // avoidance) so the red button sits a comfortable gap above the keyboard.
-    // Matches FactoryResetView so the field + button line up across both screens.
-    private let contentLift: CGFloat = 32
-
-    private var canRestore: Bool { confirm.uppercased() == "RESTORE" }
 
     var body: some View {
-        // Keyboard avoidance is OFF (manualKeyboardAvoidance) so nothing shifts when
-        // the keyboard appears. The block is simply parked high (see contentLift).
-        SettingsScreen(centered: true, manualKeyboardAvoidance: true) {
-            VStack(spacing: 14) {
-                DSImageView(systemName: "exclamationmark.triangle.fill", size: 56, tint: .color(.red))
-                    .padding(.top, 8)
-                DSText("Restore Backup").dsTextStyle(.title2)
-                DestructiveWarningText(text: "Restoring will wipe all current data and replace with what is in the backup. This action cannot be undone.")
-
-                DSText("Type restore to confirm").dsTextStyle(.subheadline).padding(.top, 12)
-                TextField("", text: $confirm, prompt: Text("restore").foregroundStyle(.tertiary))
-                    .autocorrectionDisabled().textInputAutocapitalization(.never)
-                    .font(appFont(18)).multilineTextAlignment(.center)
-                    .padding(.vertical, 14).padding(.horizontal, 20)
-                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
-
-                Button { restore() } label: {
-                    Text("Restore Everything").font(appFont(18)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 16)
-                        .background(canRestore ? Color.red : Color.red.opacity(0.35), in: Capsule())
-                        .contentShape(Capsule())
-                }.buttonStyle(.plain).a11yTapBorder(Capsule()).disabled(!canRestore)
-                .padding(.top, 8)
-            }
-            .frame(maxWidth: .infinity).padding(.horizontal, 8)
-            .offset(y: -contentLift)
-        }
+        DestructiveConfirmScreen(
+            title: "Restore Backup",
+            warning: "Restoring will wipe all current data and replace with what is in the backup. This action cannot be undone.",
+            confirmWord: "RESTORE",
+            buttonTitle: "Restore Everything",
+            errorText: error,
+            onConfirm: restore
+        )
     }
 
     private func restore() {
-        guard canRestore else { return }
         // Drop the keyboard before the confirmation interstitial appears — otherwise
         // the field keeps first-responder and the keyboard floats over it.
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),

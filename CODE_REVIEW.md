@@ -37,7 +37,27 @@ Findings are grouped into priority tiers, numbered continuously top-to-bottom:
 | **P2** | 39 | Medium cleanups, correctness risks, performance |
 | **P3** | 143 | Polish, dead code, magic numbers, small nits |
 
-**Progress:** ✅ 32 fixed · 🟡 2 partial · ⬜ 165 open.
+**Progress:** ✅ ~60 fixed · 🟡 3 partial · ⬜ ~136 open. (See the dated run log below.)
+
+---
+
+## Overnight run — 2026-06-01 (authoritative for this batch)
+
+All of **P0, P1, and P2** were swept, plus the owner's separate bug/feature list and the full game removal. Build stays green and **71 tests pass** throughout. Newly addressed:
+
+**P0 (all done):** #1 (was fixed) · **#2** calendar-state self-healing dedupe (no `#Unique` at iOS 17.6) · **#3** persist getOrCreate refresh · **#4** restore preserves backed-up dates across timezones · **#5** import rolls back on failure · **#6** PIN keychain is this-device-only · **#7** every-N-min reminders align to window start · #8/#9/#10 (were fixed) · **#11** factory reset clears all preference keys · **#12** moot (game removed).
+
+**P1:** all five were already ✅ (verified).
+
+**P2:** **#18** group schedule blocks by real template id · **#19** shared backlog-sync check · **#20** one refresh add-loop helper · **#21** Sleep sentinel via `ScheduleBlock.isSleep` · **#22** already resolved (honest `setDetails` comment) · **#29/#101** shared `appOnboardingBlue` + `OnboardingPrimaryButton` · **#30** serialized page loads · **#31** Today brand colors → design tokens (raw symbol sizes left; see #199) · **#32** DateFormatter already cached (re-sort minor) · **#50** DSTimeField 12h wheel · **#51** shared `DestructiveConfirmScreen` · **#52** documented (no structural exercise source exists — title match is the only signal) · **#54** decoupling test cases added · **#55** populated v1 backup test added. (#23–28, #34–39, #46, #48, #49, #53, #56 were already ✅.)
+
+**P3 folded in while in-file:** #65, #89 (dead lock methods removed), #92 (schema deduped into `appModelTypes`), #110, #112/#187, #113, #189.
+
+**Game removal (owner-approved full rip, Cat Corner kept):** deleted `SudokuGateView`, `GameContainer`, `GameAccessService`, `EasterEggGateService`, the `GameAccessState`/`GameSaveMetadata` models, `GameBridgeTests`, and the About double-tap wiring. Resolves #91, #95, #86, #87 by deletion.
+
+**Owner bug/feature list:** Backlog (persist view+sort, "Order entered", 2-line rows, popup above center, no-discard-on-empty, DSKit project picker, Today quick-assign); Today (sleep overnight-wrap split, underlined headers, tripled gap, Today-button height); Schedule (new sleep 00:00–00:00); Reminders (per-request image attachment — the firing-without-image bug); Exercise (sets/reps max 30, × layout, tap-to-keypad); Routines (emoji on title line, parity); PIN (tighter gap, left-align, last-digit visible); App-lock ("Lock immediately" now reliable + hides switcher snapshot, 20-20 margins); App-wide (unified-gesture **tiny-swipe-never-a-tap** via early-begin horizontal pan, flows to Today/Schedule/Exercise/Routines; Backlog trash only fires when fully swiped); **Calendar reconciliation/sync page** (new).
+
+**Deferred (with reason):** editor keypad-controller/value-row dedup (#42/#43/#45/#47 — pure dedup on the fragile, un-tap-testable reference editors; behavior already correct); full Backlog gesture-engine unification + edge-swipe-back (#8 owner item — needs on-device tap-testing to avoid regressing navigation); a fully-thorough app-wide keyboard-avoidance retrofit of the remaining sheets (the primary editors already use the shared nudge); most cosmetic P3s.
 
 | Category (raw sweep) | Count | Plain meaning |
 |----------|------:|---------------|
@@ -108,42 +128,42 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** correct on all selected weekdays
 
 ### 2. CalendarEventLocalState lacks unique identity constraint
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed (repository-level self-healing dedupe; `#Unique` unavailable at iOS 17.6)
 - **Where:** Models.swift:278, :279
 - **Issue:** The comment says one row per (date, event) but nothing enforces it, so duplicate rows for the same event on the same day can appear and per-event overrides (hidden/title/completed) become ambiguous.
 - **Fix:** Add a unique compound constraint on (date, eventId) or a deterministic composite unique id, after confirming no duplicate rows exist on devices.
 - **Payoff:** no ambiguous duplicate event overrides
 
 ### 3. getOrCreate refresh path never saves
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
 - **Where:** DailyPageRepository.swift:37-53, :333-376
 - **Issue:** When an existing today/future page is refreshed, the code changes tasks and completion but never calls save, relying on automatic saving that can leave the refresh unpersisted, unlike every other method here.
 - **Fix:** Add an explicit save after the refresh call (or move the save into applyRefresh consistently), leaving the past/locked guards untouched.
 - **Payoff:** refresh reliably persisted
 
 ### 4. Restored dates can jump a day in another timezone
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
 - **Where:** HprgmImportService.swift:161, HprgmImportService.swift:226, Models.swift:266, Models.swift:290
 - **Issue:** When restoring a backup in a different timezone, page and calendar dates get re-rounded and can shift to the day before or after, so the restore no longer matches the backup.
 - **Fix:** After building the page on import, set its date straight from the backup value instead of re-rounding it.
 - **Payoff:** Restored days land on the correct date everywhere.
 
 ### 5. Failed import can leave you with nothing
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
 - **Where:** HprgmImportService.swift:39-83, HprgmImportService.swift:237
 - **Issue:** Import deletes all your data first and only saves the new data at the very end, so if it fails partway you can be left with the old data gone and nothing put back.
 - **Fix:** Wrap the delete-and-insert work so any error rolls everything back to the old data before giving up.
 - **Payoff:** A botched restore never wipes your data.
 
 ### 6. PIN saved without an explicit protection level
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
 - **Where:** AppLockRepository.swift:113, AppLockRepository.swift:120
 - **Issue:** The PIN is stored in the keychain without saying how it's protected, so it could end up in a device backup and migrate to another device, against the "no PIN backup" decision.
 - **Fix:** Save the PIN with the this-device-only protection setting so it can't migrate off the device.
 - **Payoff:** The PIN stays on the one device, as intended.
 
 ### 7. Every-N-minutes reminders drift off the expected times
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
 - **Where:** RollingReminderScheduler.swift:181, RollingReminderScheduler.swift:194, RollingReminderScheduler.swift:204
 - **Issue:** Repeating reminders line up their times from midnight instead of the window start, so depending on the current time they can fire at odd minutes and differ between the first day and later days.
 - **Fix:** Compute fire times as the window start plus whole steps of the interval so they're regular every day.
@@ -171,14 +191,14 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** Clearing fields actually works, no double-save
 
 ### 11. Factory reset leaves user preferences behind
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
 - **Where:** FactoryResetView.swift:206-221
 - **Issue:** Factory reset only clears 5 hardcoded preference keys, so a "reset to factory" still keeps your old font, background, appearance, icon, and format choices.
 - **Fix:** Keep one shared list of all preference keys and have reset clear that whole list, then re-set the onboarding flag.
 - **Payoff:** Reset actually returns the app to a clean factory state.
 
 ### 12. Sudoku gate opens game without re-checking GameAccessService
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Resolved by removal (game deleted)
 - **Where:** SudokuGateView.swift:78, SudokuGateView.swift:90, SudokuGateView.swift:97, AboutView.swift:62
 - **Issue:** The day-complete check only runs before the puzzle is shown, so solving the Sudoku opens the game directly without re-confirming through the one allowed access service.
 - **Fix:** Re-assert GameAccessService approval at the moment the game is presented, not just when the gate is revealed (confirm intended semantics with owner).

@@ -6,7 +6,9 @@ This file is instructions for AI coding agents (Claude Code) working on this pro
 
 ## What this app is
 
-Human Program is a personal daily planning iOS app. Each day gets one generated page. That page combines recurring tasks, backlog items, exercise routines, schedule blocks, and calendar events into one required checklist. Complete all tasks → day is complete → a hidden game unlocks. Nothing syncs to the cloud. Everything stays on device.
+Human Program is a personal daily planning iOS app. Each day gets one generated page. That page combines recurring tasks, backlog items, exercise routines, schedule blocks, and calendar events into one required checklist. Complete all tasks → the day is marked complete (the date turns green). Nothing syncs to the cloud. Everything stays on device.
+
+> **The hidden game was removed (owner-approved).** The Sudoku gate, the game container, `GameAccessService`/`EasterEggGateService`, and the `GameAccessState`/`GameSaveMetadata` models are all gone. `dayComplete` is now purely a planner state — completing a day no longer unlocks anything. The unrelated **Cat Corner** photo gallery and the hidden UDHR document (double-tap the version in About) remain.
 
 ---
 
@@ -39,14 +41,13 @@ HumanProgram/
     Models/         — SwiftData @Model classes and plain Codable structs
     Services/       — pure logic (no SwiftData); the brain of the app
     Repositories/   — @MainActor classes that own ModelContext access
-    GameBridge/     — game access service and easter egg gate
+    (GameBridge/ removed — the hidden game was deleted)
     Persistence/    — ModelContainer factory functions
     DesignSystem/   — AppColors, AppTypography tokens
   Features/
     Today/          — primary screen, TodayViewModel, components
     Backlog/        — backlog list (stub, needs full build)
-    Settings/       — settings menu + About page + easter egg
-    HiddenGate/     — Sudoku puzzle gate (full-screen black)
+    Settings/       — settings menu + About page (Cat Corner, hidden UDHR doc)
     Stats/          — streak and completion stats
     Routines/       — simple routine lists
 HumanProgramTests/  — XCTest unit tests for all core services
@@ -65,7 +66,7 @@ ADD.md              — full product spec (read this before changing behavior)
 2. **Services are pure structs with no SwiftData imports.** `RecurrenceEngine`, `DailyPageGenerator`, `CompletionService`, etc. take plain data in and return plain data out. This makes them fast and easy to test without spinning up a database.
 3. **Repositories are `@MainActor` classes.** SwiftData's `ModelContext` must only be used on the main thread. Repositories own all ModelContext access.
 4. **Past daily pages must never be modified *automatically*.** If `isPastLocked == true`, that page is a historical snapshot. Template changes, refreshes, or bulk operations must skip past pages. This is the single most important rule in the codebase. **Three deliberate, owner-approved exceptions (do NOT "fix" these as bugs):** (a) the user can manually **unlock** a past day on the Today screen (red→green padlock, tap-and-hold) to add/edit its tasks; it auto-re-locks on leaving. (b) At day rollover, `DailyPageRepository.severPastTasks` clears the `sourceType`/`sourceId` of past page-tasks so they become standalone snapshots decoupled from the backlog/calendar — completion no longer affects the backlog/calendar, and reassigning a backlog item to a new date yields two independent tasks. (c) A **full `.hprgm` restore** (`HprgmImportService.importData`) deletes and replaces ALL daily pages, including locked snapshots, so the restore exactly mirrors the backup. This is an explicit, user-typed "REPLACES all current data" action — not an automatic refresh. Neither (a) nor (b) is a template refresh, and automatic refresh still never touches past pages.
-5. **`GameAccessService` is the only bridge between planner and game.** Game code must never query task or page tables directly. All game unlock logic goes through `GameAccessService`.
+5. *(Removed.)* There is no longer a game or a planner↔game bridge. `dayComplete` is a plain planner state.
 
 ---
 
@@ -89,11 +90,8 @@ tasks.isNotEmpty && tasks.allSatisfy { $0.isCompleted }
 ```
 That's it. An empty task list is NOT complete. Exercise is not in the task list (unless the user separately created a recurring task for it). Calendar-sourced tasks ARE included.
 
-### GameAccessService
-`GameAccessService.canAccessGame(todayPage:today:)` returns `true` only when:
-- `todayPage` is not nil
-- `todayPage.dayComplete` is `true`
-- `todayPage.date` matches today's date (yesterday's completed page does not count)
+### GameAccessService *(removed)*
+The game and its access service were deleted. `dayComplete` no longer gates anything.
 
 ---
 
@@ -110,8 +108,7 @@ That's it. An empty task list is NOT complete. Exercise is not in the task list 
 - **Clock times honor the 12h/24h setting via the shared `clockString(...)` helper** (`AppFont.swift`, reads `settings.timeFormat`, default 12h → "8:00 PM" / 24h → "20:00"). Use it for every DISPLAYED `##:##` clock time (Schedule sleep/block ranges, Reminder time read-outs, Reminders-list summaries, `DSTimeField`); the picker wheels also follow it (12h shows an AM/PM column), while the keypad always types HHMM in 24h (unambiguous). Do NOT route durations (`##h ##m`), running totals, **the Today timeline gutter, or the Calendar Week/Day gutter** through it — those are intentionally fixed 24h.
 - **UI is built on DSKit.** The whole app's UI is migrating to the DSKit design system (`import DSKit`). Use DSKit components (`DSText`, `DSImageView`, `DSButton`, etc.) and the appearance/theme set in `AppTheme.appearance`, applied once at the app root via `.dsAppearance(...)`. `AppColors` / `AppTypography` are LEGACY — they still exist for not-yet-migrated screens, but new or migrated UI must use DSKit, not them. No hardcoded `Color(hex:)` / `.font(.system(size:))` in views.
 - **See the "DSKit" section below** for the Settings UI convention and the API gotchas (the tokens are tricky — read it before writing DSKit code).
-- **The game is completely hidden.** No button, no hint, no card, no label anywhere in the normal UI.
-- **Easter egg path:** About page → double-tap the developer name → Sudoku gate screen → game. If the day is not complete, the double-tap produces a subtle haptic and nothing else. No error message, no explanation.
+- **No game.** The hidden game was removed; there is no game button, gate, or unlock anywhere. (A hidden UDHR document still opens by double-tapping the version row in About; the developer-name row no longer has any hidden action.)
 
 ---
 
@@ -173,10 +170,11 @@ The **hub** (`HubView` in `App/ContentView.swift`) is the navigation **root** �
 - Navigation: hub-root + Today launch (see Navigation model above), no tab bar; full-screen Welcome/reset/restore interstitials (`hp.hasLaunched` flag).
 - DSKit screens: Today (timeline + now-bar + past lock/unlock + task detail), full Backlog (Task/Project views, folders, swipe/select delete, move, task detail), Calendar tab (Month/Week/Day/List + EventKit create/edit), Routines (grid + emoji editor), Stats (streaks + week chart), Settings + every sub-screen (Customization, Format, Reminders + editor + sound, Recurring + editor, Schedule + editor, Exercise + editor, Calendar Sources, Security (PIN/App Lock/Face ID) + shared `PINEntryView` + unlock gate, About/Licenses, Factory Reset + PIN gate, Import (text/CSV/.hprgm restore) + Export).
 - Past-page ↔ backlog/calendar decoupling (`severPastTasks` at rollover).
-- Tests: recurrence, generation, completion, streaks, game bridge, exercise repo, past-page decoupling (70 passing). Note: the test target is **host-based** (loads symbols + DSKit from the app); don't revert that in `project.yml`.
+- Calendar ↔ Today reconciliation (`CalendarReconciliationView`, reached from the Calendar top-bar sync button): deleting/hiding a calendar event removes it from Today and persists (via `CalendarEventLocalState.hidden`); the page lists today/future discrepancies and restores them.
+- Tests: recurrence, generation, completion, streaks, exercise repo, past-page decoupling, backup round-trip (71 passing). Note: the test target is **host-based** (loads symbols + DSKit from the app); don't revert that in `project.yml`.
 
 ### Not yet built / out of scope
-- Real game integration (Unity or Godot) — the Sudoku gate + `GameContainer` are still stubs; the game won't need saving.
+- The hidden game is **removed**, not pending — do not re-add a game, gate, or unlock.
 - Cat Corner photo gallery (owner will provide photos) — viewer exists, intentionally a full-screen black immersive view (not DSKit).
 
 ---
@@ -190,7 +188,7 @@ These are not up for debate. If a task seems to require changing one of these, s
 - **No cloud, no analytics, no Firebase, no trackers.** Everything stays on device.
 - **App lock = Face ID + PIN (4–20 digits).** Forgotten PIN = reset app. No recovery phrase, no iCloud backup of the PIN.
 - **Backup files (`.hprgm`) are not encrypted.** App lock protects the data on device. Backup files are plain.
-- **`.hprgm` = the FULL app state (format v2).** Export/import (`HprgmExportService`/`HprgmImportService`, bundle = `HprgmBundle`) must cover **every** `@Model` except the two game models (`GameAccessState`, `GameSaveMetadata`), PLUS the user's UserDefaults preferences (font, font size, appearance, app icon, backgrounds, date/time format, selected calendar IDs). It deliberately EXCLUDES the PIN / Face ID / app-lock keys (the restore screen says "Your PIN and Face ID stay as they are"). If you add a new `@Model` or a new user-preference key, you MUST add it to the bundle + export fetch + import insert, or backups silently lose it. New bundle fields must be **optional** so older backups still decode. Round-trip fidelity is pinned by `HprgmBackupRoundTripTests`.
+- **`.hprgm` = the FULL app state (format v2).** Export/import (`HprgmExportService`/`HprgmImportService`, bundle = `HprgmBundle`) must cover **every** `@Model`, PLUS the user's UserDefaults preferences (font, font size, appearance, app icon, backgrounds, date/time format, selected calendar IDs). It deliberately EXCLUDES the PIN / Face ID / app-lock keys (the restore screen says "Your PIN and Face ID stay as they are"). If you add a new `@Model` or a new user-preference key, you MUST add it to the bundle + export fetch + import insert, or backups silently lose it. New bundle fields must be **optional** so older backups still decode. Round-trip fidelity is pinned by `HprgmBackupRoundTripTests`.
 - **Sleep block is mandatory** as the first block in every schedule template.
 - **Exercise does not count toward day completion** unless the user also creates a separate recurring task for it.
 - **No confirmation dialogs for delete.** The plan is undo/redo. Skip the confirmation for now. (Swipe-to-delete is allowed — the old "no swipe-to-delete" rule was removed at the owner's request; it's now used for schedule blocks.)

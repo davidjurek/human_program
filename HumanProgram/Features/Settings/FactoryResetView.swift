@@ -27,6 +27,63 @@ struct DestructiveWarningText: View {
     }
 }
 
+/// The shared "type WORD to confirm" destructive screen used by BOTH Factory Reset
+/// and Restore (they were copy-pasted layouts differing only in the word + action).
+/// Warning icon → title → warning → "type <word> to confirm" field → red capsule
+/// button (enabled only when the typed word matches). The block is parked high
+/// (contentLift) with keyboard avoidance off so the field + button line up across
+/// both screens and nothing shifts when the keyboard appears. [#51]
+struct DestructiveConfirmScreen: View {
+    let title: String
+    let warning: String
+    let confirmWord: String         // e.g. "RESET" / "RESTORE"
+    let buttonTitle: String
+    var busy: Bool = false
+    var errorText: String? = nil
+    let onConfirm: () -> Void
+
+    @State private var input = ""
+    private let contentLift: CGFloat = 32
+    private var valid: Bool { input.uppercased() == confirmWord.uppercased() }
+
+    var body: some View {
+        SettingsScreen(centered: true, manualKeyboardAvoidance: true) {
+            VStack(spacing: 14) {
+                DSImageView(systemName: "exclamationmark.triangle.fill", size: 56, tint: .color(.red))
+                    .padding(.top, 8)
+                DSText(title).dsTextStyle(.title2)
+                DestructiveWarningText(text: warning)
+
+                DSText("Type \(confirmWord.lowercased()) to confirm")
+                    .dsTextStyle(.subheadline).padding(.top, 12)
+                TextField("", text: $input,
+                          prompt: Text(confirmWord.lowercased()).foregroundStyle(.tertiary))
+                    .autocorrectionDisabled().textInputAutocapitalization(.never)
+                    .font(appFont(18)).multilineTextAlignment(.center)
+                    .padding(.vertical, 14).padding(.horizontal, 20)
+                    .background(Color.primary.opacity(0.06),
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                if let errorText { DSText(errorText).dsTextStyle(.subheadline, Color.red) }
+
+                Button { if valid { onConfirm() } } label: {
+                    Group {
+                        if busy { ProgressView().tint(.white) }
+                        else { Text(buttonTitle).font(appFont(18)).foregroundStyle(.white) }
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 16)
+                    .background(valid ? Color.red : Color.red.opacity(0.35), in: Capsule())
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain).a11yTapBorder(Capsule()).disabled(!valid || busy)
+                .padding(.top, 8)
+            }
+            .frame(maxWidth: .infinity).padding(.horizontal, 8)
+            .offset(y: -contentLift)
+        }
+    }
+}
+
 // ── FactoryResetView ───────────────────────────────────────────────────────────
 // Pushed screen (reached from Settings → Danger Zone, and Settings → Security).
 // Wipes all SwiftData records and the app's UserDefaults. The user must type
@@ -78,80 +135,22 @@ struct FactoryResetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
 
-    @State private var confirmationInput: String = ""
     @State private var isResetting: Bool = false
-    // The block is parked this far up the page (a fixed physical shift, no keyboard
-    // avoidance) so the red button sits a comfortable gap above the keyboard.
-    // Nothing moves when the keyboard appears.
-    private let contentLift: CGFloat = 32
-
-    private var isConfirmationValid: Bool {
-        confirmationInput.uppercased() == "RESET"
-    }
 
     var body: some View {
-        // Keyboard avoidance is OFF (manualKeyboardAvoidance) so nothing shifts when
-        // the keyboard appears. The block is simply parked high (see contentLift).
-        SettingsScreen(centered: true, manualKeyboardAvoidance: true) {
-            VStack(spacing: 14) {
-                DSImageView(systemName: "exclamationmark.triangle.fill",
-                            size: 56, tint: .color(.red))
-                    .padding(.top, 8)
-
-                DSText("Reset App").dsTextStyle(.title2)
-
-                DestructiveWarningText(text: DestructiveWarningText.resetWarning)
-
-                DSText("Type reset to confirm")
-                    .dsTextStyle(.subheadline)
-                    .padding(.top, 12)
-
-                TextField("", text: $confirmationInput,
-                          prompt: Text("reset").foregroundStyle(.tertiary))
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .font(appFont(18))
-                    .multilineTextAlignment(.center)
-                    .padding(.vertical, 14)
-                    .padding(.horizontal, 20)
-                    .background(Color.primary.opacity(0.06),
-                                in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                resetButton
-                    .padding(.top, 8)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 8)
-            .offset(y: -contentLift)
-        }
-    }
-
-    private var resetButton: some View {
-        Button {
-            performReset()
-        } label: {
-            Group {
-                if isResetting {
-                    ProgressView().tint(.white)
-                } else {
-                    Text("Factory Reset").font(appFont(18)).foregroundStyle(.white)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(isConfirmationValid ? Color.red : Color.red.opacity(0.35),
-                        in: Capsule())
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .a11yTapBorder(Capsule())
-        .disabled(!isConfirmationValid || isResetting)
+        DestructiveConfirmScreen(
+            title: "Reset App",
+            warning: DestructiveWarningText.resetWarning,
+            confirmWord: "RESET",
+            buttonTitle: "Factory Reset",
+            busy: isResetting,
+            onConfirm: performReset
+        )
     }
 
     // MARK: - Reset logic
 
     private func performReset() {
-        guard isConfirmationValid else { return }
         // Drop the keyboard before the confirmation interstitial appears — otherwise
         // the field keeps first-responder and the keyboard floats over it.
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),

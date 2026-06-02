@@ -32,7 +32,7 @@ struct BacklogRow<Destination: View>: View {
             HStack(spacing: 0) {
                 face
                     .frame(width: geo.size.width, height: geo.size.height)
-                Button(action: onDelete) {
+                Button(action: { if swipeOpen { onDelete() } }) {   // only when fully swiped [owner]
                     ZStack {
                         Circle().fill(Color.red).frame(width: 38, height: 38)
                         Image(systemName: "trash").font(.system(size: 16)).foregroundStyle(.white)
@@ -41,6 +41,7 @@ struct BacklogRow<Destination: View>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .allowsHitTesting(swipeOpen)
                 .a11yTapBorder(Circle())
             }
             .offset(x: offset)
