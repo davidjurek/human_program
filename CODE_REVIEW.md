@@ -3,9 +3,58 @@
 **Date:** 2026-06-01
 **Branch:** `dskit-settings-migration`
 **Scope:** Entire codebase — 95 Swift files, ~19,570 lines (app + tests)
-**Type:** Research only. **No code was changed.** Every recommendation below is a suggestion, with the risk of breakage noted so nothing gets applied blind.
+**Type:** The audit itself was research-only. Fixes have since been applied in committed checkpoints — see the **Progress** section directly below.
 
 This audit was run as a 16-agent parallel sweep: 13 agents each deep-read one subsystem, and 3 more swept the *whole* repo for cross-file duplication, CLAUDE.md-convention drift, and algorithmic (Big-O) problems. Every finding cites real `file:line` locations the agents actually read.
+
+---
+
+## Progress (updated 2026-06-01)
+
+Status legend: ✅ done & pushed · 🟡 partly done · ⬜ not started (deferred). Every ✅ was built green with all tests passing before commit. Test count grew 70 → **78**.
+
+### Pre-plan quick wins — ✅ all done
+Done before the "10 big items" plan, as low-risk cleanups:
+
+| Item | Status | Commit |
+|------|--------|--------|
+| `DefaultsKey` enum (central UserDefaults keys) | ✅ done | `8b17da1` |
+| `TemplateInputs.fetchAll()` (de-triplicated fetch helpers) | ✅ done | `31cffdd` |
+| `AppDateFormat` + `.keyboardSpacer()` + dead-code delete (`AppColors`/`AppTypography`/stale `AppState`) + shared `CSV`/`Weekday`/test fixtures | ✅ done | `ea75f26` |
+
+### The 4 genuine bugs — ✅ all fixed (commit `d44d4d4`)
+| Bug | Status |
+|-----|--------|
+| `everyNWeeks` only fired the anchor's weekday | ✅ fixed + regression test |
+| App-lock timeout measured time-since-launch | ✅ fixed |
+| Multi-project delete dropped projects | ✅ fixed |
+| New reminders wrote every field twice | ✅ fixed |
+
+### Phase 1 — safe tidy-ups + speed — ✅ all done
+| # | Item | Status | Commit |
+|---|------|--------|--------|
+| #10b | Memoize the font helper (`appFont`/`appUIFont`) | ✅ done | `650330d` |
+| #5 | Split the 1,279-line `CalendarView` | ✅ done (→ 894 lines) | `d4fc567` |
+| #6 | Bucket calendar events (O(n²) → O(1) lookups) | ✅ done | `d47e51b` |
+| #7 | Cache the Stats recomputation | ✅ done | `5e70c10` |
+
+### Phase 2 — correctness & data safety — ✅ all done
+| # | Item | Status | Commit |
+|---|------|--------|--------|
+| #2 | Route view writes through repositories | ✅ done | `4a6844e` |
+| #3 | Merge Backlog list/folder twin screens | ✅ done | `865df72` |
+| #8 | `occurrenceLimit` expansion O(range×origin) → O(range) | ✅ done + test | `9d852f1` |
+| #4 | Backup field-coverage safety net | ✅ done + test | `8a47d97` |
+
+### Phase 3 — the two big, delicate ones — 🟡 partly done
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| #1 | Shared editor engine — **toolbar Save/Delete buttons** | ✅ done | `dc1dafa` — pure views |
+| #1 | Shared editor engine — **keypad HHMM rule** (`TimeKeypad`) | ✅ done + tests | `0b8d636` — pure logic |
+| #1 | Shared editor engine — **drag-reorder + swipe-delete state machine** | ⬜ deferred | Needs hands-on **tap-testing** (no UI automation here). Do in a pairing session. Includes #10a (TodayView split). |
+| #9 | Calendar DSKit migration (`CalendarView` + `CalendarEventDetailSheet`) | ⬜ deferred | Reflow-sensitive; simulator has **no calendar events**, so event rendering + the font-scale change can't be verified by the agent. Do in a pairing session against the real calendar. |
+
+**To resume the deferred work:** start a session and say *"let's do #1"* or *"let's do #9"* — I tap/eyeball alongside you, piece by piece.
 
 ---
 
