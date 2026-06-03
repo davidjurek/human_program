@@ -454,18 +454,19 @@ struct CalendarView: View {
                         Rectangle().fill(Color.primary.opacity(0.08))
                             .frame(width: colW * 7, height: 1).offset(x: weekTimeColW, y: y)
                         TimelineGutterLabel(minutesOfDay: hour * 60)   // shared gutter [owner]
-                            .offset(x: 0, y: y - 7)   // centred on its line; 00:00 stays in view via the top headroom below [owner]
+                            .offset(x: 0, y: y - 7)   // centred on its line; the 00:00 line now sits flush at the pane edge [owner]
                     }
-                    // All-day ↔ timeline divider, drawn AT the 00:00 line. It rides down
-                    // with the grid during a pull (so the single line travels down), but
-                    // PINS at its rest spot (screen y = 8, the top headroom) once scrolled
-                    // down (so it splits from the 00:00 line and marks the pane edge). Same
-                    // look/position as the 00:00 hour line → one line at rest. visualEffect
-                    // reads the live scroll position every frame, including the pull. [owner]
+                    // All-day ↔ timeline divider, drawn AT the 00:00 line, which now sits
+                    // flush at the frozen all-day pane's bottom edge (no headroom gap). It
+                    // rides down with the grid during a pull (so the single line travels
+                    // down), but PINS at the pane edge (scroll-content top, y = 0) once
+                    // scrolled down — splitting from the 00:00 line, which moves away with
+                    // the grid. Same look/position as the 00:00 hour line → one line at
+                    // rest. visualEffect reads the live scroll position every frame. [owner]
                     Rectangle().fill(Color.primary.opacity(0.08))
                         .frame(width: colW * 7, height: 1).offset(x: weekTimeColW)
                         .visualEffect { content, proxy in
-                            content.offset(y: max(0, 8 - proxy.frame(in: .scrollView).minY))
+                            content.offset(y: max(0, -proxy.frame(in: .scrollView).minY))
                         }
                     // Timed events per day column (all-day events live in the band). [#cal-allday]
                     ForEach(Array(weekDays.enumerated()), id: \.offset) { idx, day in
@@ -502,7 +503,6 @@ struct CalendarView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: totalH + 1, alignment: .topLeading)
-                .padding(.top, 8)   // headroom so the centred 00:00 label isn't clipped at the top [owner]
         }
         .padding(.leading, TimelineMetrics.leadingInset)   // align gutter with Today [owner]
     }
@@ -562,9 +562,9 @@ struct CalendarView: View {
                         ForEach(0..<24, id: \.self) { hour in
                             HStack(alignment: .top, spacing: 8) {
                                 TimelineGutterLabel(minutesOfDay: hour * 60)   // shared gutter [owner]
+                                    .offset(y: -7)   // centre label on the hour line at the row top [owner]
                                 Rectangle().fill(Color.primary.opacity(0.08))
                                     .frame(height: 1)
-                                    .padding(.top, 7)
                             }
                             .frame(height: hourHeight, alignment: .top)
                             .id(hour)
@@ -572,24 +572,23 @@ struct CalendarView: View {
                         // Closing midnight mark at the very bottom (matches Today). [owner]
                         HStack(alignment: .top, spacing: 8) {
                             TimelineGutterLabel(minutesOfDay: 24 * 60)
+                                .offset(y: -7)   // centre on the closing midnight line [owner]
                             Rectangle().fill(Color.primary.opacity(0.08))
                                 .frame(height: 1)
-                                .padding(.top, 7)
                         }
                     }
 
-                    // All-day ↔ timeline divider, drawn AT the 00:00 line. It rides down
-                    // with the grid during a pull (single line travels down), but PINS at
-                    // its rest spot (the hour line's 7pt top padding) once scrolled down
-                    // (splits from the 00:00 line, marking the pane edge). Same look as the
-                    // 00:00 hour line → one line at rest. visualEffect reads the live scroll
-                    // position every frame, including the pull. [owner]
+                    // All-day ↔ timeline divider, drawn AT the 00:00 line, which now sits
+                    // flush at the frozen all-day pane's bottom edge (no headroom gap). It
+                    // rides down with the grid during a pull (single line travels down), but
+                    // PINS at the pane edge (scroll-content top, y = 0) once scrolled down —
+                    // splitting from the 00:00 line, which moves away with the grid. Same
+                    // look as the 00:00 hour line → one line at rest. [owner]
                     HStack(spacing: 8) {
                         Color.clear.frame(width: TimelineMetrics.gutterW, height: 1)
                         Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 7)
                     .visualEffect { content, proxy in
                         content.offset(y: max(0, -proxy.frame(in: .scrollView).minY))
                     }

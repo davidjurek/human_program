@@ -4,6 +4,16 @@ This file is instructions for AI coding agents (Claude Code) working on this pro
 
 ---
 
+## Working rules — ALWAYS follow these (highest priority)
+
+These govern *when* you act. They override any inclination to be helpful by getting ahead of the owner.
+
+1. **Do not write or change code unless you receive an unmistakable, explicit command to do so.** Discussion, questions, screenshots, "do you see X?", or descriptions of a problem are NOT permission to edit. If it is at all unclear whether the owner wants you to make the change now, **do not** — ask or wait. When in doubt, don't.
+2. **Never use the simulator unless explicitly told to.** Do not boot, install, launch, or screenshot on a simulator on your own initiative — not even to "verify." Building/compiling the code (e.g. `xcodebuild build -destination 'generic/platform=iOS Simulator'`, which does not boot a simulator) is allowed; running anything on a simulator is not, unless the owner says so.
+3. **If (and only if) told to use the simulator, use iPhone 17 Pro, iOS 26.4** — not 26.5.
+
+---
+
 ## What this app is
 
 Human Program is a personal daily planning iOS app. Each day gets one generated page. That page combines recurring tasks, backlog items, exercise routines, schedule blocks, and calendar events into one required checklist. Complete all tasks → the day is marked complete (the date turns green). Nothing syncs to the cloud. Everything stays on device.
@@ -207,6 +217,8 @@ These are not up for debate. If a task seems to require changing one of these, s
 - If you add a new service, add unit tests for it in `HumanProgramTests/`.
 
 ### Verifying screens in the simulator (when you can't tap)
+
+> **Only when explicitly told to** (see Working rules #2 at the top). Do not reach for the simulator on your own — describe what you'd verify and wait for the go-ahead. **When told, use iPhone 17 Pro, iOS 26.4 (not 26.5).**
 
 You can build/install/launch the app and take screenshots, but on this machine there is **no UI-tap automation** (no `idb`/`cliclick`; AppleScript/System Events lacks Accessibility permission). That means you can't tap/scroll/type to navigate. This is NOT a reason to skip visual verification — **if navigation by tapping doesn't work, render the target screen directly instead:**
 
