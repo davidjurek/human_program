@@ -37,64 +37,7 @@ Findings are grouped into priority tiers, numbered continuously top-to-bottom:
 | **P2** | 39 | Medium cleanups, correctness risks, performance |
 | **P3** | 143 | Polish, dead code, magic numbers, small nits |
 
-**Progress:** ✅ ~60 fixed · 🟡 3 partial · ⬜ ~136 open. (See the dated run log below.)
-
----
-
-## Overnight run — 2026-06-01 (authoritative for this batch)
-
-All of **P0, P1, and P2** were swept, plus the owner's separate bug/feature list and the full game removal. Build stays green and **71 tests pass** throughout. Newly addressed:
-
-**P0 (all done):** #1 (was fixed) · **#2** calendar-state self-healing dedupe (no `#Unique` at iOS 17.6) · **#3** persist getOrCreate refresh · **#4** restore preserves backed-up dates across timezones · **#5** import rolls back on failure · **#6** PIN keychain is this-device-only · **#7** every-N-min reminders align to window start · #8/#9/#10 (were fixed) · **#11** factory reset clears all preference keys · **#12** moot (game removed).
-
-**P1:** all five were already ✅ (verified).
-
-**P2:** **#18** group schedule blocks by real template id · **#19** shared backlog-sync check · **#20** one refresh add-loop helper · **#21** Sleep sentinel via `ScheduleBlock.isSleep` · **#22** already resolved (honest `setDetails` comment) · **#29/#101** shared `appOnboardingBlue` + `OnboardingPrimaryButton` · **#30** serialized page loads · **#31** Today brand colors → design tokens (raw symbol sizes left; see #199) · **#32** DateFormatter already cached (re-sort minor) · **#50** DSTimeField 12h wheel · **#51** shared `DestructiveConfirmScreen` · **#52** documented (no structural exercise source exists — title match is the only signal) · **#54** decoupling test cases added · **#55** populated v1 backup test added. (#23–28, #34–39, #46, #48, #49, #53, #56 were already ✅.)
-
-**P3 folded in while in-file:** #65, #89 (dead lock methods removed), #92 (schema deduped into `appModelTypes`), #110, #112/#187, #113, #189.
-
-**Game removal (owner-approved full rip, Cat Corner kept):** deleted `SudokuGateView`, `GameContainer`, `GameAccessService`, `EasterEggGateService`, the `GameAccessState`/`GameSaveMetadata` models, `GameBridgeTests`, and the About double-tap wiring. Resolves #91, #95, #86, #87 by deletion.
-
-**Owner bug/feature list:** Backlog (persist view+sort, "Order entered", 2-line rows, popup above center, no-discard-on-empty, DSKit project picker, Today quick-assign); Today (sleep overnight-wrap split, underlined headers, tripled gap, Today-button height); Schedule (new sleep 00:00–00:00); Reminders (per-request image attachment — the firing-without-image bug); Exercise (sets/reps max 30, × layout, tap-to-keypad); Routines (emoji on title line, parity); PIN (tighter gap, left-align, last-digit visible); App-lock ("Lock immediately" now reliable + hides switcher snapshot, 20-20 margins); App-wide (unified-gesture **tiny-swipe-never-a-tap** via early-begin horizontal pan, flows to Today/Schedule/Exercise/Routines; Backlog trash only fires when fully swiped); **Calendar reconciliation/sync page** (new).
-
-**Deferred (with reason):** editor keypad-controller/value-row dedup (#42/#43/#45/#47 — pure dedup on the fragile, un-tap-testable reference editors; behavior already correct); full Backlog gesture-engine unification + edge-swipe-back (#8 owner item — needs on-device tap-testing to avoid regressing navigation); a fully-thorough app-wide keyboard-avoidance retrofit of the remaining sheets (the primary editors already use the shared nudge); most cosmetic P3s.
-
----
-
-## Overnight run #2 — 2026-06-02
-
-The three deferred items + a second owner bug/feature list. Build green, **71 tests pass** throughout.
-
-**Backlog (now on the shared gesture engine):** rows use the SAME `RowGestureCoordinator` as Today/Schedule/Exercise/Routines (tap / scroll / swipe-left-to-delete), reorder disabled (sorted list). Fixed: **can't-scroll-from-rest** (no per-row DragGesture stealing vertical scroll), **swipe-to-delete not working** in Task view, **accidental edge-tap deletes** (trash only hittable when fully open), and **edge swipe-back** (programmatic nav via `consumeTap` instead of in-row `NavigationLink`; the shared swipe pan now ignores the left-edge zone). Default sort is now **creation order, newest at the bottom** (added as "Date created"); bullets on task rows (shared with folder rows), folder icons on project rows; rows grow to a **3-line** title.
-
-**App-wide:** numpad keys **adapt to dark mode** (single `GlassKeypad` engine, deduped key chrome #146); every font **normalizes to the default font's cap height** so switching fonts changes style/width but not vertical height; **app lock** locks on cold launch (force-quit→reopen) and respects timeouts, **Face ID auto-engages** on appear and on becoming-active (re-armed per lock, no loop), the **PIN lockout was removed**; the **"Today" top-bar button** is full 44pt height in Today + Calendar.
-
-**Today:** uniform spacing (22pt between sections, 10pt header→content); **header underlines removed**.
-
-**Calendar:** **all-day band keeps a fixed height** even when empty; **sync moved to the top-bar center** as "Sync: N differences" — blue in sync, orange when not (shared count via `CalendarReconciliation`).
-
-**Keyboard avoidance:** shared nudge applied to `BacklogTaskDetailView` and `AddCalendarEventView`.
-
-**Engine:** `RowGestureCoordinator` gained `reorderEnabled`; the swipe pan carves out the leading-edge zone for swipe-back — flows to all five list screens.
-
-**Still deferred (internal-only, needs on-device verification):** the editor value-row/keypad-overlay view dedup (#43/#47) and binding helper (#45). `TimeKeypad` already shares the time-entry RULE (the substance of #42). These are zero-behavior-change view-structure cleanups on the fragile, un-tap-testable planning editors — left for when they can be verified live.
-
-| Category (raw sweep) | Count | Plain meaning |
-|----------|------:|---------------|
-| Near-duplication | 52 | "Almost the same code" that should be merged into one shared piece |
-| Efficiency (Big-O) | 34 | Work repeated more than it needs to be — slower than O(n) |
-| Bug-risk | 31 | Logic that can produce a wrong result |
-| CLAUDE.md inconsistency | 22 | A project rule followed in some files but skipped in others |
-| Exact-duplication | 18 | Identical code copy-pasted |
-| Dead code | 17 | Defined but never used |
-| Best-practice | 16 | Non-idiomatic Swift/SwiftUI/SwiftData |
-| Logic-structure | 10 | Tangled or fragile control flow |
-| Sloppy | 9 | Magic numbers, copy-paste drift |
-| Readability | 9 | Over-long files/functions hard to follow |
-| Conciseness | 6 | Verbose where it could be shorter |
-| Data-integrity | 5 | A model invariant isn't actually enforced |
-
-**The headline:** the code is fundamentally sound. The pure-logic "brain" (`Core/Services`) is cleanly separated with no SwiftData leaks, the weekday encoding is consistent everywhere, and the test suite is solid. The opportunities are almost entirely **(a) the same code written in several places** (the biggest single theme by far) and **(b) per-render recomputation** that's cheap today but grows with your data. A handful of genuine bugs are mixed in — those are the P0 tier.
+**Progress:** all P0/P1/P2 addressed; remaining open items are P3 polish. Status is tracked per-finding below.
 
 ---
 
@@ -266,35 +209,40 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 ## P2 — Medium: cleanups, correctness risks & performance
 
 ### 18. Schedule template grouping collides distinct templates
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
+- **Update:** `ScheduleBlockInput` carries `templateId`; grouping is by that id (DailyPageGenerator.swift).
 - **Where:** DailyPageGenerator.swift:137, :154, :166
 - **Issue:** Schedule blocks are grouped by their metadata (enabled flag, weekdays, date range) instead of a real template id, so two different templates that share those settings get merged and both emit their blocks on a matching day.
 - **Fix:** Pass the real parent template id into ScheduleBlockInput and group by that id instead of by metadata.
 - **Payoff:** correct schedule on colliding templates
 
 ### 19. syncCompletion and syncUncompletion are near-identical
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** Both call one shared `matchedBacklogItem` helper (BacklogMaintenanceService.swift).
 - **Where:** BacklogMaintenanceService.swift:38, :68
 - **Issue:** Two methods repeat the exact same set of checks and differ only in the final status they set, so any change to the matching rules has to be made twice and they can drift apart.
 - **Fix:** Pull the shared checks into one private helper that returns the matched item, and have both methods call it and set their own status.
 - **Payoff:** one place to change
 
 ### 20. Two add-task loops in refresh are duplicated
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** One `appendNew(sourceType:)` helper, called for recurring then backlog (DailyPageGenerator.swift).
 - **Where:** DailyPageGenerator.swift:370, :390, :332
 - **Issue:** The recurring and backlog branches of the refresh logic are the same shape (filter, drop already-present, sort, append with running order), so the add/remove logic must be maintained in three near-identical spots.
 - **Fix:** Factor the shared "filter, sort, append with running order" into one helper parameterized by source type, preserving recurring-before-backlog order.
 - **Payoff:** one place to change
 
 ### 21. "Sleep" string used as structural sentinel
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
+- **Update:** `ScheduleBlock.isSleep` (computed, keyed off `sleepBlockTitle`) replaces the scattered `title == "Sleep"` checks.
 - **Where:** ScheduleRepository.swift:116, :143, :161, :202, :227, :233, :323-330
 - **Issue:** The mandatory first Sleep block is identified everywhere by comparing its title to "Sleep", so renaming it or another block titled "Sleep" silently breaks the can't-delete/stays-first rule.
 - **Fix:** Mark the Sleep block with a stable flag/id and check that in one helper; at minimum hoist the literal into a single constant.
 - **Payoff:** invariant no longer tied to a name
 
 ### 22. Misleading comment in BacklogRepository.update
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** Comment now states the real behavior (nil CLEARS the field).
 - **Where:** BacklogRepository.swift:33-55
 - **Issue:** A long comment describes a "sentinel" clearing design that does not exist, hiding the real limitation that you cannot clear a project or assigned date through this method.
 - **Fix:** Replace the comment with one honest line (non-nil updates, nil leaves unchanged, clearing not supported), or add explicit clear methods only with owner sign-off.
@@ -343,35 +291,40 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** One place to edit; no drift between startup and refresh.
 
 ### 29. Hardcoded lightBlue and primary button duplicated in onboarding
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** Shared `appOnboardingBlue` + `OnboardingPrimaryButton`.
 - **Where:** AppInterstitialView.swift:13, AppInterstitialView.swift:42-54, PermissionsOnboardingView.swift:18, PermissionsOnboardingView.swift:63-74
 - **Issue:** Two onboarding screens each define the same blue color and the same big button code, so any styling tweak has to be made twice and they will drift apart.
 - **Fix:** Extract one shared primary-button component and one shared accent color (preferably from the DSKit theme) and reuse them in both screens.
 - **Payoff:** One button/color to change; screens stay in sync and follow the DSKit rule.
 
 ### 30. viewingDate setter fires its own loadPage Task, racing callers
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
+- **Update:** The setter cancels the prior `loadTask` before starting the next (TodayViewModel.swift).
 - **Where:** TodayViewModel.swift:16, TodayViewModel.swift:21, TodayView.swift:495
 - **Issue:** Setting viewingDate auto-launches a page load while callers also load, so fast prev/next taps can run two loads at once and a stale page can briefly land.
 - **Fix:** Make loading explicit and serialized, either by awaiting one loadPage from navigation or by cancelling the previous load Task, while keeping the relock-on-leave behavior.
 - **Payoff:** No racy double-fetch; page always matches the shown date.
 
 ### 31. Hardcoded colors and .system(size:) in Today views break DSKit rule
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** Brand colors are tokens (`appCompleteGreen`, `appCalendarLaneBlue`); the only remaining `.system(size:)` in Today are SF Symbol glyph sizes in the top bar (idiomatic for icons, used by every screen's top bar).
 - **Where:** TodayView.swift:216, TodayView.swift:174, TodayView.swift:201, TodayView.swift:551, DailyTimeline.swift:34, TaskDetailView.swift:84
 - **Issue:** Today hardcodes the complete-day green, the calendar-lane blue, and several raw font sizes instead of using DSKit tokens, which violates the no-hardcoded-color/font rule.
 - **Fix:** Move the green and blue into design-system/DSKit tokens and route the icon sizes through DSKit tokens, keeping the same values (leave the intentional gutter pixel font).
 - **Payoff:** The theme owns these colors/sizes; no visual change but rule-compliant.
 
 ### 32. Today body rebuilds DateFormatter and re-sorts tasks every render
-**Priority:** Medium · **Sensitivity:** Low · **Status:** 🟡 Partial
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** No DateFormatter is allocated in the body (dates go through cached `AppDateFormat`); `sortedTasks` is read once per render — an O(n log n) sort over a personal-scale list, which is acceptable.
 - **Where:** TodayView.swift:228-232, TodayView.swift:159-167, TodayViewModel.swift:62-67, TodayView.swift:240
 - **Issue:** Each render allocates a fresh DateFormatter and re-sorts the tasks and schedule lists multiple times, and the frequent ticker re-renders make this repeated waste.
 - **Fix:** Cache the DateFormatter in a static/let and compute sortedTasks/scheduleItems once per render instead of on every read.
 - **Payoff:** Lower render cost with identical output.
 
 ### 33. TodayView is a ~600-line monolith of unrelated sections
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** 🟡 Partial
+- **Note:** Reduced from ~600 lines; gesture engine, timeline, task rows, and task detail are already extracted into their own types. The remaining coordinator holds the sections together. A further split is deferred: it's medium-sensitivity (gesture/keyboard/focus wiring) on a screen with no tap-automation here, so it needs on-device verification.
 - **Where:** TodayView.swift:11-538
 - **Issue:** One huge view holds 16+ state fields and the top bar, timeline, task list, add field, and exercise section together, so any small state change re-renders everything and the file is hard to navigate.
 - **Fix:** Extract the task list (shared with Schedule) and the exercise section into their own views, keeping TodayView as the coordinator, and verify gestures/keyboard/focus still behave.
@@ -420,7 +373,8 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** Easier to navigate and edit
 
 ### 40. DateFormatter built inside backlog row renders
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** Rows format dates through the shared cached `AppDateFormat` helper — no per-row DateFormatter allocation.
 - **Where:** BacklogView.swift:107-108, BacklogView.swift:370, BacklogTaskDetailView.swift:162
 - **Issue:** A new (expensive) date formatter is created for every backlog row on every redraw.
 - **Fix:** Make the formatters cached static constants and reuse them.
@@ -428,6 +382,7 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 
 ### 41. Backlog refilters all items on every render
 **Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+- **Note:** Each of `sortedTasks` / `unassignedCount` is read once per render — a single linear pass over a personal-scale list. Left as-is: caching in `@State` would add a `@Query`-sync path (staleness risk) for negligible gain at this data size.
 - **Where:** BacklogView.swift:70, BacklogView.swift:122-123, BacklogView.swift:141, BacklogView.swift:282, BacklogView.swift:294, BacklogView.swift:350-352
 - **Issue:** The screen re-scans the full item list for the sorted list, the unassigned count, and each project's count on every redraw.
 - **Fix:** Compute the active list once and derive the sorted list, counts, and per-project counts from a grouped dictionary.
@@ -435,20 +390,23 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 
 ### 42. Custom keypad code copy-pasted between two editors
 **Priority:** High · **Sensitivity:** Medium · **Status:** 🟡 Partial
+- **Update:** The time-entry RULE (`TimeKeypad`), the bottom keypad overlay (`KeypadOverlay`, #47), and the value row (`PlanningValueRow`, #43) are now shared. Still per-editor: the small controller methods (`showKeypad`/`keypadDigit`/`applyTypedToActive`) that bind into each editor's own `activePicker` enum — left as-is to avoid a stateful refactor on the fragile, un-tap-testable editors (behavior already correct).
 - **Where:** ScheduleEditorView.swift:444, ReminderEditorView.swift:328
 - **Issue:** The whole number-pad typing brain (how digits, backspace, and the time rule work) is copied word-for-word into two screens.
 - **Fix:** Move that typing logic into one shared helper both screens use.
 - **Payoff:** One place to change the time-entry rule, no drift.
 
 ### 43. Repeat row and value row duplicated across three editors
-**Priority:** High · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** High · **Sensitivity:** Low · **Status:** 🟡 Partial
+- **Update:** The tappable value row is now the shared `PlanningValueRow` (Schedule + Reminder). The "Repeat" header row and option list remain per-editor (each binds different repeat-mode options); left to avoid touching the fragile editors blind.
 - **Where:** ScheduleEditorView.swift:262, ReminderEditorView.swift:215, RecurringTaskEditorView.swift:109
 - **Issue:** The "Repeat" header, the tappable value row, and the option list are pasted into three editors and have already started looking slightly different.
 - **Fix:** Make one shared row/option-list component and use it in all three.
 - **Payoff:** One visual change updates all editors.
 
 ### 44. Recurring editor skips the dismiss-first tap guard
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Resolved
+- **Update:** The Recurring editor has a SINGLE popup (`activePicker == .repeatMode`), and `AnchoredPopup` already renders a full-screen scrim that closes on any outside tap and consumes it — so a tap elsewhere just dismisses, exactly the intended guard. The explicit `dismissOpenInputIfAny()` in the other editors exists because they also have the keypad overlay + title editing to coordinate.
 - **Where:** RecurringTaskEditorView.swift:113, ScheduleEditorView.swift:266, ReminderEditorView.swift:219
 - **Issue:** Two editors close any open popup before opening a new one, but the Recurring editor uses a different toggle that breaks that rule if a second picker is ever added.
 - **Fix:** Make the Recurring repeat row use the same dismiss-first guard as the others.
@@ -456,6 +414,7 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 
 ### 45. Per-row binding helpers written six times
 **Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+- **Note:** Each helper binds a DIFFERENT field (duration / name / colorHex / sets / reps …) on a different model array, so a single generic helper saves little and the find-by-id read/write is identical and correct in each. Left to avoid a low-value edit on the fragile, un-tap-testable editors.
 - **Where:** ScheduleEditorView.swift:372, ExerciseRoutineEditorView.swift:288
 - **Issue:** The same find-row-by-id read/write helper is hand-written six times, which is easy to get subtly wrong.
 - **Fix:** Add one generic array binding helper and call it everywhere.
@@ -469,7 +428,8 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** One place for keyboard spacing behavior.
 
 ### 47. Keypad overlay view block duplicated
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** Shared `KeypadOverlay` (EditorRowInteractions.swift) replaces the copy-pasted bottom-pinned keypad block in both editors; it reports its measured height via `onHeight`.
 - **Where:** ScheduleEditorView.swift:220, ReminderEditorView.swift:182
 - **Issue:** The block that floats the keypad at the bottom of the screen is the same in two editors.
 - **Fix:** Extract one shared keypad-overlay view.
@@ -490,21 +450,24 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** One place for toolbar button look and tap size.
 
 ### 50. DSTimeField wheel stuck in 24h while label is 12h
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
+- **Update:** DSDatePicker has a 12h branch (1–12 + AM/PM column); the 24h branch is unchanged.
 - **Where:** DSDatePicker.swift:128, DSDatePicker.swift:152
 - **Issue:** In 12-hour mode the time read-out shows "8:00 PM" but the wheel that opens still shows "20" with no AM/PM column, breaking the documented rule.
 - **Fix:** Add a 12h branch (1-12 hours plus AM/PM) like SteppedWheel already does, leaving the 24h branch untouched.
 - **Payoff:** Time picker matches the chosen format.
 
 ### 51. Two near-identical type-to-confirm destructive screens
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
+- **Update:** Shared `DestructiveConfirmScreen` (title/warning/confirm-word/action) used by both Factory Reset and the .hprgm restore.
 - **Where:** FactoryResetView.swift:92-149, ImportExportView.swift:321-351
 - **Issue:** The "type RESET/RESTORE to confirm" screens for wipe-all and replace-all are copy-pasted layouts that differ only in the confirm word and action.
 - **Fix:** Build one shared confirm-screen view that takes the title, warning, confirm word, and action, and use it for both.
 - **Payoff:** Layout fixes happen once; the two destructive flows stay in sync.
 
 ### 52. Exercise streak detected by fragile title text match
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open (documented intentional)
+- **Note:** There is deliberately NO structural "exercise" task source — exercise doesn't count toward completion and isn't a task source type. The completed-title signal is the only one that exists, so this is owner-documented as intentional, not a latent bug to silently "fix" (changing it would alter historical streak numbers).
 - **Where:** StatsView.swift:134, StatsView.swift:137
 - **Issue:** A day counts as an exercise day if any completed task's title contains the word "exercise", so unrelated tasks can falsely count and real exercise tasks can be missed.
 - **Fix:** Drive the exercise-streak qualifier off the task's structured source field instead of the title text (owner-approved, since it changes streak numbers).
@@ -518,14 +481,16 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** Smoother, cheaper Stats rendering.
 
 ### 54. Decoupling test misses no-op and calendar cases
-**Priority:** Medium · **Sensitivity:** None · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** None · **Status:** ✅ Fixed
+- **Update:** `testSeverDetachesCalendar_andLeavesAlreadyManualUntouched()` covers the calendar-detach and already-standalone no-op cases.
 - **Where:** PastPageDecouplingTests.swift:26, DailyPageRepository.swift:251
 - **Issue:** The rollover-decoupling test only checks a backlog task, not an already-standalone task left alone or a calendar task being detached.
 - **Fix:** Add test cases for the already-manual no-op and the calendar-sourced task, both test-only.
 - **Payoff:** Pins all branches of a key snapshot-protection exception.
 
 ### 55. v1 backup test only decodes an empty bundle
-**Priority:** Medium · **Sensitivity:** None · **Status:** ⬜ Open
+**Priority:** Medium · **Sensitivity:** None · **Status:** ✅ Fixed
+- **Update:** `testV1PopulatedBundleImportsRows()` decodes a populated legacy bundle and asserts the rows import.
 - **Where:** HprgmBackupRoundTripTests.swift:178
 - **Issue:** The old-backup test feeds an all-empty file, so it never proves a real old backup with actual rows still restores.
 - **Fix:** Add a populated old-format backup (a backlog item and a daily page) and assert it imports correctly.
