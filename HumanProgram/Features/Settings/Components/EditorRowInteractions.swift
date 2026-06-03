@@ -51,6 +51,29 @@ struct KeypadHeightKey: PreferenceKey {
     }
 }
 
+/// The bottom-pinned GlassKeypad overlay shared by the Schedule + Reminder editors:
+/// it slides up from the bottom and reports its measured height (so popups lift
+/// above it). One copy instead of the same block in each editor. [#47]
+struct KeypadOverlay: View {
+    let onDigit: (String) -> Void
+    let onBackspace: () -> Void
+    let onDone: () -> Void
+    var onHeight: (CGFloat) -> Void = { _ in }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            GlassKeypad(onDigit: onDigit, onBackspace: onBackspace, onDone: onDone)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: KeypadHeightKey.self, value: g.size.height)
+                })
+        }
+        .ignoresSafeArea(edges: .bottom)
+        .transition(.move(edge: .bottom))
+        .onPreferenceChange(KeypadHeightKey.self) { onHeight($0) }
+    }
+}
+
 // MARK: - Reorder (UIKit long-press)
 
 /// Drives row reordering with a real UIKit long-press recognizer installed on the

@@ -180,16 +180,9 @@ struct ReminderEditorView: View {
             }
             anchoredPopup
             if keypadVisible {
-                VStack(spacing: 0) {
-                    Spacer()
-                    GlassKeypad(onDigit: keypadDigit, onBackspace: keypadBackspace, onDone: keypadDone)
-                        .background(GeometryReader { g in
-                            Color.clear.preference(key: KeypadHeightKey.self, value: g.size.height)
-                        })
-                }
-                .ignoresSafeArea(edges: .bottom)
-                .transition(.move(edge: .bottom))
-                .zIndex(2)
+                KeypadOverlay(onDigit: keypadDigit, onBackspace: keypadBackspace, onDone: keypadDone,
+                              onHeight: { keypadMeasuredHeight = $0 })
+                    .zIndex(2)
             }
         }
         .coordinateSpace(.named(anchorSpace))
@@ -198,7 +191,6 @@ struct ReminderEditorView: View {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { keypadVisible = false }
             }
         }
-        .onPreferenceChange(KeypadHeightKey.self) { keypadMeasuredHeight = $0 }
         .keyboardSpacer($keyboardSpacer)
         .onAppear(perform: loadIfNeeded)
     }
@@ -228,18 +220,8 @@ struct ReminderEditorView: View {
 
     private func valueRow(label: String, value: String, anchorId: String,
                           action: @escaping () -> Void) -> some View {
-        HStack {
-            DSText(label).dsTextStyle(.title3)
-            Spacer(minLength: 8)
-            Button(action: action) {
-                Text(value).font(appFont(18)).foregroundStyle(.primary)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .a11yTapBorder(cornerRadius: 4)
-            .anchorFrame(anchorId, in: .named(anchorSpace))
-        }
-        .frame(height: 34)
+        PlanningValueRow(label: label, value: value, anchorId: anchorId,
+                         anchorSpace: anchorSpace, action: action)   // [#43] shared row
     }
 
     // MARK: - Shared anchored popup (repeat, time wheels, interval wheel)

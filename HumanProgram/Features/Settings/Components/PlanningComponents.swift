@@ -301,3 +301,29 @@ struct DateFieldRow: View {
     }
 }
 
+/// Shared "label … value" row whose value opens an anchored popup. The value's
+/// frame is registered in the editor's named coordinate space so the popup drops
+/// under it. Used by the Schedule and Reminder editors (was duplicated). [#43]
+struct PlanningValueRow: View {
+    let label: String
+    let value: String
+    let anchorId: String
+    let anchorSpace: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack {
+            DSText(label).dsTextStyle(.title3)
+            Spacer(minLength: 8)
+            Button(action: action) {
+                Text(value).font(appFont(18)).foregroundStyle(.primary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .a11yTapBorder(cornerRadius: 4)
+            .anchorFrame(anchorId, in: .named(anchorSpace))
+        }
+        .frame(height: 34)
+    }
+}
+
