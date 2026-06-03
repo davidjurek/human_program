@@ -12,6 +12,13 @@ struct TimelineItem: Identifiable {
     /// Schedule-block colour (left lane). nil → gray fallback. Calendar lane
     /// ignores this and always uses the fixed light blue.
     var color: Color? = nil
+    /// True → draw the coloured block but NO text label. Used for the AM half of
+    /// an overnight-wrapping block so the wrap shows ONE label, not two.
+    var suppressLabel: Bool = false
+    /// Overrides the end-minute shown in the LABEL only (not the block geometry).
+    /// Lets the PM half of an overnight block read its true morning end (e.g.
+    /// "21:30–05:30") instead of the midnight cut used to draw the segment.
+    var labelEndMin: Int? = nil
 }
 
 // The Daily "Schedule" square on the Today screen. It is exactly as tall as it is
@@ -93,7 +100,7 @@ struct DailyTimeline: View {
             // Item labels in the open space to the right, top-aligned to each
             // block, stacked so they don't collide.
             ForEach(placed, id: \.item.id) { entry in
-                Text("\(entry.item.title), \(hhmm(entry.item.startMin))–\(hhmm(entry.item.endMin))")
+                Text("\(entry.item.title), \(hhmm(entry.item.startMin))–\(hhmm(entry.item.labelEndMin ?? entry.item.endMin))")
                     .font(appFont(13)).foregroundStyle(.primary)
                     .lineLimit(1).truncationMode(.tail)
                     .frame(width: labelW, alignment: .leading)
@@ -130,7 +137,7 @@ struct DailyTimeline: View {
         let labelH: CGFloat = 14
         var result: [(item: TimelineItem, y: CGFloat)] = []
         var lastBottom: CGFloat = -labelH
-        for it in items.sorted(by: { $0.startMin < $1.startMin }) {
+        for it in items.sorted(by: { $0.startMin < $1.startMin }) where !it.suppressLabel {
             var y = yFor(it.startMin, S: S)
             if y < lastBottom { y = lastBottom }
             y = min(y, S - labelH)

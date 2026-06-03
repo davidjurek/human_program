@@ -178,12 +178,16 @@ struct TodayView: View {
             } else if end < start {
                 // Overnight-wrapping block (e.g. Sleep 21:30→05:30): draw BOTH halves —
                 // start→midnight at the bottom AND midnight→end at the top of the day —
-                // instead of dropping the morning portion.
+                // instead of dropping the morning portion. Show ONE label, on the PM
+                // half, reading the true wrapped range (21:30–05:30); the AM half draws
+                // its colour but suppresses its label so we don't get two.
                 return [
                     TimelineItem(id: "blk-\(b.id)-pm", title: b.title,
-                                 startMin: start, endMin: 1440, isCalendar: false, color: color),
+                                 startMin: start, endMin: 1440, isCalendar: false, color: color,
+                                 labelEndMin: end),
                     TimelineItem(id: "blk-\(b.id)-am", title: b.title,
-                                 startMin: 0, endMin: end, isCalendar: false, color: color)
+                                 startMin: 0, endMin: end, isCalendar: false, color: color,
+                                 suppressLabel: true)
                 ].filter { $0.endMin > $0.startMin }
             } else {
                 // Zero-length block (e.g. a brand-new 00:00→00:00 Sleep): nothing to draw.
