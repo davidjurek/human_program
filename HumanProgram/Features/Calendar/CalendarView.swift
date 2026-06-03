@@ -347,7 +347,10 @@ struct CalendarView: View {
         // Finger-tracked flip between weeks (Photos-style paging). One outer reader
         // for the column width (same across pages). [#5]
         GeometryReader { geo in
-            let colW = (geo.size.width - weekTimeColW) / 7
+            // Reserve the shared left inset AND right gap so the 7 columns don't
+            // stretch to the screen edge — the gutter sits at the left margin and
+            // an empty gap is left to the right of Saturday. [owner]
+            let colW = (geo.size.width - TimelineMetrics.leadingInset - TimelineMetrics.trailingInset - weekTimeColW) / 7
             TabView(selection: $weekPage) {
                 ForEach(0..<pageCount, id: \.self) { i in
                     let ws = weekStart(forPage: i)
@@ -355,8 +358,8 @@ struct CalendarView: View {
                         weekNavHeader(weekStart: ws)
                         weekDayHeaderRow(weekStart: ws)
                         weekAllDayBand(weekStart: ws, colW: colW)
-                        Divider()
-                        weekTimeline(weekStart: ws, colW: colW).frame(maxHeight: .infinity)
+                        weekTimeline(weekStart: ws, colW: colW)
+                            .frame(maxHeight: .infinity)
                     }
                     .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
                     .tag(i)
@@ -407,6 +410,10 @@ struct CalendarView: View {
                 .frame(maxWidth: .infinity)
             }
         }
+        // Match the timeline's fixed columns: reserve the same left margin AND
+        // right gap so the flexible header columns line up with the grid. [owner]
+        .padding(.leading, TimelineMetrics.leadingInset)
+        .padding(.trailing, TimelineMetrics.trailingInset)
         .padding(.vertical, 4)
     }
 
@@ -421,23 +428,32 @@ struct CalendarView: View {
         let weekDays = weekDays(from: displayedWeekStart)
         let nowMin = minuteOfDay(Date())
         let totalH = weekHourHeight * 24
+        // How far the verticals extend ABOVE the 12:00 AM line. That section is off
+        // the top of the scroll content, so it's clipped (hidden under the all-day
+        // band) at rest and slides into view — staying connected to the grid below —
+        // when the grid is pulled down. [owner]
+        let aboveExtent = weekAllDayBandHeight + 120
 
         return ScrollView {
                 ZStack(alignment: .topLeading) {
-                    // Vertical day-column gridlines (Google-style). [#2]
+                    // Vertical day-column gridlines (Google-style). One continuous run
+                    // from `aboveExtent` above the 12:00 AM line down to the bottom, so
+                    // the hidden upper part connects seamlessly to the visible grid
+                    // when pulled. [#2]
                     ForEach(0...7, id: \.self) { i in
                         Rectangle().fill(Color.primary.opacity(0.06))
-                            .frame(width: 1, height: totalH)
-                            .offset(x: weekTimeColW + CGFloat(i) * colW)
+                            .frame(width: 1, height: totalH + aboveExtent)
+                            .offset(x: weekTimeColW + CGFloat(i) * colW, y: -aboveExtent)
                     }
-                    // Hour lines + labels.
-                    ForEach(0..<24, id: \.self) { hour in
+                    // Hour lines + labels (0...24, incl. the closing midnight line).
+                    // The 12:00 AM line is part of the grid, so it moves with the grid
+                    // when pulled. The 12:00 AM label is clamped to stay fully visible
+                    // (it can't sit above the scroll content's top). [owner]
+                    ForEach(0...24, id: \.self) { hour in
                         let y = CGFloat(hour) * weekHourHeight
                         Rectangle().fill(Color.primary.opacity(0.08))
                             .frame(width: colW * 7, height: 1).offset(x: weekTimeColW, y: y)
-                        Text(hourLabel(hour)).font(appFont(13)).foregroundStyle(.secondary)   // [#28]
-                            .fixedSize()
-                            .frame(width: weekTimeColW - 4, alignment: .trailing)
+                        TimelineGutterLabel(minutesOfDay: hour * 60)   // shared gutter [owner]
                             .offset(x: 0, y: max(0, y - 7))
                     }
                     // Timed events per day column (all-day events live in the band). [#cal-allday]
@@ -460,19 +476,23 @@ struct CalendarView: View {
                                     y: CGFloat(s) / 60 * weekHourHeight)
                         }
                     }
-                    // Red now-bar, if this week contains today: pill in the time
-                    // column + line that STOPS at the grid's right edge. [#25/#27]
+                    // Red now-bar, if this week contains today: centred pill in the
+                    // time column + line that STARTS at the pill's right edge
+                    // (attached) and STOPS at Saturday's right edge. [#25/#27]
                     if weekDays.contains(where: { cal.isDate($0, inSameDayAs: today) }) {
                         let nowY = CGFloat(nowMin) / 60 * weekHourHeight
-                        Rectangle().fill(Color.red).frame(width: colW * 7, height: 1)
-                            .offset(x: weekTimeColW, y: nowY)
+                        let satRightEdge = weekTimeColW + colW * 7
+                        Rectangle().fill(Color.red)
+                            .frame(width: max(0, satRightEdge - TimelineMetrics.pillTrailingEdge), height: 1)
+                            .offset(x: TimelineMetrics.pillTrailingEdge, y: nowY)
                         NowPill(minutesOfDay: nowMin)
-                            .frame(width: weekTimeColW, alignment: .center)   // centered in time column
+                            .frame(width: weekTimeColW, alignment: .center)
                             .offset(x: 0, y: nowY - TimelineMetrics.pillH / 2)
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: totalH, alignment: .topLeading)
+                .frame(maxWidth: .infinity, minHeight: totalH + 1, alignment: .topLeading)
         }
+        .padding(.leading, TimelineMetrics.leadingInset)   // align gutter with Today [owner]
     }
 
     // MARK: - Day View
@@ -485,7 +505,6 @@ struct CalendarView: View {
                 VStack(spacing: 0) {
                     dayNavHeader(day: d)
                     dayAllDayBand(day: d)
-                    Divider()
                     dayTimeline(day: d)
                 }
                 .tag(i)
@@ -530,17 +549,20 @@ struct CalendarView: View {
                     VStack(spacing: 0) {
                         ForEach(0..<24, id: \.self) { hour in
                             HStack(alignment: .top, spacing: 8) {
-                                Text(hourLabel(hour))
-                                    .font(appFont(13))                        // [#28]
-                                    .foregroundStyle(Color.secondary)
-                                    .lineLimit(1).minimumScaleFactor(0.7)
-                                    .frame(width: TimelineMetrics.gutterW, alignment: .trailing)
+                                TimelineGutterLabel(minutesOfDay: hour * 60)   // shared gutter [owner]
                                 Rectangle().fill(Color.primary.opacity(0.08))
                                     .frame(height: 1)
                                     .padding(.top, 7)
                             }
                             .frame(height: hourHeight, alignment: .top)
                             .id(hour)
+                        }
+                        // Closing midnight mark at the very bottom (matches Today). [owner]
+                        HStack(alignment: .top, spacing: 8) {
+                            TimelineGutterLabel(minutesOfDay: 24 * 60)
+                            Rectangle().fill(Color.primary.opacity(0.08))
+                                .frame(height: 1)
+                                .padding(.top, 7)
                         }
                     }
 
@@ -566,15 +588,13 @@ struct CalendarView: View {
                         .padding(.trailing, 16)
                     }
 
-                    // Current time: red pill in the time column + line attached to
-                    // its right edge. [#26/#28]
+                    // Current time: centred pill in the time column + line that
+                    // STARTS at the pill's right edge (attached) and ends at the
+                    // shared right edge (same x as Week's Saturday edge). [#26/#28]
                     if isToday {
                         let topOffset = CGFloat(nowMinute) / 60.0 * hourHeight
-                        // Red line across the day + the shared centred pill over the
-                        // time column (same shape/size as Today and the week view).
                         Rectangle().fill(Color.red).frame(height: 1)
-                            .padding(.leading, TimelineMetrics.gutterW)
-                            .padding(.trailing, 8)
+                            .padding(.leading, TimelineMetrics.pillTrailingEdge)
                             .frame(maxWidth: .infinity)
                             .offset(y: topOffset)
                             .id("currentTime")
@@ -584,7 +604,8 @@ struct CalendarView: View {
                     }
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(.leading, TimelineMetrics.leadingInset)    // left margin [owner]
+            .padding(.trailing, TimelineMetrics.trailingInset)  // shared right gap [owner]
             .onAppear {
                 if isToday {
                     let scrollHour = max(0, (nowMinute / 60) - 1)
@@ -736,7 +757,7 @@ struct CalendarView: View {
 
     /// Fixed band height: ~1.4× the gap between two hour lines.
     private var weekAllDayBandHeight: CGFloat { weekHourHeight * 1.4 }
-    private var dayAllDayBandHeight: CGFloat { 56 * 1.4 }
+    private var dayAllDayBandHeight: CGFloat { 40 }
 
     /// Week all-day band: a fixed-height row with one column per day. ALWAYS shown at
     /// its fixed height (even when empty) so the timeline below doesn't jump as events
@@ -752,7 +773,10 @@ struct CalendarView: View {
             }
         }
         .frame(height: weekAllDayBandHeight)
-        // Vertical day-column separators, matching the timeline gridlines below. [#cal-allday]
+        // Vertical day-column separators so the all-day section is divided into the
+        // 7 days. They line up with the grid's columns below and meet the grid
+        // verticals at the 12:00 AM line. No bottom line here — the grid's 12:00 AM
+        // line is the section's bottom edge (it moves with the grid). [owner]
         .overlay(alignment: .topLeading) {
             ForEach(0...7, id: \.self) { i in
                 Rectangle().fill(Color.primary.opacity(0.06))
@@ -760,6 +784,10 @@ struct CalendarView: View {
                     .offset(x: weekTimeColW + CGFloat(i) * colW)
             }
         }
+        .padding(.leading, TimelineMetrics.leadingInset)
+        // The band has a fixed width; without this the VStack CENTERS it, shifting
+        // it ~8pt right of the header/timeline. Pin it leading so it lines up. [owner]
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Day all-day band: a single fixed-height column, aligned to the timeline's event
@@ -771,16 +799,10 @@ struct CalendarView: View {
             allDayColumn(items, height: dayAllDayBandHeight, font: 12, chipHeight: 22) {
                 allDayPopupDate = day
             }
-            // Vertical separators framing the all-day cell (parallels the Week band). [#cal-allday]
-            .overlay(alignment: .leading) {
-                Rectangle().fill(Color.primary.opacity(0.06)).frame(width: 1)
-            }
-            .overlay(alignment: .trailing) {
-                Rectangle().fill(Color.primary.opacity(0.06)).frame(width: 1)
-            }
             .padding(.trailing, 16)
         }
-        .padding(.horizontal, 4)
+        .padding(.leading, TimelineMetrics.leadingInset)   // align with the shifted timeline [owner]
+        .padding(.trailing, 4)
         .frame(height: dayAllDayBandHeight)
     }
 

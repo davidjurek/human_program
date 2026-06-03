@@ -95,6 +95,8 @@ struct TodayView: View {
             .scrollDismissesKeyboard(.interactively)           // [#46] drag-to-dismiss
             // Suspend native scrolling while a row is being dragged-to-reorder or
             // swiped, so the gesture owns the touch (Schedule does the same).
+            // (The timeline pinch-zoom suspends the scroll itself, from inside
+            // DailyTimeline — see PinchScrollLock.)
             .scrollDisabled(rows.isInteracting)
             .keyboardSpacer($keyboardSpacer)
             .navigationDestination(item: $navTask) { task in

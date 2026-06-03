@@ -1,5 +1,6 @@
 import SwiftUI
 import DSKit
+import UIKit
 
 /// One item placed on the day timeline. `isCalendar` decides the lane:
 /// schedule blocks go in the left lane, Apple Calendar events in the right lane.
@@ -44,6 +45,29 @@ struct DailyTimeline: View {
     private let laneGap: CGFloat = 0
     private let laneLeadingGap = TimelineMetrics.gutterGap
 
+    /// Width of the time-label column = the widest clock label ("12:00 AM" in 12h),
+    /// measured in the actual font. The column's left edge sits at the margin, so
+    /// the widest label is flush-left (aligned under "Schedule") and every shorter
+    /// label — and the now-pill — is CENTRED within this same width. [owner]
+    private var labelColW: CGFloat {
+        let font = appUIFont(13)
+        let widest = stride(from: 0, through: 1440, by: 60)
+            .map { (clockString(minutesOfDay: $0) as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? TimelineMetrics.gutterW
+        return ceil(widest)
+    }
+
+    /// Now-pill capsule width: the widest clock label in the pill's BOLD font plus
+    /// horizontal padding, so any time ("12:45 PM") fits without being cramped. The
+    /// pill stays CENTRED on the label column, growing symmetrically. [owner]
+    private var pillColW: CGFloat {
+        let font = appUIFont(13, bold: true)
+        let widest = stride(from: 0, through: 1440, by: 60)
+            .map { (clockString(minutesOfDay: $0) as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? TimelineMetrics.pillW
+        return ceil(widest) + 10
+    }
+
     /// Fixed light blue for the calendar (right) lane (shared design token). [#31]
     private static let calendarBlue = appCalendarLaneBlue.opacity(0.55)
 
@@ -71,8 +95,15 @@ struct DailyTimeline: View {
                         .frame(width: W, height: contentH, alignment: .topLeading)
                         .offset(y: scrollY)
                         .frame(width: W, height: viewportH, alignment: .topLeading)
-                        .clipped()
+                        // Clip top/bottom (for the zoom scroll) but allow a little
+                        // horizontal overflow so the centred now-pill — wider than
+                        // its column — isn't cut off on the left. [owner]
+                        .clipShape(TimelineViewportClip())
                         .contentShape(Rectangle())
+                        // The instant two fingers land on this square, free the
+                        // pinch from the page ScrollView so it zooms everywhere on
+                        // the timeline, not just the middle. [owner]
+                        .background(PinchScrollLock())
                         .highPriorityGesture(dragGesture(viewportH: viewportH),
                                              including: zoom > 1 ? .all : .subviews)
                         .simultaneousGesture(magnifyGesture(viewportH: viewportH))
@@ -114,10 +145,8 @@ struct DailyTimeline: View {
                 lineFor(mark)
                     .frame(width: laneSpan, height: mark.lineWidth)
                     .offset(x: orangeX, y: y - mark.lineWidth / 2)
-                Text(clockString(minutesOfDay: mark.minute))
-                    .font(appFont(13)).foregroundStyle(.secondary)
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                    .frame(width: timeColW, height: 16, alignment: .center)
+                TimelineGutterLabel(minutesOfDay: mark.minute, width: labelColW, alignment: .center)
+                    .frame(height: 16)
                     .offset(x: 0, y: y - 8)
             }
 
@@ -131,15 +160,20 @@ struct DailyTimeline: View {
                     .offset(x: labelX, y: entry.y)
             }
 
-            // Live "now" line: centred pill over the time column + red line across
-            // the block column.
+            // Live "now" line: the pill is CENTRED on the label column (its centre
+            // matches the centred labels) and sized to fit any time; the red line
+            // STARTS at the pill's right edge (attached) and runs across the block
+            // lanes. [owner]
             if showNow {
                 let y = yFor(currentMinute, contentH: contentH)
                 let cy = min(max(y, TimelineMetrics.pillH / 2), contentH - TimelineMetrics.pillH / 2)
-                Rectangle().fill(Color.red).frame(width: orangeX + laneSpan, height: 1)
-                    .offset(x: 0, y: cy)
-                NowPill(minutesOfDay: currentMinute)
-                    .frame(width: timeColW, alignment: .center)
+                let pillRight = labelColW / 2 + pillColW / 2
+                let lineEnd = orangeX + laneSpan
+                Rectangle().fill(Color.red)
+                    .frame(width: max(0, lineEnd - pillRight), height: 1)
+                    .offset(x: pillRight, y: cy)
+                NowPill(minutesOfDay: currentMinute, width: pillColW)
+                    .frame(width: labelColW, alignment: .center)
                     .offset(x: 0, y: cy - TimelineMetrics.pillH / 2)
             }
         }
@@ -194,13 +228,28 @@ struct DailyTimeline: View {
         return result
     }
 
+    /// Top/bottom breathing room so the 00:00 and 24:00 labels (centred on their
+    /// line) sit fully inside the clipped square instead of being half cut off at
+    /// the edges. Half a label's height (16) plus a hair. [owner]
+    private let vInset: CGFloat = 10
+
     private func yFor(_ minute: Int, contentH: CGFloat) -> CGFloat {
-        CGFloat(min(max(minute, 0), 1440)) / 1440 * contentH
+        let usable = max(0, contentH - vInset * 2)
+        return vInset + CGFloat(min(max(minute, 0), 1440)) / 1440 * usable
     }
 
     private var currentMinute: Int {
         let c = Calendar.current.dateComponents([.hour, .minute], from: now)
         return (c.hour ?? 0) * 60 + (c.minute ?? 0)
+    }
+
+    /// Viewport clip that bounds the content vertically (so zoom-scroll is masked
+    /// top/bottom) but lets it overflow horizontally, so the centred now-pill can
+    /// extend past its column into the empty left margin without being cut. [owner]
+    private struct TimelineViewportClip: Shape {
+        func path(in rect: CGRect) -> Path {
+            Path(CGRect(x: -rect.width, y: 0, width: rect.width * 3, height: rect.height))
+        }
     }
 
     /// A single horizontal line at the vertical centre of its frame.
@@ -247,5 +296,130 @@ struct DailyTimeline: View {
                 scrollY = min(0, max(-maxScroll(viewportH), proposed))
             }
             .onEnded { _ in dragging = false }
+    }
+}
+
+// MARK: - Pinch ↔ page-scroll arbitration
+
+/// Frees the timeline's pinch-zoom from the enclosing page `ScrollView`.
+///
+/// The timeline sits inside the Today page's vertical scroll view. A two-finger
+/// pinch — especially near the top/bottom of the square, where people anchor one
+/// finger and move the other — shifts the touch centroid, which the scroll view
+/// reads as a pan and steals, so the page scrolls instead of the timeline zooming.
+/// Reacting to SwiftUI's `MagnifyGesture` is a frame too late; the scroll has
+/// already begun.
+///
+/// This installs a passive touch observer on the enclosing `UIScrollView` (same
+/// "reach the enclosing scroll view" approach the row editors use) and, the
+/// instant a second finger lands inside the timeline square, disables that scroll
+/// view's pan recognizer — synchronously, before any scroll can start. It is
+/// purely an observer (it never enters the gesture arena, never consumes touches),
+/// so the SwiftUI `MagnifyGesture` still drives the actual zoom. The pan is
+/// re-enabled as soon as the touch count drops back below two. [owner]
+private struct PinchScrollLock: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView()
+        v.isUserInteractionEnabled = false        // just a hook to reach the scroll view
+        context.coordinator.anchor = v
+        return v
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.install(from: uiView)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        weak var anchor: UIView?
+        private weak var observer: TwoFingerScrollLockRecognizer?
+
+        func install(from view: UIView) {
+            guard observer == nil else { return }
+            guard let scroll = view.enclosingScrollView else {
+                // Hierarchy not ready during layout — retry next runloop tick.
+                DispatchQueue.main.async { [weak self, weak view] in
+                    if let view { self?.install(from: view) }
+                }
+                return
+            }
+            let r = TwoFingerScrollLockRecognizer(target: self, action: #selector(noop))
+            r.delegate = self
+            r.cancelsTouchesInView = false
+            r.delaysTouchesBegan = false
+            r.delaysTouchesEnded = false
+            r.lockedScroll = scroll
+            // The square the fingers must be over, in window coords (the anchor's
+            // bounds == the timeline viewport, since it backs that frame).
+            r.timelineFrame = { [weak self] in
+                guard let a = self?.anchor, a.window != nil else { return nil }
+                return a.convert(a.bounds, to: nil)
+            }
+            scroll.addGestureRecognizer(r)
+            observer = r
+        }
+
+        @objc private func noop() {}
+
+        // Observe alongside everything else; never exclude another recognizer.
+        func gestureRecognizer(_ g: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+    }
+}
+
+/// A do-nothing recognizer that only watches touches: when ≥2 fingers are inside
+/// the timeline it disables the host scroll view's pan; when they leave it
+/// restores it. It stays in `.possible` forever (never recognizes), so it adds no
+/// arena conflicts and consumes nothing — the SwiftUI pinch still gets the touches.
+private final class TwoFingerScrollLockRecognizer: UIGestureRecognizer {
+    weak var lockedScroll: UIScrollView?
+    var timelineFrame: () -> CGRect? = { nil }
+    private var locked = false
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesBegan(touches, with: event)
+        evaluate(event)
+    }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        evaluate(event)
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesEnded(touches, with: event)
+        if activeTouches(event).count < 2 { unlock() }
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesCancelled(touches, with: event)
+        if activeTouches(event).count < 2 { unlock() }
+    }
+    override func reset() {
+        super.reset()
+        unlock()        // safety: never leave the page un-scrollable
+    }
+
+    private func activeTouches(_ event: UIEvent) -> [UITouch] {
+        (event.allTouches ?? []).filter { $0.phase != .ended && $0.phase != .cancelled }
+    }
+
+    private func evaluate(_ event: UIEvent) {
+        guard !locked else { return }
+        let active = activeTouches(event)
+        guard active.count >= 2, let rect = timelineFrame() else { return }
+        // Lock only when at least two of the down fingers are over the timeline,
+        // so a stray two-finger touch elsewhere on the page still scrolls.
+        let inside = active.filter { rect.contains($0.location(in: nil)) }
+        if inside.count >= 2 { lock() }
+    }
+
+    private func lock() {
+        guard !locked else { return }
+        locked = true
+        lockedScroll?.panGestureRecognizer.isEnabled = false   // cancels any nascent scroll
+    }
+    private func unlock() {
+        guard locked else { return }
+        locked = false
+        lockedScroll?.panGestureRecognizer.isEnabled = true
     }
 }
