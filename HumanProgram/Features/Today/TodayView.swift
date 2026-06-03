@@ -165,8 +165,10 @@ struct TodayView: View {
         let hidden = vm.hiddenCalendarIds(for: start)
         let visible = events.filter { ev in !(ev.eventIdentifier.map { hidden.contains($0) } ?? false) }
 
+        // All-day events get no timeline block or label — they have no real time
+        // span on the schedule. They still flow into the Tasks list below.
         var eventMap: [String: EKEvent] = [:]
-        calendarItems = visible.map { ev in
+        calendarItems = visible.filter { !$0.isAllDay }.map { ev in
             let id = ev.eventIdentifier ?? UUID().uuidString
             eventMap[id] = ev
             return TimelineItem(id: id,

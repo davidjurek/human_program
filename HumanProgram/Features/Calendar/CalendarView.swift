@@ -242,11 +242,15 @@ struct CalendarView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 290)
+            // Fixed height = the max 6 rows × 44pt cell height, so the grid (and the
+            // day-events header below it) sit at the SAME position whether a month
+            // spans 4, 5, or 6 weeks. Pinned tight to 6 rows so there's no slack gap
+            // even on a 6-week month. [#29]
+            .frame(height: 264)
             .onChange(of: monthPage) { _, i in
                 displayedMonthStart = monthStart(forPage: i); loadEvents()
             }
-            Color.clear.frame(height: 16)              // [#29] small gap below grid
+            Color.clear.frame(height: 8)               // [#29] small gap below grid
             dayEventsListBelow
                 .frame(maxHeight: .infinity, alignment: .top)   // [#3]
         }
@@ -309,13 +313,16 @@ struct CalendarView: View {
             }
         }
         .padding(.horizontal, 4)
+        // Pin rows to the top of the fixed-height page so 4-/5-week months don't
+        // float their rows down toward the center. [#29]
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var dayEventsListBelow: some View {
         let dayEvents = eventsForDay(selectedDate)
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
-                DSText(selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                DSText(selectedDate.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                     .dsTextStyle(.headline)
                 Spacer()
             }
