@@ -114,7 +114,7 @@ struct CalendarView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())

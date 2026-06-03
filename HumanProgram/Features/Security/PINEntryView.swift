@@ -30,7 +30,19 @@ struct PINEntryView: View {
         ZStack {
             SettingsBackground()
 
-            // Back chevron pinned top-left.
+            // One vertical flow: the padlock→field→buttons block is centred in the
+            // space ABOVE the keypad, and the keypad is the bottom sibling — so the
+            // numpad can never cover the field, error, or Face ID button on any
+            // screen size. The layout (padlock/title/field/button positions) is
+            // identical across every PIN screen because they all render this view.
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                contentBlock
+                Spacer(minLength: 0)
+                GlassKeypad(onDigit: digit, onBackspace: backspace, onDone: done)
+            }
+
+            // Back chevron pinned top-left (over the flow).
             if showsBack {
                 VStack {
                     HStack {
@@ -47,64 +59,59 @@ struct PINEntryView: View {
                     Spacer()
                 }
             }
-
-            // Padlock → text → field block, centered at ~2/5 of the screen height.
-            GeometryReader { geo in
-                VStack(spacing: 0) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 40, weight: .regular))
-                        .foregroundStyle(.primary)
-                        .padding(.bottom, 22)
-
-                    if let title {
-                        DSTextTitle(title)
-                            .padding(.bottom, 6)
-                    }
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(appFont(15))
-                            .foregroundStyle(.secondary)
-                            .padding(.bottom, 18)
-                    }
-
-                    maskedField
-                        .padding(.top, 18)          // [#45] more gap above the field
-                        .offset(x: shakeOffset)
-
-                    Text(errorMessage ?? " ")
-                        .font(appFont(14))
-                        .foregroundStyle(.red)
-                        .frame(height: 20)
-                        .padding(.top, 10)
-
-                    if showsBiometric {
-                        Button { onBiometric?() } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "faceid").font(.system(size: 20, weight: .light))
-                                Text("Use Face ID").font(appFont(16))
-                            }
-                            .foregroundStyle(.primary)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .a11yTapBorder(cornerRadius: 6)
-                        .padding(.top, 18)
-                    }
-                }
-                .frame(width: geo.size.width)
-                .position(x: geo.size.width / 2, y: geo.size.height * 0.4)
-            }
-
-            VStack(spacing: 0) {
-                Spacer()
-                GlassKeypad(onDigit: digit, onBackspace: backspace, onDone: done)
-            }
-            .ignoresSafeArea(edges: .bottom)
         }
         .onChange(of: shakeToken) { _, _ in
             triggerShake()
             entry = ""
         }
+    }
+
+    /// Padlock → optional title/subtitle → masked field → error → optional Face ID.
+    private var contentBlock: some View {
+        VStack(spacing: 0) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 40, weight: .regular))
+                .foregroundStyle(.primary)
+                .padding(.bottom, 22)
+
+            if let title {
+                DSTextTitle(title)
+                    .padding(.bottom, 6)
+            }
+            if let subtitle {
+                Text(subtitle)
+                    .font(appFont(15))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 18)
+            }
+
+            maskedField
+                .padding(.top, 18)          // [#45] more gap above the field
+                .offset(x: shakeOffset)
+
+            Text(errorMessage ?? " ")
+                .font(appFont(14))
+                .foregroundStyle(.red)
+                .frame(height: 20)
+                .padding(.top, 10)
+
+            if showsBiometric {
+                Button { onBiometric?() } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "faceid").font(.system(size: 20, weight: .light))
+                        Text("Use Face ID").font(appFont(16))
+                    }
+                    .foregroundStyle(.primary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .a11yTapBorder(cornerRadius: 6)
+                .padding(.top, 18)
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Masked field

@@ -89,8 +89,8 @@ struct BacklogRow: View {
     }
 }
 
-/// Top-bar icon button (44pt tall, 40pt wide tap target with the documented
-/// contentShape + a11y border). Shared by both backlog top bars.
+/// Top-bar icon button (44×44 tap target with the documented contentShape +
+/// a11y border). Shared by both backlog top bars.
 struct BacklogBarButton: View {
     let icon: String
     var tint: Color = .primary
@@ -99,7 +99,7 @@ struct BacklogBarButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: icon).font(.system(size: 18, weight: .medium))
-                .foregroundStyle(tint).frame(width: 40, height: 44).contentShape(Rectangle())
+                .foregroundStyle(tint).frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
         }.buttonStyle(.plain)
     }

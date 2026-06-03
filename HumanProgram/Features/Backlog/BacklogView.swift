@@ -186,7 +186,7 @@ struct BacklogView: View {
     // MARK: - Top bar
 
     private var topBar: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 12) {
             Image(systemName: "chevron.left")
                 .font(.system(size: 18, weight: .semibold)).foregroundStyle(.primary)
                 .frame(width: 44, height: 44).contentShape(Rectangle())
@@ -434,7 +434,7 @@ struct BacklogFolderView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 12) {
             Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
