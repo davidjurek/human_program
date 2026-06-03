@@ -82,10 +82,20 @@ public final class BacklogRepository {
 
     // MARK: - Projects
 
-    /// Create a new project bucket.
+    /// Thrown when a new project's name collides (case-insensitively) with an
+    /// existing one — the uniqueness rule lives here, not in the view. [#131]
+    public enum CreateProjectError: Error { case duplicateName }
+
+    /// Create a new project bucket. Rejects a name that already exists (ignoring
+    /// case + surrounding spaces) by throwing `CreateProjectError.duplicateName`.
     @discardableResult
     public func createProject(name: String) throws -> ProjectBucket {
-        let project = ProjectBucket(name: name)
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let existing = try context.fetch(FetchDescriptor<ProjectBucket>())
+        if existing.contains(where: { $0.name.lowercased() == trimmed.lowercased() }) {
+            throw CreateProjectError.duplicateName
+        }
+        let project = ProjectBucket(name: trimmed)
         context.insert(project)
         try context.save()
         return project

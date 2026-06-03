@@ -115,11 +115,7 @@ struct CalendarView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))
-                .fontWeight(.semibold)
-                .frame(width: 44, height: 44).contentShape(Rectangle())
-                .a11yTapBorder(Rectangle())
-                .onTapGesture { dismiss() }
+            BackChevronButton { dismiss() }
             Spacer()
             Button { goToday() } label: {
                 DSText("Today").dsTextStyle(.subheadline)
@@ -866,21 +862,12 @@ struct CalendarView: View {
 
     private func daysInMonthGrid(for monthStart: Date) -> [Date] {
         let cal = Calendar.current
-        guard let monthRange = cal.range(of: .day, in: .month, for: monthStart) else { return [] }
-        let firstWeekday = cal.component(.weekday, from: monthStart) // 1=Sun
-        let dayCount = monthRange.count
-
-        // Blank cells before the 1st so day-of-week columns line up (Sun-first).
-        let leadingBlanks = firstWeekday - 1
-        // Pad the tail so the grid ends on a full week-of-7 boundary.
-        let usedCells = leadingBlanks + dayCount
-        let trailingBlanks = (7 - usedCells % 7) % 7
-        let totalCells = usedCells + trailingBlanks   // always a multiple of 7
-
-        // Walk day offsets from the month start: negatives are leading blanks,
-        // 0..<dayCount are this month, the rest are trailing blanks.
+        // Shared layout math (#196); this view fills leading/trailing cells with the
+        // real adjacent-month dates by walking day offsets from the month start.
+        let layout = monthGridLayout(monthStart: monthStart, calendar: cal)
+        let totalCells = layout.leadingBlanks + layout.dayCount + layout.trailingBlanks
         return (0..<totalCells).compactMap { i in
-            cal.date(byAdding: .day, value: i - leadingBlanks, to: monthStart)
+            cal.date(byAdding: .day, value: i - layout.leadingBlanks, to: monthStart)
         }
     }
 

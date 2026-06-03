@@ -203,10 +203,7 @@ struct BacklogView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))   // [#199]
-                .frame(width: 44, height: 44).contentShape(Rectangle())
-                .a11yTapBorder(Rectangle())
-                .onTapGesture { dismiss() }
+            BackChevronButton { dismiss() }
             Spacer()
             if selecting {
                 BacklogBarButton(icon: "arrow.right.arrow.left") { if !selected.isEmpty { showMove = true } }
@@ -363,12 +360,13 @@ struct BacklogView: View {
     private func createProject() {
         let name = newProjectName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        if projects.contains(where: { $0.name.lowercased() == name.lowercased() }) {
+        // Uniqueness is enforced by the repository (#131); surface its rejection.
+        do {
+            try repo.createProject(name: name)
+            showNewProject = false
+        } catch {
             newProjectError = "A project with that name already exists."
-            return
         }
-        try? repo.createProject(name: name)
-        showNewProject = false
     }
 }
 
@@ -455,10 +453,7 @@ struct BacklogFolderView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))   // [#199]
-                .frame(width: 44, height: 44).contentShape(Rectangle())
-                .a11yTapBorder(Rectangle())
-                .onTapGesture { dismiss() }
+            BackChevronButton { dismiss() }
             Spacer()
             if selecting {
                 BacklogBarButton(icon: "arrow.right.arrow.left") { if !selected.isEmpty { showMove = true } }

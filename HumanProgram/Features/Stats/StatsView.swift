@@ -6,13 +6,19 @@ import DSKit
 // Stats, rebuilt on DSKit. Shows the fully-complete streak and the exercise
 // streak (current + longest), and a week-based bar chart of tasks done per day
 // (Screen-Time style) with prev/next week navigation. Pushed from the hub.
+
+/// Number of week-pages in the Stats flip-pager (≈5 years). The current-week index
+/// is `statsWeekPageCount - 1`; both read this one constant so they can't drift. [#175]
+private let statsWeekPageCount = 260
+
 struct StatsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \DailyPage.date, order: .forward) private var allPages: [DailyPage]
 
     @State private var weekOffset = 0   // 0 = current week, -1 = last week …
-    @State private var statsPage = 259  // = statsPageCount - 1 (current week) [#5/#38]
+    // Current-week page index, derived from the page count so the two can't drift. [#175]
+    @State private var statsPage = statsWeekPageCount - 1
     @State private var showWeekPicker = false
 
     private var cal: Calendar { Calendar.current }
@@ -47,10 +53,7 @@ struct StatsView: View {
 
     private var topBar: some View {
         HStack {
-            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))   // [#199]
-                .frame(width: 44, height: 44).contentShape(Rectangle())
-                .a11yTapBorder(Rectangle())
-                .onTapGesture { dismiss() }
+            BackChevronButton { dismiss() }
             Spacer()
             Button { withAnimation { statsPage = statsPageIndex(forOffset: 0) } } label: {  // jump to current week
                 DSText("Today").dsTextStyle(.subheadline)
@@ -169,7 +172,7 @@ struct StatsView: View {
     }
 
     // Flip-paging: page index 0…(statsPageCount-1) maps to weekOffset (… -2,-1,0). [#5/#38]
-    private let statsPageCount = 260
+    private let statsPageCount = statsWeekPageCount
     private func offset(forStatsPage i: Int) -> Int { i - (statsPageCount - 1) }
     private func statsPageIndex(forOffset o: Int) -> Int {
         min(max(0, o + (statsPageCount - 1)), statsPageCount - 1)

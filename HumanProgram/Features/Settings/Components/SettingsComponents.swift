@@ -1,6 +1,20 @@
 import SwiftUI
 import DSKit
 
+/// The shared upper-left back chevron for every hand-rolled top bar (Today, Backlog,
+/// Calendar, Routines, Stats). 44×44 tap target, DSImageView glyph, a11y border —
+/// one definition instead of the same block re-pasted per screen. [#172]
+struct BackChevronButton: View {
+    let action: () -> Void
+    var body: some View {
+        DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))
+            .fontWeight(.semibold)
+            .frame(width: 44, height: 44).contentShape(Rectangle())
+            .a11yTapBorder(Rectangle())
+            .onTapGesture(perform: action)
+    }
+}
+
 /// Editor toolbar "Save" button: greyed + disabled until `enabled`. The documented
 /// 44pt tap target + contentShape so the whole frame is tappable. Shared by every
 /// planning editor (Schedule / Reminder / Recurring / …).

@@ -60,11 +60,7 @@ struct RoutinesView: View {
     private var topBar: some View {
         HStack {
             // DSKit top-bar glyphs (same pattern as Calendar's top bar). [#199]
-            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))
-                .fontWeight(.semibold)
-                .frame(width: 44, height: 44).contentShape(Rectangle())
-                .a11yTapBorder(Rectangle())
-                .onTapGesture { dismiss() }
+            BackChevronButton { dismiss() }
             Spacer()
             Button { pushNew = true } label: {
                 DSImageView(systemName: "plus", size: 20, tint: .color(.primary))

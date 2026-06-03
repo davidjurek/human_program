@@ -77,7 +77,7 @@ struct PINEntryView: View {
                 .padding(.bottom, 22)
 
             if let title {
-                DSTextTitle(title)
+                PINTitleText(title)
                     .padding(.bottom, 6)
             }
             if let subtitle {
@@ -178,7 +178,7 @@ struct PINEntryView: View {
 
 /// Small helper so PINEntryView's title uses the app font at a title size without
 /// pulling DSKit into this file (kept lightweight / reusable in plain SwiftUI).
-private struct DSTextTitle: View {
+private struct PINTitleText: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {

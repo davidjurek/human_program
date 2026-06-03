@@ -49,7 +49,7 @@ private struct RecurringTaskRow: View {
                     DSText(template.title).dsTextStyle(.title3)
                         .longTitle()
                     DSText(summary).dsTextStyle(.subheadline)
-                    WeekdayStrip(days: Self.weekdays(from: template.recurrenceRule))
+                    WeekdayStrip(days: template.recurrenceRule.highlightedWeekdays)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -71,15 +71,5 @@ private struct RecurringTaskRow: View {
             return AppDateFormat.monthDayRange(start, end)
         }
         return "Weekly"
-    }
-
-    /// Best-effort weekday set from any stored rule (handles legacy frequencies).
-    private static func weekdays(from rule: RecurrenceRule) -> Set<Int> {
-        switch rule.frequency {
-        case .everyDay: return [1, 2, 3, 4, 5, 6, 7]
-        case .weekdays: return [2, 3, 4, 5, 6]
-        case .weekends: return [1, 7]
-        default: return Set(rule.weekdays)
-        }
     }
 }

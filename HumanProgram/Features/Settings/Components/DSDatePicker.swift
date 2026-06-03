@@ -74,11 +74,11 @@ struct DSCalendarView: View {
     private var gridDays: [Date?] {
         guard let interval = cal.dateInterval(of: .month, for: month) else { return [] }
         let first = interval.start
-        let leading = cal.component(.weekday, from: first) - 1   // 1=Sun
-        let count = cal.range(of: .day, in: .month, for: month)?.count ?? 30
-        var out: [Date?] = Array(repeating: nil, count: leading)
-        for d in 0..<count { out.append(cal.date(byAdding: .day, value: d, to: first)) }
-        while out.count % 7 != 0 { out.append(nil) }
+        // Shared layout math (#196); this picker uses nil for the blank cells.
+        let layout = monthGridLayout(monthStart: first, calendar: cal)
+        var out: [Date?] = Array(repeating: nil, count: layout.leadingBlanks)
+        for d in 0..<layout.dayCount { out.append(cal.date(byAdding: .day, value: d, to: first)) }
+        out += Array(repeating: nil, count: layout.trailingBlanks)
         return out
     }
 }

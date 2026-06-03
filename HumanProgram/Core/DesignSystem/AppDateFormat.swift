@@ -1,5 +1,18 @@
 import Foundation
 
+/// Shared month-grid layout: leading blank cells before the 1st (Sunday-first),
+/// the day count, and trailing blanks to fill the last week to 7. Both the Calendar
+/// month view and the DSKit date picker derive their grids from this one helper so
+/// the layout can't drift between them. [#196]
+func monthGridLayout(monthStart: Date,
+                     calendar cal: Calendar = .current) -> (leadingBlanks: Int, dayCount: Int, trailingBlanks: Int) {
+    let dayCount = cal.range(of: .day, in: .month, for: monthStart)?.count ?? 30
+    let leadingBlanks = cal.component(.weekday, from: monthStart) - 1   // 1=Sun
+    let used = leadingBlanks + dayCount
+    let trailingBlanks = (7 - used % 7) % 7
+    return (leadingBlanks, dayCount, trailingBlanks)
+}
+
 /// Cached `DateFormatter`s for on-screen date strings.
 ///
 /// `DateFormatter` creation is one of the most expensive Foundation allocations, and these

@@ -330,12 +330,14 @@ private struct FaceIDSetupView: View {
 
 // ── Biometry info helper ────────────────────────────────────────────────────────
 enum BiometryInfo {
-    private static var ctx: (available: Bool, type: LABiometryType) {
+    // The device's biometry capability doesn't change while the app runs, so probe
+    // the LAContext ONCE and cache it instead of re-evaluating on every access. [#163]
+    private static let ctx: (available: Bool, type: LABiometryType) = {
         let c = LAContext()
         var err: NSError?
         let ok = c.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &err)
         return (ok, c.biometryType)
-    }
+    }()
     static var available: Bool { ctx.available }
     static var label: String {
         let info = ctx

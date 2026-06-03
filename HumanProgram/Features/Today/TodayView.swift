@@ -227,11 +227,7 @@ struct TodayView: View {
 
     private var topBar: some View {
         HStack(spacing: 8) {
-            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))   // [#199]
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-                .a11yTapBorder(Rectangle())
-                .onTapGesture { if dismissAddIfOpen() { return }; vm.relockOnLeave(); dismiss() }
+            BackChevronButton { if dismissAddIfOpen() { return }; vm.relockOnLeave(); dismiss() }
             Spacer()
             HStack(spacing: 26) {                                 // [#44] spread out
                 navButton("arrow.left") { vm.goToPreviousDay() }
@@ -443,9 +439,9 @@ struct PastLockButton: View {
         .contentShape(Capsule())
         .onLongPressGesture(minimumDuration: 0.6, pressing: { p in
             pressing = p
-            if p { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+            if p { Haptics.impact() }
         }, perform: {
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
             onToggle()
         })
     }

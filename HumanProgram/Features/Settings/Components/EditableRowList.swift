@@ -78,7 +78,7 @@ final class RowGestureCoordinator<ID: Hashable> {
         guard reorderEnabled, canInteract() else { return }
         swipeOpenId = nil
         beginEditGesture()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Haptics.impact()
         withAnimation(.snappy(duration: 0.18)) { dragId = id; dragDY = 0 }
     }
 

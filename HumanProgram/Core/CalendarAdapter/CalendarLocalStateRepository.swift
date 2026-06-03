@@ -28,36 +28,33 @@ public final class CalendarLocalStateRepository {
 
     // MARK: - Mutations
 
-    /// Toggle completion. Does NOT modify the underlying EKEvent.
-    public func toggleCompletion(eventId: String, date: Date) throws {
+    /// Get-or-create the row, apply `change`, stamp `updatedAt`, and save — the
+    /// shared body of every override setter, in ONE place. [#93]
+    private func mutate(eventId: String, date: Date, _ change: (CalendarEventLocalState) -> Void) throws {
         let state = try getOrCreate(eventId: eventId, date: date)
-        state.completed.toggle()
+        change(state)
         state.updatedAt = Date()
         try context.save()
+    }
+
+    /// Toggle completion. Does NOT modify the underlying EKEvent.
+    public func toggleCompletion(eventId: String, date: Date) throws {
+        try mutate(eventId: eventId, date: date) { $0.completed.toggle() }
     }
 
     /// Show or hide an event from the Today page.
     public func setHidden(_ hidden: Bool, eventId: String, date: Date) throws {
-        let state = try getOrCreate(eventId: eventId, date: date)
-        state.hidden = hidden
-        state.updatedAt = Date()
-        try context.save()
+        try mutate(eventId: eventId, date: date) { $0.hidden = hidden }
     }
 
     /// Override the display title for one event+day. Pass nil to remove the override.
     public func setTitleOverride(_ title: String?, eventId: String, date: Date) throws {
-        let state = try getOrCreate(eventId: eventId, date: date)
-        state.titleOverride = title
-        state.updatedAt = Date()
-        try context.save()
+        try mutate(eventId: eventId, date: date) { $0.titleOverride = title }
     }
 
     /// Override the display notes for one event+day. Pass nil to remove the override.
     public func setNotesOverride(_ notes: String?, eventId: String, date: Date) throws {
-        let state = try getOrCreate(eventId: eventId, date: date)
-        state.notesOverride = notes
-        state.updatedAt = Date()
-        try context.save()
+        try mutate(eventId: eventId, date: date) { $0.notesOverride = notes }
     }
 
     // MARK: - Queries

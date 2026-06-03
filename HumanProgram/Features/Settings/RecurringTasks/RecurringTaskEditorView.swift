@@ -172,7 +172,7 @@ struct RecurringTaskEditorView: View {
         guard let t = template else { return }
         title = t.title
         notes = t.notes
-        weekdays = Self.weekdays(from: t.recurrenceRule)
+        weekdays = t.recurrenceRule.highlightedWeekdays
         if t.recurrenceRule.startDate != nil || t.recurrenceRule.endDate != nil {
             repeatMode = "custom"
             fromDate = t.recurrenceRule.startDate ?? Calendar.current.startOfDay(for: Date())
@@ -220,16 +220,6 @@ struct RecurringTaskEditorView: View {
             print("[RecurringTaskEditor] delete error: \(error)")
         }
         dismiss()
-    }
-
-    /// Best-effort weekday set from any stored rule (handles legacy frequencies).
-    private static func weekdays(from rule: RecurrenceRule) -> Set<Int> {
-        switch rule.frequency {
-        case .everyDay: return [1, 2, 3, 4, 5, 6, 7]
-        case .weekdays: return [2, 3, 4, 5, 6]
-        case .weekends: return [1, 7]
-        default: return Set(rule.weekdays)
-        }
     }
 }
 
