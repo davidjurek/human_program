@@ -73,7 +73,7 @@ struct TodayView: View {
                     titleRow
                     scheduleSection
                     tasksSection
-                    exerciseSection
+                    TodayExerciseSection(routine: vm.exerciseRoutine)
                     Color.clear.frame(height: 32)              // [#41] bottom inset
                     // Keyboard safety-gap room (= keyboard height). SwiftUI avoidance
                     // is OFF below, so this spacer gives the scroll range for the
@@ -413,44 +413,6 @@ struct TodayView: View {
         addingTask = false
     }
 
-    // MARK: - Exercise (reference only)
-
-    private var isExerciseEmpty: Bool {
-        (vm.exerciseRoutine?.items.isEmpty ?? true)
-    }
-
-    private var exerciseSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("Exercise")
-            VStack(alignment: .leading, spacing: 8) {
-                if let routine = vm.exerciseRoutine, !routine.items.isEmpty {
-                    ForEach(routine.items.sorted { $0.sortOrder < $1.sortOrder }) { item in
-                        HStack(spacing: 10) {
-                            DSText("•").dsTextStyle(.body)
-                            DSText(item.text).dsTextStyle(.body)
-                            Spacer()
-                            if let s = item.sets, let r = item.reps {
-                                DSText("\(s) × \(r)").dsTextStyle(.subheadline)
-                            } else if let s = item.sets {
-                                DSText("\(s) sets").dsTextStyle(.subheadline)
-                            } else if let r = item.reps {
-                                DSText("\(r) reps").dsTextStyle(.subheadline)
-                            }
-                        }
-                    }
-                } else {
-                    // Centered within the content area's empty min-height. [#5]
-                    DSText("Nothing for today")
-                        .dsTextStyle(.subheadline)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                }
-            }
-            // Empty content area ≈ the empty Tasks section height (header + ~100). [#5]
-            .frame(maxWidth: .infinity,
-                   minHeight: isExerciseEmpty ? 100 : 0,
-                   alignment: isExerciseEmpty ? .center : .leading)
-        }
-    }
 }
 
 // ── Past-date padlock (tap-and-hold to toggle, haptics) ─────────────────────────

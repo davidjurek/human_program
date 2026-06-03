@@ -279,6 +279,18 @@ public enum NotificationSoundMode: String, Codable {
         self.updatedAt = Date()
         self.tasks = []
     }
+
+    /// Reserved word a completed task's title must contain to count the day toward
+    /// the exercise streak. Exercise routines never become page-tasks (exercise
+    /// doesn't count toward completion), so a user-named completed task is the only
+    /// signal that a day "had exercise" — this keeps that one signal in ONE place
+    /// instead of an inline title scan in the Stats view. [#52]
+    public static let exerciseTitleMarker = "exercise"
+
+    /// True if the day had a completed task the user named for exercise.
+    public var hadCompletedExercise: Bool {
+        tasks.contains { $0.completed && $0.title.lowercased().contains(Self.exerciseTitleMarker) }
+    }
 }
 
 // ── CalendarEventLocalState ───────────────────────────────────────

@@ -86,10 +86,11 @@ struct BacklogView: View {
     private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 7) {        // [#43] 48 + 7 = 55pt pitch
+                let data = backlogData                       // one pass per render [#41]
                 if mode == .tasks {
-                    taskRows(items: sortedTasks)
+                    taskRows(items: data.tasks)
                 } else {
-                    projectRows
+                    projectRows(unassignedCount: data.unassignedCount, counts: data.projectCounts)
                 }
                 Color.clear.frame(height: 40)
             }
@@ -101,17 +102,36 @@ struct BacklogView: View {
         .scrollDisabled(rows.isInteracting)                // suspend scroll only mid-swipe
     }
 
-    private var sortedTasks: [BacklogItem] {
-        let active = allItems.filter { $0.status == .backlog }
+    /// All per-render backlog derivations in ONE pass: the active+sorted task list,
+    /// the unassigned count, and a project→count map (so project rows read a count
+    /// from the map instead of each re-scanning all items). [#41]
+    private struct BacklogData {
+        var tasks: [BacklogItem] = []
+        var unassignedCount = 0
+        var projectCounts: [PersistentIdentifier: Int] = [:]
+    }
+
+    private var backlogData: BacklogData {
+        var data = BacklogData()
+        var active: [BacklogItem] = []
+        for item in allItems where item.status == .backlog {
+            active.append(item)
+            if let pid = item.project?.persistentModelID {
+                data.projectCounts[pid, default: 0] += 1
+            } else {
+                data.unassignedCount += 1
+            }
+        }
         switch taskSort {
         // Creation order, newest at the BOTTOM (default). [owner]
-        case .created: return active.sorted { $0.createdAt < $1.createdAt }
-        case .az: return active.sorted { $0.title.lowercased() < $1.title.lowercased() }
-        case .za: return active.sorted { $0.title.lowercased() > $1.title.lowercased() }
-        case .date: return active.sorted {
+        case .created: data.tasks = active.sorted { $0.createdAt < $1.createdAt }
+        case .az: data.tasks = active.sorted { $0.title.lowercased() < $1.title.lowercased() }
+        case .za: data.tasks = active.sorted { $0.title.lowercased() > $1.title.lowercased() }
+        case .date: data.tasks = active.sorted {
             ($0.assignedDate ?? .distantFuture) < ($1.assignedDate ?? .distantFuture)
         }
         }
+        return data
     }
 
     @ViewBuilder
@@ -147,12 +167,8 @@ struct BacklogView: View {
         }
     }
 
-    private var unassignedCount: Int {
-        allItems.filter { $0.status == .backlog && $0.project == nil }.count
-    }
-
     @ViewBuilder
-    private var projectRows: some View {
+    private func projectRows(unassignedCount: Int, counts: [PersistentIdentifier: Int]) -> some View {
         // "Unorganized" virtual bucket — always visible, never deletable, no select.
         Button { if !selecting { route = .folder(nil) } } label: {
             projectRowContent(name: "Unorganized", count: unassignedCount)
@@ -164,7 +180,7 @@ struct BacklogView: View {
         ForEach(sortedProjects, id: \.id) { project in
             BacklogRow(coordinator: rows, id: project.id, glyph: .folder,
                        title: project.name,
-                       subtitle: "\(project.items.filter { $0.status == .backlog }.count) items",
+                       subtitle: "\(counts[project.persistentModelID] ?? 0) items",
                        selecting: selecting, isSelected: selected.contains(project.id),
                        onTap: { if selecting { toggleSelected(project.id) } else { route = .folder(project.id) } })
         }

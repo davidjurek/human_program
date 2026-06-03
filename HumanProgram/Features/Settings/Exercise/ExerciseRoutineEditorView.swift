@@ -269,22 +269,16 @@ struct ExerciseRoutineEditorView: View {
     // MARK: - Bindings
 
     private func textBinding(for id: UUID) -> Binding<String> {
-        Binding(
-            get: { items.first(where: { $0.id == id })?.text ?? "" },
-            set: { v in if let i = items.firstIndex(where: { $0.id == id }) { items[i].text = v } }
-        )
+        arrayFieldBinding($items, id: id, fallback: "",
+                          get: { $0.text }, set: { $0.text = $1 })
     }
     private func setsBinding(for id: UUID) -> Binding<Int> {
-        Binding(
-            get: { items.first(where: { $0.id == id })?.sets ?? 0 },
-            set: { v in if let i = items.firstIndex(where: { $0.id == id }) { items[i].sets = v == 0 ? nil : v } }
-        )
+        arrayFieldBinding($items, id: id, fallback: 0,
+                          get: { $0.sets ?? 0 }, set: { $0.sets = $1 == 0 ? nil : $1 })
     }
     private func repsBinding(for id: UUID) -> Binding<Int> {
-        Binding(
-            get: { items.first(where: { $0.id == id })?.reps ?? 0 },
-            set: { v in if let i = items.firstIndex(where: { $0.id == id }) { items[i].reps = v == 0 ? nil : v } }
-        )
+        arrayFieldBinding($items, id: id, fallback: 0,
+                          get: { $0.reps ?? 0 }, set: { $0.reps = $1 == 0 ? nil : $1 })
     }
 
     /// If a popup or title edit is open, dismiss it and return true — so a tap on

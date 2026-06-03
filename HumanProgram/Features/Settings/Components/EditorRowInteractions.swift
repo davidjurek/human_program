@@ -51,6 +51,46 @@ struct KeypadHeightKey: PreferenceKey {
     }
 }
 
+/// The custom-keypad typing brain shared by the Schedule + Reminder editors: it
+/// appends/removes a digit in the HHMM buffer (24-hour, minutes snapped to 5 via
+/// `TimeKeypad`) and writes the parsed minutes into the active field's binding.
+/// One place for the time-entry rule instead of a copy in each editor. [#42]
+enum TimeKeypadEntry {
+    static func digit(_ d: String, typed: inout String, into binding: Binding<Int>?) {
+        typed = TimeKeypad.appending(d, to: typed)
+        apply(typed, into: binding)
+    }
+    static func backspace(typed: inout String, into binding: Binding<Int>?) {
+        typed = String(typed.dropLast())
+        apply(typed, into: binding)
+    }
+    static func apply(_ typed: String, into binding: Binding<Int>?) {
+        guard let binding, let m = TimeKeypad.minutes(from: typed) else { return }
+        binding.wrappedValue = m
+    }
+}
+
+/// A `Binding` to one field of an array element located by id, written back by
+/// index. Missing id → `fallback` on read and a no-op on write. One helper instead
+/// of the per-field get/set pairs hand-written in each editor. [#45]
+func arrayFieldBinding<Element: Identifiable, Field>(
+    _ array: Binding<[Element]>,
+    id: Element.ID,
+    fallback: Field,
+    get: @escaping (Element) -> Field,
+    set: @escaping (inout Element, Field) -> Void
+) -> Binding<Field> {
+    Binding(
+        get: {
+            if let e = array.wrappedValue.first(where: { $0.id == id }) { return get(e) }
+            return fallback
+        },
+        set: { v in
+            if let i = array.wrappedValue.firstIndex(where: { $0.id == id }) { set(&array.wrappedValue[i], v) }
+        }
+    )
+}
+
 /// The bottom-pinned GlassKeypad overlay shared by the Schedule + Reminder editors:
 /// it slides up from the bottom and reports its measured height (so popups lift
 /// above it). One copy instead of the same block in each editor. [#47]

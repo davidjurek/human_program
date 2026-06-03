@@ -349,16 +349,12 @@ struct ScheduleEditorView: View {
     }
 
     private func durationBinding(for id: UUID) -> Binding<Int> {
-        Binding(
-            get: { blocks.first(where: { $0.id == id })?.duration ?? 0 },
-            set: { v in if let i = blocks.firstIndex(where: { $0.id == id }) { blocks[i].duration = v } }
-        )
+        arrayFieldBinding($blocks, id: id, fallback: 0,
+                          get: { $0.duration }, set: { $0.duration = $1 })
     }
     private func nameBinding(for id: UUID) -> Binding<String> {
-        Binding(
-            get: { blocks.first(where: { $0.id == id })?.title ?? "" },
-            set: { v in if let i = blocks.firstIndex(where: { $0.id == id }) { blocks[i].title = v } }
-        )
+        arrayFieldBinding($blocks, id: id, fallback: "",
+                          get: { $0.title }, set: { $0.title = $1 })
     }
 
     /// Which colour the custom picker is editing. [#14]
@@ -366,10 +362,8 @@ struct ScheduleEditorView: View {
 
     /// Hex binding for a block's colour (nil → default-by-name resolved on read). [#14]
     private func colorHexBinding(for id: UUID) -> Binding<String?> {
-        Binding(
-            get: { blocks.first(where: { $0.id == id })?.colorHex },
-            set: { v in if let i = blocks.firstIndex(where: { $0.id == id }) { blocks[i].colorHex = v } }
-        )
+        arrayFieldBinding($blocks, id: id, fallback: nil,
+                          get: { $0.colorHex }, set: { $0.colorHex = $1 })
     }
     private var sleepColorHexBinding: Binding<String?> {
         Binding(get: { sleepColorHex }, set: { sleepColorHex = $0 })
@@ -425,19 +419,8 @@ struct ScheduleEditorView: View {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { keypadVisible = true }
     }
 
-    private func keypadDigit(_ d: String) {
-        typedDigits = TimeKeypad.appending(d, to: typedDigits)
-        applyTypedToActive()
-    }
-    private func keypadBackspace() {
-        typedDigits = String(typedDigits.dropLast())
-        applyTypedToActive()
-    }
-    /// HHMM entry, minutes snapped to the nearest 5 (same rule as the wheel).
-    private func applyTypedToActive() {
-        guard let binding = activeMinutesBinding, let m = TimeKeypad.minutes(from: typedDigits) else { return }
-        binding.wrappedValue = m
-    }
+    private func keypadDigit(_ d: String) { TimeKeypadEntry.digit(d, typed: &typedDigits, into: activeMinutesBinding) }
+    private func keypadBackspace() { TimeKeypadEntry.backspace(typed: &typedDigits, into: activeMinutesBinding) }
     private func keypadDone() { dismissKeypadAndPopup() }
 
     /// Eases the keypad down and the popup out together (smooth, not abrupt).

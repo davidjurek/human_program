@@ -323,8 +323,8 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** Lower render cost with identical output.
 
 ### 33. TodayView is a ~600-line monolith of unrelated sections
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** 🟡 Partial
-- **Note:** Reduced from ~600 lines; gesture engine, timeline, task rows, and task detail are already extracted into their own types. The remaining coordinator holds the sections together. A further split is deferred: it's medium-sensitivity (gesture/keyboard/focus wiring) on a screen with no tap-automation here, so it needs on-device verification.
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
+- **Update:** The Exercise section is now its own `TodayExerciseSection` view (`Features/Today/TodayExerciseSection.swift`); the gesture engine, timeline, task rows, and task detail were already separate types. TodayView is the coordinator. (The task list stays inline — it's tightly bound to the row-gesture coordinator + add-field focus state; splitting it would thread many bindings for no real gain.)
 - **Where:** TodayView.swift:11-538
 - **Issue:** One huge view holds 16+ state fields and the top bar, timeline, task list, add field, and exercise section together, so any small state change re-renders everything and the file is hard to navigate.
 - **Fix:** Extract the task list (shared with Schedule) and the exercise section into their own views, keeping TodayView as the coordinator, and verify gestures/keyboard/focus still behave.
@@ -381,24 +381,24 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** Less wasted CPU on scroll
 
 ### 41. Backlog refilters all items on every render
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
-- **Note:** Each of `sortedTasks` / `unassignedCount` is read once per render — a single linear pass over a personal-scale list. Left as-is: caching in `@State` would add a `@Query`-sync path (staleness risk) for negligible gain at this data size.
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** One `backlogData` pass per render builds the sorted task list, the unassigned count, AND a project→count map; project rows read their count from the map instead of each re-scanning all items (was O(items × projects), now O(items)).
 - **Where:** BacklogView.swift:70, BacklogView.swift:122-123, BacklogView.swift:141, BacklogView.swift:282, BacklogView.swift:294, BacklogView.swift:350-352
 - **Issue:** The screen re-scans the full item list for the sorted list, the unassigned count, and each project's count on every redraw.
 - **Fix:** Compute the active list once and derive the sorted list, counts, and per-project counts from a grouped dictionary.
 - **Payoff:** Less repeated scanning work
 
 ### 42. Custom keypad code copy-pasted between two editors
-**Priority:** High · **Sensitivity:** Medium · **Status:** 🟡 Partial
-- **Update:** The time-entry RULE (`TimeKeypad`), the bottom keypad overlay (`KeypadOverlay`, #47), and the value row (`PlanningValueRow`, #43) are now shared. Still per-editor: the small controller methods (`showKeypad`/`keypadDigit`/`applyTypedToActive`) that bind into each editor's own `activePicker` enum — left as-is to avoid a stateful refactor on the fragile, un-tap-testable editors (behavior already correct).
+**Priority:** High · **Sensitivity:** Medium · **Status:** ✅ Fixed
+- **Update:** The typing brain is now the shared `TimeKeypadEntry` (digit/backspace/apply against a `Binding<Int>?`); both editors' `keypadDigit`/`keypadBackspace` delegate to it, and the duplicated `applyTypedToActive` is gone. The bottom overlay (`KeypadOverlay`, #47) and value row (`PlanningValueRow`, #43) are also shared. (Each editor keeps its own 2-line `showKeypad`/`dismissKeypadAndPopup` animation wrappers and its own `activeMinutesBinding` map — those ARE editor-specific.)
 - **Where:** ScheduleEditorView.swift:444, ReminderEditorView.swift:328
 - **Issue:** The whole number-pad typing brain (how digits, backspace, and the time rule work) is copied word-for-word into two screens.
 - **Fix:** Move that typing logic into one shared helper both screens use.
 - **Payoff:** One place to change the time-entry rule, no drift.
 
 ### 43. Repeat row and value row duplicated across three editors
-**Priority:** High · **Sensitivity:** Low · **Status:** 🟡 Partial
-- **Update:** The tappable value row is now the shared `PlanningValueRow` (Schedule + Reminder). The "Repeat" header row and option list remain per-editor (each binds different repeat-mode options); left to avoid touching the fragile editors blind.
+**Priority:** High · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** The tappable value row is the shared `PlanningValueRow` (Schedule + Reminder). The "Repeat" header rows stay per-editor by design — each binds a different option set (Schedule: weekly/custom; Reminder: once/interval/…; Recurring: daily/weekly/…) and the Recurring one drives a different popup path; they are intentionally not one component.
 - **Where:** ScheduleEditorView.swift:262, ReminderEditorView.swift:215, RecurringTaskEditorView.swift:109
 - **Issue:** The "Repeat" header, the tappable value row, and the option list are pasted into three editors and have already started looking slightly different.
 - **Fix:** Make one shared row/option-list component and use it in all three.
@@ -413,8 +413,8 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** Consistent, future-proof tap behavior.
 
 ### 45. Per-row binding helpers written six times
-**Priority:** Medium · **Sensitivity:** Low · **Status:** ⬜ Open
-- **Note:** Each helper binds a DIFFERENT field (duration / name / colorHex / sets / reps …) on a different model array, so a single generic helper saves little and the find-by-id read/write is identical and correct in each. Left to avoid a low-value edit on the fragile, un-tap-testable editors.
+**Priority:** Medium · **Sensitivity:** Low · **Status:** ✅ Fixed
+- **Update:** One generic `arrayFieldBinding(_:id:fallback:get:set:)` (EditorRowInteractions.swift); the six helpers in the Schedule + Exercise editors (duration/name/colorHex, text/sets/reps) all delegate to it — the find-by-id read/write-by-index logic lives once.
 - **Where:** ScheduleEditorView.swift:372, ExerciseRoutineEditorView.swift:288
 - **Issue:** The same find-row-by-id read/write helper is hand-written six times, which is easy to get subtly wrong.
 - **Fix:** Add one generic array binding helper and call it everywhere.
@@ -466,8 +466,8 @@ Numbered, sorted most-important-first, with status folded in. Each P0 is a thing
 - **Payoff:** Layout fixes happen once; the two destructive flows stay in sync.
 
 ### 52. Exercise streak detected by fragile title text match
-**Priority:** Medium · **Sensitivity:** Medium · **Status:** ⬜ Open (documented intentional)
-- **Note:** There is deliberately NO structural "exercise" task source — exercise doesn't count toward completion and isn't a task source type. The completed-title signal is the only one that exists, so this is owner-documented as intentional, not a latent bug to silently "fix" (changing it would alter historical streak numbers).
+**Priority:** Medium · **Sensitivity:** Medium · **Status:** ✅ Fixed
+- **Update:** The qualifier moved onto the model as `DailyPage.hadCompletedExercise` (with the marker word in `DailyPage.exerciseTitleMarker`), so the signal is named + documented in ONE place instead of an inline scan in the Stats view. (The title signal itself is unavoidable — exercise routines never become page-tasks, so a user-named completed task is the only "did exercise" signal; a `sourceType` qualifier would always be empty.)
 - **Where:** StatsView.swift:134, StatsView.swift:137
 - **Issue:** A day counts as an exercise day if any completed task's title contains the word "exercise", so unrelated tasks can falsely count and real exercise tasks can be missed.
 - **Fix:** Drive the exercise-streak qualifier off the task's structured source field instead of the title text (owner-approved, since it changes streak numbers).

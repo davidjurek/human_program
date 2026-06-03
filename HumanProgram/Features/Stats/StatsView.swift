@@ -137,14 +137,12 @@ struct StatsView: View {
     }
 
     private var exerciseRuns: [StreakRun] {
-        // NOTE [#52]: there is deliberately NO structural "exercise" task source —
-        // exercise routines never become page-tasks (exercise doesn't count toward
-        // completion). The only signal that a user "did exercise" on a day is a
-        // completed task they named for it, so this title match is the intended
-        // qualifier. Switching to sourceType would always be empty and zero the streak.
-        runs { page in
-            page.tasks.contains { $0.completed && $0.title.lowercased().contains("exercise") }
-        }
+        // The qualifier lives on the model (`DailyPage.hadCompletedExercise`) so the
+        // signal is named + documented in one place instead of an inline title scan.
+        // (There is deliberately NO structural exercise source — exercise routines
+        // never become page-tasks — so a user-named completed task is the only
+        // signal a day "had exercise".) [#52]
+        runs { $0.hadCompletedExercise }
     }
 
     // MARK: - Week section

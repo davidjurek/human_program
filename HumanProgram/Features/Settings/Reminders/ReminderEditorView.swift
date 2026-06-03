@@ -305,19 +305,8 @@ struct ReminderEditorView: View {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { keypadVisible = true }
     }
 
-    private func keypadDigit(_ d: String) {
-        typedDigits = TimeKeypad.appending(d, to: typedDigits)
-        applyTypedToActive()
-    }
-    private func keypadBackspace() {
-        typedDigits = String(typedDigits.dropLast())
-        applyTypedToActive()
-    }
-    /// HHMM entry (24-hour, unambiguous), minutes snapped to the nearest 5.
-    private func applyTypedToActive() {
-        guard let binding = activeMinutesBinding, let m = TimeKeypad.minutes(from: typedDigits) else { return }
-        binding.wrappedValue = m
-    }
+    private func keypadDigit(_ d: String) { TimeKeypadEntry.digit(d, typed: &typedDigits, into: activeMinutesBinding) }
+    private func keypadBackspace() { TimeKeypadEntry.backspace(typed: &typedDigits, into: activeMinutesBinding) }
     private func keypadDone() { dismissKeypadAndPopup() }
 
     /// Eases the keypad down and the popup out together.
