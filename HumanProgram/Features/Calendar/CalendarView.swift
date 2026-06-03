@@ -454,8 +454,19 @@ struct CalendarView: View {
                         Rectangle().fill(Color.primary.opacity(0.08))
                             .frame(width: colW * 7, height: 1).offset(x: weekTimeColW, y: y)
                         TimelineGutterLabel(minutesOfDay: hour * 60)   // shared gutter [owner]
-                            .offset(x: 0, y: max(0, y - 7))
+                            .offset(x: 0, y: y - 7)   // centred on its line; 00:00 stays in view via the top headroom below [owner]
                     }
+                    // All-day ↔ timeline divider, drawn AT the 00:00 line. It rides down
+                    // with the grid during a pull (so the single line travels down), but
+                    // PINS at its rest spot (screen y = 8, the top headroom) once scrolled
+                    // down (so it splits from the 00:00 line and marks the pane edge). Same
+                    // look/position as the 00:00 hour line → one line at rest. visualEffect
+                    // reads the live scroll position every frame, including the pull. [owner]
+                    Rectangle().fill(Color.primary.opacity(0.08))
+                        .frame(width: colW * 7, height: 1).offset(x: weekTimeColW)
+                        .visualEffect { content, proxy in
+                            content.offset(y: max(0, 8 - proxy.frame(in: .scrollView).minY))
+                        }
                     // Timed events per day column (all-day events live in the band). [#cal-allday]
                     ForEach(Array(weekDays.enumerated()), id: \.offset) { idx, day in
                         ForEach(timedEventsForDay(day), id: \.eventIdentifier) { event in
@@ -485,12 +496,13 @@ struct CalendarView: View {
                         Rectangle().fill(Color.red)
                             .frame(width: max(0, satRightEdge - TimelineMetrics.pillTrailingEdge), height: 1)
                             .offset(x: TimelineMetrics.pillTrailingEdge, y: nowY)
-                        NowPill(minutesOfDay: nowMin)
+                        NowPill(minutesOfDay: nowMin, width: TimelineMetrics.dynamicPillW)
                             .frame(width: weekTimeColW, alignment: .center)
                             .offset(x: 0, y: nowY - TimelineMetrics.pillH / 2)
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: totalH + 1, alignment: .topLeading)
+                .padding(.top, 8)   // headroom so the centred 00:00 label isn't clipped at the top [owner]
         }
         .padding(.leading, TimelineMetrics.leadingInset)   // align gutter with Today [owner]
     }
@@ -566,6 +578,22 @@ struct CalendarView: View {
                         }
                     }
 
+                    // All-day ↔ timeline divider, drawn AT the 00:00 line. It rides down
+                    // with the grid during a pull (single line travels down), but PINS at
+                    // its rest spot (the hour line's 7pt top padding) once scrolled down
+                    // (splits from the 00:00 line, marking the pane edge). Same look as the
+                    // 00:00 hour line → one line at rest. visualEffect reads the live scroll
+                    // position every frame, including the pull. [owner]
+                    HStack(spacing: 8) {
+                        Color.clear.frame(width: TimelineMetrics.gutterW, height: 1)
+                        Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 7)
+                    .visualEffect { content, proxy in
+                        content.offset(y: max(0, -proxy.frame(in: .scrollView).minY))
+                    }
+
                     // Event blocks
                     ForEach(dayEvents, id: \.eventIdentifier) { event in
                         let startMin = minuteOfDay(event.startDate)
@@ -598,7 +626,7 @@ struct CalendarView: View {
                             .frame(maxWidth: .infinity)
                             .offset(y: topOffset)
                             .id("currentTime")
-                        NowPill(minutesOfDay: nowMinute)
+                        NowPill(minutesOfDay: nowMinute, width: TimelineMetrics.dynamicPillW)
                             .frame(width: TimelineMetrics.gutterW, alignment: .center)
                             .offset(y: topOffset - TimelineMetrics.pillH / 2)
                     }

@@ -32,12 +32,24 @@ enum TimelineMetrics {
     /// Saturday (week) / the end of the hour lines (day). Day and Week share it so
     /// their content ends at the same x. [owner]
     static let trailingInset: CGFloat = 16
-    /// Fixed now-pill size — identical across 12h/24h and all three views.
+    /// Now-pill height (fixed). Fallback width if the dynamic measurement fails.
     static let pillW: CGFloat = 62
     static let pillH: CGFloat = 20
+    /// Dynamic now-pill WIDTH: the widest on-the-hour clock label in the pill's
+    /// BOLD font + 10pt padding, so the pill shrinks in 24h and grows in 12h. This
+    /// is the SINGLE source the Today schedule, Calendar week, and Calendar day all
+    /// use, so the pill is identical in size across the three in both formats. [owner]
+    static var dynamicPillW: CGFloat {
+        let font = appUIFont(13, bold: true)
+        let widest = stride(from: 0, through: 1440, by: 60)
+            .map { (clockString(minutesOfDay: $0) as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? pillW
+        return ceil(widest) + 10
+    }
     /// X (from the gutter origin) of the CENTRED pill's right edge — where the red
-    /// now-line starts so it sits attached to the pill. [owner]
-    static var pillTrailingEdge: CGFloat { (gutterW + pillW) / 2 }
+    /// now-line starts so it sits attached to the pill. Uses the dynamic width so
+    /// the line stays attached as the pill resizes between 12h/24h. [owner]
+    static var pillTrailingEdge: CGFloat { (gutterW + dynamicPillW) / 2 }
 }
 
 /// The clock label in a timeline gutter, shared by Today, Calendar week, and

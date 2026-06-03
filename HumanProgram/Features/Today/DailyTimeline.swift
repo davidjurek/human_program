@@ -57,16 +57,11 @@ struct DailyTimeline: View {
         return ceil(widest)
     }
 
-    /// Now-pill capsule width: the widest clock label in the pill's BOLD font plus
-    /// horizontal padding, so any time ("12:45 PM") fits without being cramped. The
-    /// pill stays CENTRED on the label column, growing symmetrically. [owner]
-    private var pillColW: CGFloat {
-        let font = appUIFont(13, bold: true)
-        let widest = stride(from: 0, through: 1440, by: 60)
-            .map { (clockString(minutesOfDay: $0) as NSString).size(withAttributes: [.font: font]).width }
-            .max() ?? TimelineMetrics.pillW
-        return ceil(widest) + 10
-    }
+    /// Now-pill capsule width: the single shared source `TimelineMetrics.dynamicPillW`
+    /// (widest BOLD clock label + padding), so the pill is the SAME size across
+    /// Today, Calendar week, and Calendar day and resizes together between 12h/24h.
+    /// Stays CENTRED on the label column, growing symmetrically. [owner]
+    private var pillColW: CGFloat { TimelineMetrics.dynamicPillW }
 
     /// Fixed light blue for the calendar (right) lane (shared design token). [#31]
     private static let calendarBlue = appCalendarLaneBlue.opacity(0.55)
