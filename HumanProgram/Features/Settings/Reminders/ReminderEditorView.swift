@@ -170,14 +170,6 @@ struct ReminderEditorView: View {
                     onCancel: { showDeleteConfirm = false }
                 )
             }
-            if showDiscardConfirm {
-                ConfirmPopup(
-                    message: "Discard Changes?",
-                    confirmTitle: "Discard",
-                    onConfirm: { dismiss() },
-                    onCancel: { showDiscardConfirm = false }
-                )
-            }
             anchoredPopup
             if keypadVisible {
                 KeypadOverlay(onDigit: keypadDigit, onBackspace: keypadBackspace, onDone: keypadDone,
@@ -185,6 +177,7 @@ struct ReminderEditorView: View {
                     .zIndex(2)
             }
         }
+        .discardChangesGuard(isPresented: $showDiscardConfirm) { dismiss() }   // [#197]
         .coordinateSpace(.named(anchorSpace))
         .onChange(of: activePicker) { _, v in
             if v == nil, keypadVisible {

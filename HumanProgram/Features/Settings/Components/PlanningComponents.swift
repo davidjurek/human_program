@@ -13,9 +13,9 @@ import DSKit
 struct WeekdayCircleSelector: View {
     @Binding var selected: Set<Int>
 
-    private let days: [(day: Int, letter: String)] = [
-        (1, "S"), (2, "M"), (3, "T"), (4, "W"), (5, "T"), (6, "F"), (7, "S")
-    ]
+    // Letters come from the canonical Weekday.shortLetters table (1=Sun…7=Sat). [#148][#193]
+    private let days: [(day: Int, letter: String)] =
+        (1...7).map { ($0, Weekday.shortLetters[$0 - 1]) }
 
     var body: some View {
         HStack(spacing: 16) {
@@ -48,9 +48,9 @@ struct WeekdayCircleSelector: View {
 /// Used by the planning LIST rows (reminders, recurring tasks, schedule).
 struct WeekdayStrip: View {
     let days: Set<Int>
-    private let letters: [(day: Int, letter: String)] = [
-        (1, "S"), (2, "M"), (3, "T"), (4, "W"), (5, "T"), (6, "F"), (7, "S")
-    ]
+    // Letters come from the canonical Weekday.shortLetters table (1=Sun…7=Sat). [#148][#193]
+    private let letters: [(day: Int, letter: String)] =
+        (1...7).map { ($0, Weekday.shortLetters[$0 - 1]) }
     var body: some View {
         HStack(spacing: 7) {
             ForEach(letters, id: \.day) { item in
@@ -93,6 +93,14 @@ struct BlurView: UIViewRepresentable {
     }
 }
 
+/// The pre-iOS-26 blur fallback shared by the glass helpers (popup + keypad):
+/// a `BlurView` clipped to the glass shape. One place for the fallback so the
+/// copies can't drift; callers pass the blur style they want. [#150]
+@ViewBuilder
+func glassBlurFallback(style: UIBlurEffect.Style, in shape: some Shape) -> some View {
+    BlurView(style: style).clipShape(shape)
+}
+
 extension View {
     /// Shared popup background — the liquid-glass look used by EVERY popup
     /// (confirm dialogs, the Repeat dropdown, the wheel popups). One place, so a
@@ -132,7 +140,7 @@ struct PopupGlassBackground: View {
             if #available(iOS 26.0, *) {
                 shape.fill(.clear).glassEffect(.regular, in: shape)
             } else {
-                BlurView(style: .systemThinMaterial).clipShape(shape)
+                glassBlurFallback(style: .systemThinMaterial, in: shape)
             }
         }
         .overlay(shape.fill(Color.white.opacity(0.6)))
@@ -292,12 +300,11 @@ struct DateFieldRow: View {
     var notBefore: Date? = nil
 
     var body: some View {
-        HStack {
-            DSText(label).dsTextStyle(.title3)
-            Spacer(minLength: 8)
+        // Reuse the shared settings row so the label metrics match every other
+        // row; the date control is the trailing accessory. [#149]
+        SettingsRowContent(label: label, hasTrailingAccessory: true) {
             DSDateField(date: $date, minDate: notBefore)   // custom DSKit calendar, card-less [#13]
         }
-        .frame(height: 34)
     }
 }
 

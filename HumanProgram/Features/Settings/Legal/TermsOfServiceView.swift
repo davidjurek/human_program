@@ -18,7 +18,6 @@ struct TermsOfServiceView: View {
     var onConfirm: () -> Void = {}
 
     @State private var agreed = false
-    private let lightBlue = Color(red: 0.42, green: 0.69, blue: 0.99)
 
     var body: some View {
         switch mode {
@@ -28,22 +27,12 @@ struct TermsOfServiceView: View {
                 sectionsBody
             }
         case .onboarding:
-            ZStack {
-                SettingsBackground()
-                VStack(spacing: 0) {
-                    // Frozen, centered header — stays put while the body scrolls.
-                    header
-                        .padding(.horizontal, 24)
-                        .padding(.top, 40)
-                        .padding(.bottom, 18)
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            sectionsBody
-                            gate
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 40)
-                    }
+            OnboardingScrollScaffold {
+                header
+            } content: {
+                VStack(alignment: .leading, spacing: 16) {
+                    sectionsBody
+                    gate
                 }
             }
         }
@@ -60,7 +49,7 @@ struct TermsOfServiceView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Image(systemName: agreed ? "checkmark.square.fill" : "square")
                         .font(.system(size: 22))
-                        .foregroundStyle(agreed ? lightBlue : Color.secondary)
+                        .foregroundStyle(agreed ? appOnboardingBlue : Color.secondary)
                     DSText("I have read, understood, and agree to be bound by the Terms of Service.")
                         .dsTextStyle(.body)
                     Spacer(minLength: 0)
@@ -70,17 +59,9 @@ struct TermsOfServiceView: View {
             .buttonStyle(.plain)
             .a11yTapBorder(cornerRadius: 6)
 
-            Button { if agreed { onConfirm() } } label: {
-                Text("Confirm").font(appFont(20)).foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(agreed ? lightBlue : lightBlue.opacity(0.35),
-                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            OnboardingPrimaryButton(title: "Confirm", enabled: agreed) {
+                if agreed { onConfirm() }
             }
-            .buttonStyle(.plain)
-            .a11yTapBorder(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .disabled(!agreed)
         }
     }
 

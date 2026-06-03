@@ -90,16 +90,9 @@ struct RecurringTaskEditorView: View {
                     onCancel: { showDeleteConfirm = false }
                 )
             }
-            if showDiscardConfirm {
-                ConfirmPopup(
-                    message: "Discard Changes?",
-                    confirmTitle: "Discard",
-                    onConfirm: { dismiss() },
-                    onCancel: { showDiscardConfirm = false }
-                )
-            }
             anchoredPopup
         }
+        .discardChangesGuard(isPresented: $showDiscardConfirm) { dismiss() }   // [#197]
         .coordinateSpace(.named(anchorSpace))
         .onAppear(perform: loadIfNeeded)
     }

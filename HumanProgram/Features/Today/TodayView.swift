@@ -38,6 +38,13 @@ struct TodayView: View {
     // Live "now" line moves while the page stays open.
     private let ticker = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
+    // Top-bar paddings, named once so the lock pill's trailing offset is DERIVED from
+    // them (outer + inner) rather than a hand-typed 28 that silently misaligns if a
+    // neighbor changes. [#116]
+    private let topBarOuterPad: CGFloat = 12
+    private let topBarInnerPad: CGFloat = 16
+    private var lockPillTrailing: CGFloat { topBarOuterPad + topBarInnerPad }
+
     private var selectedCalendarIds: [String] {
         UserDefaults.standard.stringArray(forKey: DefaultsKey.selectedCalendarIds) ?? []
     }
@@ -106,9 +113,9 @@ struct TodayView: View {
                         }
                     }
                     // Right edge lined up with the calendar button's true frame edge
-                    // (outer bar pad 12 + inner group pad 16 = 28). Top 0 lifts it to
-                    // just under the bar, out of the date row below.
-                    .padding(.trailing, 28)
+                    // (= outer bar pad + inner group pad, derived). Top lifts it just
+                    // under the bar, out of the date row below. [#116]
+                    .padding(.trailing, lockPillTrailing)
                     .padding(.top, -8)
                 }
             }
@@ -220,9 +227,7 @@ struct TodayView: View {
 
     private var topBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary)
+            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))   // [#199]
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
@@ -239,18 +244,18 @@ struct TodayView: View {
                 .a11yTapBorder(cornerRadius: 4)
                 navButton("calendar", size: 18) { showDatePicker = true }   // [#7] 18pt glyph
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, topBarInnerPad)
             .padding(.vertical, 8)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, topBarOuterPad)
         .padding(.bottom, 4)
         .topBarFrost()                                       // [#47]
     }
 
     private func navButton(_ icon: String, size: CGFloat = 16, _ action: @escaping () -> Void) -> some View {
         Button(action: { if dismissAddIfOpen() { return }; action() }) {
-            Image(systemName: icon).font(.system(size: size, weight: .semibold))
-                .foregroundStyle(.primary).frame(width: 44, height: 44)   // square, matches "Today" height
+            DSImageView(systemName: icon, size: .size(.custom(size)), tint: .color(.primary))   // [#199]
+                .frame(width: 44, height: 44)   // square, matches "Today" height
                 .contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
         }.buttonStyle(.plain)
@@ -313,8 +318,12 @@ struct TodayView: View {
                 HStack(spacing: 10) {
                     // No trailing commit circle — blank space; commit via return
                     // or by tapping out. [#8]
+                    // Kept a plain SwiftUI TextField (not AppTextField, which is
+                    // UITextView-backed) so KeyboardScrollNudge measures the same
+                    // field type and the keyboard gap stays uniform. Size routes
+                    // through appScaledSize so it tracks the read rows' .body scale. [#115]
                     TextField("New task", text: $newTask)
-                        .font(appFont(17))
+                        .font(appFont(appScaledSize(17)))
                         .focused($addFocused)
                         .submitLabel(.done)
                         .onSubmit(commitAdd)
@@ -408,7 +417,7 @@ struct TodayView: View {
         let t = newTask.trimmingCharacters(in: .whitespaces)
         guard !t.isEmpty else { addingTask = false; return }
         vm.newTaskTitle = t
-        Task { await vm.addManualTask(); await vm.loadPage() }
+        Task { await vm.addManualTask() }   // addManualTask refreshes the page itself [#114]
         newTask = ""
         addingTask = false
     }

@@ -216,10 +216,6 @@ struct ScheduleEditorView: View {
                 ConfirmPopup(message: "Delete schedule?", confirmTitle: "Delete",
                              onConfirm: { deleteSchedule() }, onCancel: { showDeleteConfirm = false })
             }
-            if showDiscardConfirm {
-                ConfirmPopup(message: "Discard Changes?", confirmTitle: "Discard",
-                             onConfirm: { dismiss() }, onCancel: { showDiscardConfirm = false })
-            }
             anchoredPopup
             if keypadVisible {
                 KeypadOverlay(onDigit: keypadDigit, onBackspace: keypadBackspace, onDone: keypadDone,
@@ -228,6 +224,7 @@ struct ScheduleEditorView: View {
             }
             colorPickerOverlay.zIndex(3)   // [#14]
         }
+        .discardChangesGuard(isPresented: $showDiscardConfirm) { dismiss() }   // [#197]
         .coordinateSpace(.named(anchorSpace))
         // Any interaction elsewhere (a popup, editing a title, toggling days,
         // changing repeat, the name field, adding a block) auto-closes an open

@@ -47,8 +47,8 @@ struct StatsView: View {
 
     private var topBar: some View {
         HStack {
-            Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))   // [#199]
+                .frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
@@ -57,8 +57,8 @@ struct StatsView: View {
                     .frame(height: 44)   // full top-bar height, matches the calendar button
                     .contentShape(Rectangle())
             }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.trailing, 18)
-            Image(systemName: "calendar").font(.system(size: 18, weight: .medium))   // [#35]
-                .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+            DSImageView(systemName: "calendar", size: 18, tint: .color(.primary))   // [#199]
+                .frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
                 .onTapGesture { showWeekPicker = true }
         }

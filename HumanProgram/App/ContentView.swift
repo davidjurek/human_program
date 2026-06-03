@@ -15,14 +15,11 @@ struct ContentView: View {
     // Fresh-install-only flag for the permissions step. A factory reset deliberately
     // SETS this true (FactoryResetView) so the re-run of onboarding skips permissions.
     @AppStorage(DefaultsKey.permissionsAsked) private var permissionsAsked = false
-    @State private var onboardingStep: OnboardingStep = .welcome
-
-    private enum OnboardingStep { case welcome, terms, tutorial, permissions }
 
     /// The one full-screen gate (if any) to show over the app. Rendered as a single
     /// continuous overlay (see body) rather than a `.fullScreenCover`: covers never
     /// dismiss/re-present between steps, so the Today root never flashes in the gap.
-    private enum StartupCover: Identifiable {
+    fileprivate enum StartupCover: Identifiable {
         case interstitial(AppInterstitial)   // reset / restore confirmation
         case onboarding                       // welcome → terms → tutorial
         case lock                             // app-unlock gate
@@ -59,9 +56,15 @@ struct ContentView: View {
             // Each gate view is opaque full-screen (SettingsBackground ignores the
             // safe area), so it fully blocks the app underneath.
             if let cover = startupCover {
-                startupCoverView(cover)
-                    .transition(.identity)
-                    .zIndex(1)
+                StartupCoverView(
+                    cover: cover,
+                    lockVM: lockVM,
+                    permissionsAsked: $permissionsAsked,
+                    onInterstitialDone: finishInterstitial,
+                    onOnboardingDone: finishOnboarding
+                )
+                .transition(.identity)
+                .zIndex(1)
             }
         }
         .onReceive(
@@ -85,13 +88,45 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
-    private func startupCoverView(_ cover: StartupCover) -> some View {
+    /// Reset/restore confirmation dismissed. After a reset, onboarding must run
+    /// again. FactoryResetView clears `hp.onboarded` in UserDefaults directly, but
+    /// that external write isn't reliably observed by this @AppStorage instance — so
+    /// we clear it here through the binding to guarantee the onboarding cover appears.
+    /// The onboarding flow re-enters at `.welcome` on its own because the cover
+    /// rebuilds `OnboardingFlowView` fresh (its step @State starts at `.welcome`).
+    private func finishInterstitial() {
+        let dismissed = appState.pendingInterstitial
+        appState.pendingInterstitial = nil
+        if dismissed == .reset {
+            onboarded = false
+        }
+        path = [.today]
+    }
+
+    private func finishOnboarding() {
+        onboarded = true
+        path = [.today]
+    }
+}
+
+// ── Startup gate ─────────────────────────────────────────────────────────────────
+// The continuous full-screen cover (reset/restore confirmation, onboarding, or the
+// app-unlock gate). One opaque overlay swapped in place, so the app underneath never
+// flashes between steps. See ContentView.body for why this is an overlay, not a
+// .fullScreenCover.
+private struct StartupCoverView: View {
+    let cover: ContentView.StartupCover
+    let lockVM: AppLockViewModel
+    @Binding var permissionsAsked: Bool
+    let onInterstitialDone: () -> Void
+    let onOnboardingDone: () -> Void
+
+    var body: some View {
         switch cover {
         case .interstitial(let pending):
-            AppInterstitialView(mode: interstitialMode(pending), onAction: finishInterstitial)
+            AppInterstitialView(mode: interstitialMode(pending), onAction: onInterstitialDone)
         case .onboarding:
-            onboardingView
+            OnboardingFlowView(permissionsAsked: $permissionsAsked, onFinish: onOnboardingDone)
         case .lock:
             LockScreenView(vm: lockVM)
         }
@@ -103,59 +138,45 @@ struct ContentView: View {
         case .restored: return .restored
         }
     }
+}
 
-    // Onboarding sequence: Welcome → Terms of Service (must agree) → Tutorial →
-    // (fresh install only) Permissions. The app cannot be reached until the Terms
-    // are confirmed.
-    @ViewBuilder
-    private var onboardingView: some View {
-        switch onboardingStep {
+// ── Onboarding flow ──────────────────────────────────────────────────────────────
+// Welcome → Terms of Service (must agree) → Tutorial → (fresh install only)
+// Permissions. The app cannot be reached until the Terms are confirmed. Owns its own
+// step state, which starts at `.welcome` every time the flow is presented.
+private struct OnboardingFlowView: View {
+    @Binding var permissionsAsked: Bool
+    let onFinish: () -> Void
+
+    private enum Step { case welcome, terms, tutorial, permissions }
+    @State private var step: Step = .welcome
+
+    var body: some View {
+        switch step {
         case .welcome:
             AppInterstitialView(mode: .welcome) {
-                withAnimation { onboardingStep = .terms }
+                withAnimation { step = .terms }
             }
         case .terms:
             TermsOfServiceView(mode: .onboarding) {
-                withAnimation { onboardingStep = .tutorial }
+                withAnimation { step = .tutorial }
             }
         case .tutorial:
             TutorialView(mode: .onboarding) {
                 // Fresh install → ask for permissions. After a factory reset,
                 // permissionsAsked is already true, so skip straight to the app.
                 if permissionsAsked {
-                    finishOnboarding()
+                    onFinish()
                 } else {
-                    withAnimation { onboardingStep = .permissions }
+                    withAnimation { step = .permissions }
                 }
             }
         case .permissions:
-            PermissionsOnboardingView { finishPermissions() }
+            PermissionsOnboardingView {
+                permissionsAsked = true
+                onFinish()
+            }
         }
-    }
-
-    /// Reset/restore confirmation dismissed. After a reset, onboarding must run
-    /// again. FactoryResetView clears `hp.onboarded` in UserDefaults directly, but
-    /// that external write isn't reliably observed by this @AppStorage instance — so
-    /// we clear it here through the binding to guarantee the onboarding cover appears.
-    private func finishInterstitial() {
-        let dismissed = appState.pendingInterstitial
-        appState.pendingInterstitial = nil
-        if dismissed == .reset {
-            onboardingStep = .welcome
-            onboarded = false
-        }
-        path = [.today]
-    }
-
-    private func finishPermissions() {
-        permissionsAsked = true
-        finishOnboarding()
-    }
-
-    private func finishOnboarding() {
-        onboarded = true
-        onboardingStep = .welcome
-        path = [.today]
     }
 }
 

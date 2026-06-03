@@ -76,7 +76,7 @@ struct RoutineEditorView: View {
                         // appScaledSize(22) matches read mode's .title2 — no size jump.
                         AppTextField(text: $name, placeholder: "Routine name", fontSize: appScaledSize(22))
                     } else {
-                        DSText(name.isEmpty ? "Untitled" : name).dsTextStyle(.title2).longTitle()
+                        DSText(RoutineDisplay.title(name)).dsTextStyle(.title2).longTitle()
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -156,7 +156,7 @@ struct RoutineEditorView: View {
                     .font(appFont(17)).focused($titleFocused).submitLabel(.done)
                     .onSubmit { commitTitleEditing(); editingTitleId = nil }
             } else {
-                DSText(it.text.isEmpty ? "Untitled" : it.text).dsTextStyle(.body).lineLimit(1)
+                DSText(RoutineDisplay.title(it.text)).dsTextStyle(.body).lineLimit(1)
             }
             Spacer()
         }

@@ -29,8 +29,8 @@ public struct AppStartup {
         // 3. Fetch template inputs
         let inputs = try TemplateInputs.fetchAll(context: context)
 
-        // 4. Ensure today's page exists
-        let todayPage = try pageRepo.getOrCreate(
+        // 4. Ensure today's page exists (created for its side effect)
+        _ = try pageRepo.getOrCreate(
             date: today,
             today: today,
             recurringTemplates: inputs.recurring,
@@ -53,7 +53,5 @@ public struct AppStartup {
             DailyCompletionSnapshot(date: $0.date, dayComplete: $0.dayComplete)
         }
         appState.streakStats = streakCalc.calculate(snapshots: snapshots, today: today)
-
-        _ = todayPage // used above
     }
 }

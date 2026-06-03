@@ -8,6 +8,15 @@ import DSKit
 // together (clipped) so the red trash slides in from the trailing edge.
 enum BacklogRowGlyph { case bullet, folder }
 
+/// Shared backlog row metrics so the height, swipe-trash width, and folder-glyph
+/// size live in ONE place instead of being retyped across the list, folder, and
+/// detail screens. [#133]
+enum BacklogMetrics {
+    static let rowHeight: CGFloat = 48
+    static let trashWidth: CGFloat = 68
+    static let glyphSize: CGFloat = 18
+}
+
 struct BacklogRow: View {
     let coordinator: RowGestureCoordinator<String>
     let id: String
@@ -19,7 +28,7 @@ struct BacklogRow: View {
     /// A clean tap (read mode → navigate; select mode → toggle). Caller decides.
     let onTap: () -> Void
 
-    private let rowMinHeight: CGFloat = 48
+    private let rowMinHeight = BacklogMetrics.rowHeight
     private var trashW: CGFloat { coordinator.trashWidth }
 
     var body: some View {
@@ -83,7 +92,7 @@ struct BacklogRow: View {
         } else {
             switch glyph {
             case .bullet: DSText("•").dsTextStyle(.title3)
-            case .folder: DSImageView(systemName: "folder", size: 18, tint: .color(.secondary))
+            case .folder: DSImageView(systemName: "folder", size: .size(.custom(BacklogMetrics.glyphSize)), tint: .color(.secondary))
             }
         }
     }
@@ -98,8 +107,8 @@ struct BacklogBarButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon).font(.system(size: 18, weight: .medium))
-                .foregroundStyle(tint).frame(width: 44, height: 44).contentShape(Rectangle())
+            DSImageView(systemName: icon, size: 18, tint: .color(tint))   // [#199]
+                .frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
         }.buttonStyle(.plain)
     }

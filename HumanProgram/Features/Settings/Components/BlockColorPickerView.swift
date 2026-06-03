@@ -24,11 +24,6 @@ final class ColorPresetStore: ObservableObject {
 
     private func persist() { UserDefaults.standard.set(presets, forKey: key) }
 
-    func add(_ hex: String) {
-        let h = hex.uppercased()
-        guard !presets.contains(h), presets.count < Self.maxPresets else { return }
-        presets.append(h); persist()
-    }
     func delete(_ hex: String) {
         presets.removeAll { $0.caseInsensitiveCompare(hex) == .orderedSame }; persist()
     }
@@ -45,7 +40,6 @@ final class ColorPresetStore: ObservableObject {
     }
     /// Restore the shipped default swatches. [#14]
     func reset() { presets = BlockColors.swatches; persist() }
-    var isFull: Bool { presets.count >= Self.maxPresets }
 }
 
 /// The picker panel. Binds to a block's `colorHex`; tapping a swatch or editing
@@ -105,10 +99,15 @@ struct BlockColorPickerView: View {
                     .a11yTapBorder(cornerRadius: 4)
             }
 
-            Picker("", selection: $mode) {
-                ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
+            // Own segmented control instance so the app-font attributes apply to
+            // THIS control only — not the global UISegmentedControl appearance
+            // proxy (which would leak the font to every other screen). [#140]
+            ScopedSegmentedControl(
+                selection: $mode,
+                options: Mode.allCases,
+                title: { $0.rawValue },
+                font: appUIFont(14)
+            )
 
             switch mode {
             case .hex:      hexEditor
@@ -119,13 +118,7 @@ struct BlockColorPickerView: View {
         .padding(20)
         .frame(width: 320)
         .popupGlass(cornerRadius: 22)
-        .onAppear {
-            syncFromBinding()
-            // App font on the RGB/HSB/Spectrum segmented control. [#14]
-            let attrs: [NSAttributedString.Key: Any] = [.font: appUIFont(14)]
-            UISegmentedControl.appearance().setTitleTextAttributes(attrs, for: .normal)
-            UISegmentedControl.appearance().setTitleTextAttributes(attrs, for: .selected)
-        }
+        .onAppear { syncFromBinding() }
     }
 
     /// Empty preset slot — tap to store the current custom colour. [#14]
@@ -271,24 +264,89 @@ struct BlockColorPickerView: View {
         else { setWorking(toHex: BlockColors.defaultHex(forTitle: title)) }
     }
     private func setWorking(toHex hex: String) {
-        var s = hex; if s.hasPrefix("#") { s.removeFirst() }
-        guard s.count == 6, let v = UInt64(s, radix: 16) else { return }
-        r = Double((v >> 16) & 0xFF)/255; g = Double((v >> 8) & 0xFF)/255; b = Double(v & 0xFF)/255
+        guard let rgb = ColorMath.rgb(fromHex: hex) else { return }
+        r = rgb.r; g = rgb.g; b = rgb.b
         syncHexField()
     }
     private func syncHexField() { hexField = currentHex; colorHex = currentHex }
     private func applyHexField() { setWorking(toHex: hexField) }
     private func applyHSB(h: Double, s: Double, v: Double) {
-        let c = Color(hue: h, saturation: s, brightness: v)
-        let ui = UIColor(c); var rr: CGFloat = 0, gg: CGFloat = 0, bb: CGFloat = 0, aa: CGFloat = 0
-        ui.getRed(&rr, green: &gg, blue: &bb, alpha: &aa)
-        r = rr; g = gg; b = bb; syncHexField()
+        let rgb = ColorMath.hsbToRGB(h: h, s: s, v: v)
+        r = rgb.r; g = rgb.g; b = rgb.b; syncHexField()
     }
 }
 
-// HSB helper (UIColor round-trip).
+// MARK: - Color math (testable, no SwiftUI views) [#153]
+
+/// The picker's pure color conversions, factored out of the view so the math is
+/// readable and unit-testable on its own (the view keeps the UI). All channels
+/// are 0…1; hex is "RRGGBB" (no leading #).
+enum ColorMath {
+    /// Parse "RRGGBB" (optional leading #) to RGB 0…1; nil if malformed.
+    static func rgb(fromHex hex: String) -> (r: Double, g: Double, b: Double)? {
+        var s = hex; if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = UInt64(s, radix: 16) else { return nil }
+        return (Double((v >> 16) & 0xFF) / 255,
+                Double((v >> 8) & 0xFF) / 255,
+                Double(v & 0xFF) / 255)
+    }
+
+    /// RGB 0…1 → HSB 0…1 (UIColor round-trip).
+    static func rgbToHSB(_ r: Double, _ g: Double, _ b: Double) -> (h: Double, s: Double, v: Double) {
+        var h: CGFloat = 0, s: CGFloat = 0, v: CGFloat = 0, a: CGFloat = 0
+        UIColor(red: r, green: g, blue: b, alpha: 1).getHue(&h, saturation: &s, brightness: &v, alpha: &a)
+        return (Double(h), Double(s), Double(v))
+    }
+
+    /// HSB 0…1 → RGB 0…1 (UIColor round-trip).
+    static func hsbToRGB(h: Double, s: Double, v: Double) -> (r: Double, g: Double, b: Double) {
+        let ui = UIColor(Color(hue: h, saturation: s, brightness: v))
+        var rr: CGFloat = 0, gg: CGFloat = 0, bb: CGFloat = 0, aa: CGFloat = 0
+        ui.getRed(&rr, green: &gg, blue: &bb, alpha: &aa)
+        return (Double(rr), Double(gg), Double(bb))
+    }
+}
+
+// HSB helper (UIColor round-trip). Thin shim over ColorMath so the editors keep
+// reading naturally. [#153]
 private func rgbToHSB(_ r: Double, _ g: Double, _ b: Double) -> (h: Double, s: Double, v: Double) {
-    var h: CGFloat = 0, s: CGFloat = 0, v: CGFloat = 0, a: CGFloat = 0
-    UIColor(red: r, green: g, blue: b, alpha: 1).getHue(&h, saturation: &s, brightness: &v, alpha: &a)
-    return (Double(h), Double(s), Double(v))
+    ColorMath.rgbToHSB(r, g, b)
+}
+
+/// A `UISegmentedControl` whose title font is set on this instance only, so the
+/// app font doesn't leak through the global appearance proxy. [#140]
+struct ScopedSegmentedControl<Option: Hashable>: UIViewRepresentable {
+    @Binding var selection: Option
+    let options: [Option]
+    let title: (Option) -> String
+    let font: UIFont
+
+    func makeUIView(context: Context) -> UISegmentedControl {
+        let control = UISegmentedControl(items: options.map(title))
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        control.setTitleTextAttributes(attrs, for: .normal)
+        control.setTitleTextAttributes(attrs, for: .selected)
+        control.selectedSegmentIndex = options.firstIndex(of: selection) ?? 0
+        control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        return control
+    }
+
+    func updateUIView(_ control: UISegmentedControl, context: Context) {
+        context.coordinator.parent = self
+        if let i = options.firstIndex(of: selection), control.selectedSegmentIndex != i {
+            control.selectedSegmentIndex = i
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject {
+        var parent: ScopedSegmentedControl
+        init(_ parent: ScopedSegmentedControl) { self.parent = parent }
+        @objc func changed(_ control: UISegmentedControl) {
+            let i = control.selectedSegmentIndex
+            guard parent.options.indices.contains(i) else { return }
+            parent.selection = parent.options[i]
+        }
+    }
 }

@@ -75,11 +75,8 @@ public final class AppLockRepository {
 
     /// Seconds after the app backgrounds before the lock engages. 0 = immediate.
     public var lockTimeoutSeconds: Int {
-        get {
-            let v = UserDefaults.standard.integer(forKey: keyTimeout)
-            // integer(forKey:) returns 0 when the key is absent, which is the correct default.
-            return v
-        }
+        // integer(forKey:) returns 0 when the key is absent, which is the correct default.
+        get { UserDefaults.standard.integer(forKey: keyTimeout) }
         set { UserDefaults.standard.set(newValue, forKey: keyTimeout) }
     }
 

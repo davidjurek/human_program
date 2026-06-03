@@ -22,7 +22,7 @@ struct BacklogView: View {
 
     // Shared gesture engine (tap / scroll / swipe-left-to-delete), reorder OFF — Backlog
     // is a sorted list. Same engine as Today/Schedule/Exercise/Routines. [owner]
-    @State private var rows = RowGestureCoordinator<String>(rowHeight: 48, trashWidth: 68, reorderEnabled: false)
+    @State private var rows = RowGestureCoordinator<String>(rowHeight: BacklogMetrics.rowHeight, trashWidth: BacklogMetrics.trashWidth, reorderEnabled: false)
     @State private var route: Route?
 
     @State private var showNewProject = false
@@ -188,14 +188,14 @@ struct BacklogView: View {
 
     private func projectRowContent(name: String, count: Int) -> some View {
         HStack(spacing: 12) {
-            DSImageView(systemName: "folder", size: 18, tint: .color(.secondary))
+            DSImageView(systemName: "folder", size: .size(.custom(BacklogMetrics.glyphSize)), tint: .color(.secondary))
             VStack(alignment: .leading, spacing: 2) {
                 DSText(name).dsTextStyle(.title3).longTitle()
                 DSText("\(count) items").dsTextStyle(.subheadline)
             }
             Spacer(minLength: 8)
         }
-        .frame(height: 48)                                 // [#43] tighter row
+        .frame(height: BacklogMetrics.rowHeight)           // [#43/#133] tighter row
         .contentShape(Rectangle())
     }
 
@@ -203,8 +203,7 @@ struct BacklogView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 18, weight: .semibold)).foregroundStyle(.primary)
+            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))   // [#199]
                 .frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
@@ -247,8 +246,8 @@ struct BacklogView: View {
                 }
             }
         } label: {
-            Image(systemName: "arrow.up.arrow.down").font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.primary).frame(width: 40, height: 44).contentShape(Rectangle())
+            DSImageView(systemName: "arrow.up.arrow.down", size: 17, tint: .color(.primary))   // [#199]
+                .frame(width: 40, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
         }
         .tint(.primary)   // keep the glyph black, not the menu accent (blue)
@@ -329,6 +328,9 @@ struct BacklogView: View {
         }
     }
 
+    /// Deleting a project: an EMPTY project (no active tasks) is removed straight away
+    /// (nothing to lose), while a NON-EMPTY one routes through a confirmation that
+    /// deletes its tasks too. This keep-vs-destroy split is deliberate, not a bug. [#130]
     private func attemptDeleteProject(_ project: ProjectBucket) {
         if project.items.contains(where: { $0.status == .backlog }) {
             projectsPendingDelete = [project]
@@ -370,7 +372,9 @@ struct BacklogView: View {
     }
 }
 
-// ── Folder (a project's tasks — same behavior as Task View) ──────────────────────
+// ── Folder (a project's tasks) ───────────────────────────────────────────────────
+// Mirrors Task View's rows/gestures, but always uses the default creation-order sort
+// (newest at the bottom) — there is no in-folder sort menu by design. [#132]
 struct BacklogFolderView: View {
     let project: ProjectBucket?   // nil = Unorganized
     @Environment(\.modelContext) private var context
@@ -384,7 +388,7 @@ struct BacklogFolderView: View {
     @State private var pushEditorForNew = false
 
     // Same shared gesture engine as the main backlog (tap/scroll/swipe-left, no reorder).
-    @State private var rows = RowGestureCoordinator<String>(rowHeight: 48, trashWidth: 68, reorderEnabled: false)
+    @State private var rows = RowGestureCoordinator<String>(rowHeight: BacklogMetrics.rowHeight, trashWidth: BacklogMetrics.trashWidth, reorderEnabled: false)
     @State private var taskRoute: TaskRoute?
     struct TaskRoute: Identifiable, Hashable { let id: String }
 
@@ -451,8 +455,8 @@ struct BacklogFolderView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))   // [#199]
+                .frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()

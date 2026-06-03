@@ -16,6 +16,12 @@ public struct RollingReminderScheduler: Sendable {
     // Maximum fire times to schedule per reminder (keeps total under 64 for ~6 reminders).
     private let maxPerReminder = 20
 
+    // Safety cap on how many days the fire-time loops walk forward. Sparse schedules
+    // (e.g. a single weekday) may not gather maxPerReminder times within a short span,
+    // so the day-walk needs an upper bound to stay bounded; 60 days is comfortably
+    // beyond any realistic window for 20 fire times. [#98]
+    private let maxDayWalk = 60
+
     // MARK: - Permission
 
     /// Request notification authorisation. Returns true if granted.
@@ -43,13 +49,6 @@ public struct RollingReminderScheduler: Sendable {
                 try? await UNUserNotificationCenter.current().add(request)
             }
         }
-    }
-
-    // MARK: - Cancel all
-
-    /// Cancel every pending notification for this app.
-    public func cancelAll() {
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
     }
 
     // MARK: - Cancel by reminder ID
@@ -139,47 +138,55 @@ public struct RollingReminderScheduler: Sendable {
         }
     }
 
-    // Daily: next maxPerReminder days at fireHour:fireMinute
-    private func dailyFireTimes(reminder: NotificationReminder) -> [Date] {
+    /// Walk forward from today, day-by-day, calling `times` for each day to collect
+    /// that day's fire times. Stops once maxPerReminder are gathered or the cap is hit.
+    /// Centralises the day cursor and replaces the old force-unwrapped `date(byAdding:)`
+    /// steps with a safe guard that ends the loop cleanly if date math ever fails. [#82][#94]
+    private func walkDays(_ times: (_ startOfDay: Date) -> [Date]) -> [Date] {
         var results: [Date] = []
         let cal = Calendar.current
-        let now = Date()
-        var candidate = nextOccurrence(
-            after: now,
-            hour: reminder.fireHour,
-            minute: reminder.fireMinute,
-            calendar: cal
-        )
-        while results.count < maxPerReminder {
-            results.append(candidate)
-            candidate = cal.date(byAdding: .day, value: 1, to: candidate)!
+        var dayCursor = cal.startOfDay(for: Date())
+        while results.count < maxPerReminder && results.count < maxDayWalk {
+            for fireDate in times(dayCursor) where results.count < maxPerReminder {
+                results.append(fireDate)
+            }
+            guard let next = cal.date(byAdding: .day, value: 1, to: dayCursor) else { break }
+            dayCursor = next
         }
         return results
+    }
+
+    // Daily: next maxPerReminder days at fireHour:fireMinute
+    private func dailyFireTimes(reminder: NotificationReminder) -> [Date] {
+        let cal = Calendar.current
+        let now = Date()
+        return walkDays { startOfDay in
+            guard let fireDate = cal.date(
+                bySettingHour: reminder.fireHour,
+                minute: reminder.fireMinute,
+                second: 0,
+                of: startOfDay
+            ), fireDate > now else { return [] }
+            return [fireDate]
+        }
     }
 
     // Weekly on specific weekdays (1=Sun…7=Sat) at fireHour:fireMinute
     private func weekdayFireTimes(reminder: NotificationReminder, weekdays: [Int]) -> [Date] {
         guard !weekdays.isEmpty else { return [] }
-        var results: [Date] = []
         let cal = Calendar.current
         let now = Date()
-        // Walk forward day-by-day collecting matching weekdays
-        var dayCursor = cal.startOfDay(for: now)
-        while results.count < maxPerReminder {
-            let weekday = cal.component(.weekday, from: dayCursor) // 1=Sun…7=Sat
-            if weekdays.contains(weekday) {
-                if let fireDate = cal.date(
+        return walkDays { startOfDay in
+            let weekday = cal.component(.weekday, from: startOfDay) // 1=Sun…7=Sat
+            guard weekdays.contains(weekday),
+                  let fireDate = cal.date(
                     bySettingHour: reminder.fireHour,
                     minute: reminder.fireMinute,
                     second: 0,
-                    of: dayCursor
-                ), fireDate > now {
-                    results.append(fireDate)
-                }
-            }
-            dayCursor = cal.date(byAdding: .day, value: 1, to: dayCursor)!
+                    of: startOfDay
+                  ), fireDate > now else { return [] }
+            return [fireDate]
         }
-        return results
     }
 
     // Every N minutes starting from now, within windowStartMinute..windowEndMinute
@@ -207,8 +214,10 @@ public struct RollingReminderScheduler: Sendable {
 
         // Walk forward collecting up to maxPerReminder times
         var dayOffset = 0
-        while results.count < maxPerReminder && dayOffset < 60 {
-            let startOfDay = cal.startOfDay(for: cal.date(byAdding: .day, value: dayOffset, to: now)!)
+        while results.count < maxPerReminder && dayOffset < maxDayWalk {
+            // Safe date math: stop cleanly if adding days ever fails instead of crashing. [#82]
+            guard let dayDate = cal.date(byAdding: .day, value: dayOffset, to: now) else { break }
+            let startOfDay = cal.startOfDay(for: dayDate)
             var minuteCursor = dayOffset == 0 ? nextMinute : windowStart
 
             while minuteCursor <= windowEnd && results.count < maxPerReminder {
@@ -232,46 +241,23 @@ public struct RollingReminderScheduler: Sendable {
         let weekdays = reminder.weekdays.isEmpty ? [2, 3, 4, 5, 6] : reminder.weekdays
         let windowStart = reminder.windowStartMinute // minutes from midnight
         let windowEnd = reminder.windowEndMinute
-
-        var results: [Date] = []
         let cal = Calendar.current
         let now = Date()
-        var dayCursor = cal.startOfDay(for: now)
 
-        while results.count < maxPerReminder {
-            let weekday = cal.component(.weekday, from: dayCursor)
-            if weekdays.contains(weekday) {
-                // Walk hourly slots in the window
-                var minuteCursor = windowStart
-                while minuteCursor <= windowEnd && results.count < maxPerReminder {
-                    if let fireDate = cal.date(
-                        byAdding: .minute,
-                        value: minuteCursor,
-                        to: dayCursor
-                    ), fireDate > now {
-                        results.append(fireDate)
-                    }
-                    minuteCursor += 60
+        return walkDays { dayStart in
+            let weekday = cal.component(.weekday, from: dayStart)
+            guard weekdays.contains(weekday) else { return [] }
+            // Walk hourly slots in the window
+            var times: [Date] = []
+            var minuteCursor = windowStart
+            while minuteCursor <= windowEnd {
+                if let fireDate = cal.date(byAdding: .minute, value: minuteCursor, to: dayStart),
+                   fireDate > now {
+                    times.append(fireDate)
                 }
+                minuteCursor += 60
             }
-            dayCursor = cal.date(byAdding: .day, value: 1, to: dayCursor)!
+            return times
         }
-        return results
-    }
-
-    // MARK: - Helpers
-
-    /// Returns the next Date at hour:minute that is strictly after `after`.
-    private func nextOccurrence(after: Date, hour: Int, minute: Int, calendar: Calendar) -> Date {
-        // Try today first
-        if let todayFire = calendar.date(
-            bySettingHour: hour, minute: minute, second: 0, of: after
-        ), todayFire > after {
-            return todayFire
-        }
-        // Otherwise tomorrow
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: after))!
-        return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: tomorrow)
-            ?? tomorrow
     }
 }

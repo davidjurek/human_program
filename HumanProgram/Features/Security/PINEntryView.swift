@@ -25,6 +25,9 @@ struct PINEntryView: View {
 
     @State private var entry = ""
     @State private var shakeOffset: CGFloat = 0
+    /// Bumped on each shake so a re-triggered shake cancels the previous step
+    /// sequence instead of overlapping with it. [#168]
+    @State private var shakeRun = 0
 
     var body: some View {
         ZStack {
@@ -60,10 +63,9 @@ struct PINEntryView: View {
                 }
             }
         }
-        .onChange(of: shakeToken) { _, _ in
-            triggerShake()
-            entry = ""
-        }
+        // Parent-rejected entry (wrong PIN, mismatch, etc.): shake + clear. Same path
+        // as a too-short ✓ so every "wrong" outcome behaves identically. [#171]
+        .onChange(of: shakeToken) { _, _ in triggerShake() }
     }
 
     /// Padlock → optional title/subtitle → masked field → error → optional Face ID.
@@ -152,14 +154,22 @@ struct PINEntryView: View {
     }
 
     private func done() {
+        // Too-short ✓ is a "wrong" entry too: shake + clear, same as a parent
+        // rejection, so every wrong path clears the digits identically. [#171]
         guard entry.count >= minLength else { triggerShake(); return }
         onSubmit(entry)
     }
 
+    /// Shake the field and clear the entry. Token-guarded so a re-trigger cancels the
+    /// in-flight step sequence — no overlapping timers, the shake restarts cleanly. [#168][#171]
     private func triggerShake() {
+        entry = ""
+        shakeRun += 1
+        let run = shakeRun
         let seq: [CGFloat] = [-10, 10, -6, 6, 0]
         for (i, off) in seq.enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.06 * Double(i)) {
+                guard run == shakeRun else { return } // a newer shake superseded this one
                 withAnimation(.easeOut(duration: 0.06)) { shakeOffset = off }
             }
         }

@@ -5,12 +5,6 @@ import UIKit
 struct AboutView: View {
     @State private var showDocument = false
 
-    private var versionValue: String {
-        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-        return "\(v) (\(b))"
-    }
-
     var body: some View {
         SettingsScreen(centered: true) {
             // App name header
@@ -23,7 +17,7 @@ struct AboutView: View {
                 SettingsRowContent(label: "Developer", systemImage: "person", value: "David Ko") { EmptyView() }
 
                 // Version — double-tap opens the hidden document
-                SettingsRowContent(label: "Version", systemImage: "number", value: versionValue) { EmptyView() }
+                SettingsRowContent(label: "Version", systemImage: "number", value: AppInfo.displayVersion) { EmptyView() }
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) { showDocument = true }
 

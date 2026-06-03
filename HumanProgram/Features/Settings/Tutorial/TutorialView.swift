@@ -10,8 +10,6 @@ struct TutorialView: View {
     /// Called when the user finishes in onboarding mode.
     var onDone: () -> Void = {}
 
-    private let lightBlue = Color(red: 0.42, green: 0.69, blue: 0.99)
-
     var body: some View {
         switch mode {
         case .reference:
@@ -20,37 +18,15 @@ struct TutorialView: View {
                 tipsBody
             }
         case .onboarding:
-            ZStack {
-                SettingsBackground()
-                VStack(spacing: 0) {
-                    // Frozen header — stays put while the tips scroll.
-                    header
-                        .padding(.horizontal, 24)
-                        .padding(.top, 40)
-                        .padding(.bottom, 18)
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 22) {
-                            tipsBody
-                            doneButton
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.bottom, 40)
-                    }
+            OnboardingScrollScaffold {
+                header
+            } content: {
+                VStack(alignment: .leading, spacing: 22) {
+                    tipsBody
+                    OnboardingPrimaryButton(title: "Done", action: onDone)
                 }
             }
         }
-    }
-
-    private var doneButton: some View {
-        Button { onDone() } label: {
-            Text("Done").font(appFont(20)).foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(lightBlue, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .a11yTapBorder(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     /// Title + intro line. Frozen above the scroll in onboarding mode; sits at the

@@ -67,10 +67,9 @@ struct BacklogTaskDetailView: View {
             }
 
             SettingsGroup(title: "Details") {
-                // Project
-                HStack {
-                    DSText("Project").dsTextStyle(.body)
-                    Spacer(minLength: 8)
+                // Project — composed from the shared settings row (one source for the
+                // row height/alignment) with the read/edit trailing controls. [#128]
+                SettingsRowContent(label: "Project", hasTrailingAccessory: true) {
                     if editing {
                         // Opens the shared DSKit glass project picker (not a system Menu). [#4]
                         Button { showProjectPicker = true } label: {
@@ -86,12 +85,9 @@ struct BacklogTaskDetailView: View {
                         DSText(projectName).dsTextStyle(.subheadline)
                     }
                 }
-                .frame(height: 34)
 
                 // Assigned date + toggle
-                HStack {
-                    DSText("Assigned Date").dsTextStyle(.body)
-                    Spacer(minLength: 8)
+                SettingsRowContent(label: "Assigned Date", hasTrailingAccessory: true) {
                     if editing {
                         // Quick-assign to today (sets the date and turns the toggle on). [#5]
                         Button {
@@ -120,7 +116,6 @@ struct BacklogTaskDetailView: View {
                             .a11yTapBorder(Capsule())
                     }
                 }
-                .frame(height: 34)
             }
 
             SettingsSectionLabel(title: "Note")

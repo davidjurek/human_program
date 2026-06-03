@@ -65,6 +65,10 @@ struct TaskDetailView: View {
             }
         }
         .onAppear {
+            // Seed the editable fields once. Safe because Today presents this via
+            // `.navigationDestination(item: $navTask)`, which builds a FRESH view
+            // instance per task — the same instance is never reused for a different
+            // task, so a one-time seed can't show a stale title/notes. [#107]
             guard !didLoad else { return }
             title = task.title
             notes = task.notes

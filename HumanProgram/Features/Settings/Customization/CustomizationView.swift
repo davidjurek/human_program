@@ -1,9 +1,10 @@
 import SwiftUI
 import DSKit
 
-// Customization area. STRUCTURE + SCREENS first — the controls below persist
-// their selections (@AppStorage) but are not yet applied app-wide. Wiring them
-// into the live appearance/typography is a follow-up.
+// Customization area. All controls here are applied LIVE: Font + Font Size feed
+// the DSKit appearance at the app root (HumanProgramApp `.dsAppearance`), Appearance
+// drives `.preferredColorScheme`, Background is rendered by `SettingsBackground`
+// (reads bgLight/bgDark), and App Icon calls `setAlternateIconName`. [#158]
 
 struct CustomizationView: View {
     var body: some View {

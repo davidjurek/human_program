@@ -103,8 +103,8 @@ public final class AppLockViewModel {
 
     // ── Unlock via PIN ─────────────────────────────────────────────────────────
 
-    /// Appends a digit to the current PIN input, then auto-submits if it looks
-    /// like the user has finished (caller may also call submitUnlockPIN manually).
+    /// Appends a single digit to the current PIN input. Submission is explicit —
+    /// this never auto-submits; the caller invokes submitUnlockPIN when ✓ is pressed.
     public func appendDigit(_ digit: String) {
         guard pinInput.count < maxPINLength else { return }
         pinInput += digit

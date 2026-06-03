@@ -150,27 +150,23 @@ struct ReorderRecognizer<ID: Hashable>: UIViewRepresentable {
 
         func install(from view: UIView) {
             guard recognizer == nil else { return }
-            var v: UIView? = view
-            while let cur = v, !(cur is UIScrollView) { v = cur.superview }
-            guard let target = v else {
-                DispatchQueue.main.async { [weak self, weak view] in
-                    if let self, let view { self.install(from: view) }
-                }
-                return
+            installOnEnclosingScrollView(from: view, retry: { [weak self] v in self?.install(from: v) }) { target in
+                let lp = UILongPressGestureRecognizer(target: self, action: #selector(handle(_:)))
+                lp.minimumPressDuration = 0.4
+                lp.allowableMovement = 10
+                lp.delegate = self
+                lp.cancelsTouchesInView = false
+                target.addGestureRecognizer(lp)
+                recognizer = lp
             }
-            let lp = UILongPressGestureRecognizer(target: self, action: #selector(handle(_:)))
-            lp.minimumPressDuration = 0.4
-            lp.allowableMovement = 10
-            lp.delegate = self
-            lp.cancelsTouchesInView = false
-            target.addGestureRecognizer(lp)
-            recognizer = lp
         }
 
         @objc func handle(_ g: UILongPressGestureRecognizer) {
             let p = g.location(in: nil)   // window coordinates
             switch g.state {
             case .began:
+                // Linear scan of row frames to find the touched row. "First match"
+                // is fine: rows never overlap, and the lists are personal-scale. [#145]
                 if let id = parent.rowFrames.first(where: { $0.value.contains(p) })?.key {
                     activeId = id
                     startY = p.y
@@ -255,19 +251,13 @@ struct SwipePanRecognizer<ID: Hashable>: UIViewRepresentable {
 
         func install(from view: UIView) {
             guard pan == nil else { return }
-            var v: UIView? = view
-            while let cur = v, !(cur is UIScrollView) { v = cur.superview }
-            guard let target = v else {
-                DispatchQueue.main.async { [weak self, weak view] in
-                    if let self, let view { self.install(from: view) }
-                }
-                return
+            installOnEnclosingScrollView(from: view, retry: { [weak self] v in self?.install(from: v) }) { target in
+                let p = HorizontalPanGestureRecognizer(target: self, action: #selector(handle(_:)))
+                p.delegate = self
+                p.cancelsTouchesInView = false
+                target.addGestureRecognizer(p)
+                pan = p
             }
-            let p = HorizontalPanGestureRecognizer(target: self, action: #selector(handle(_:)))
-            p.delegate = self
-            p.cancelsTouchesInView = false
-            target.addGestureRecognizer(p)
-            pan = p
         }
 
         @objc func handle(_ g: UIPanGestureRecognizer) {
@@ -353,9 +343,7 @@ struct KeyboardScrollNudge: UIViewRepresentable {
             guard !didNudge,
                   let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
                   let host = hostView else { return }
-            var v: UIView? = host
-            while let cur = v, !(cur is UIScrollView) { v = cur.superview }
-            guard let scroll = v as? UIScrollView,
+            guard let scroll = host.enclosingScrollView,
                   let responder = scroll.firstResponderInHierarchy else { return }
             didNudge = true
             let fieldFrame = responder.convert(responder.bounds, to: nil)   // window coords
@@ -380,6 +368,27 @@ extension UIView {
         for sub in subviews { if let r = sub.firstResponderInHierarchy { return r } }
         return nil
     }
+
+    /// Walk up the superview chain to the nearest enclosing `UIScrollView`. The
+    /// reorder/swipe recognizers and the keyboard nudge all need this same lookup. [#151]
+    var enclosingScrollView: UIScrollView? {
+        var v: UIView? = self
+        while let cur = v, !(cur is UIScrollView) { v = cur.superview }
+        return v as? UIScrollView
+    }
+}
+
+/// Install a gesture recognizer on the host's enclosing scroll view, retrying on
+/// the next runloop tick if the scroll view isn't in the hierarchy yet. Shared by
+/// the reorder + swipe recognizers so the discovery/retry plumbing lives once. [#151]
+private func installOnEnclosingScrollView(from view: UIView,
+                                          retry: @escaping (UIView) -> Void,
+                                          make: (UIScrollView) -> Void) {
+    guard let target = view.enclosingScrollView else {
+        DispatchQueue.main.async { [weak view] in if let view { retry(view) } }
+        return
+    }
+    make(target)
 }
 
 // MARK: - Stepped wheel (hours/minutes or generic value), tap → keypad
@@ -428,6 +437,19 @@ struct SteppedWheel: View {
         )
     }
 
+    /// Minute wheel (snapped to 5). `expand` widens each column in the 12h layout.
+    /// Shared by all three modes so the minute column can't drift. [#152]
+    @ViewBuilder
+    private func minuteWheel(label: @escaping (Int) -> String, expand: Bool) -> some View {
+        let picker = Picker("", selection: minuteBinding) {
+            ForEach(minuteOptions, id: \.self) { Text(label($0)).tag($0) }
+        }
+        .pickerStyle(.wheel)
+        if expand { picker.frame(maxWidth: .infinity) } else { picker }
+    }
+
+    private var colon: some View { Text(":").font(.system(size: 20, weight: .semibold)) }
+
     var body: some View {
         Group {
             if mode == .duration {
@@ -436,10 +458,7 @@ struct SteppedWheel: View {
                         ForEach(0..<24, id: \.self) { Text("\($0)h").tag($0) }
                     }
                     .pickerStyle(.wheel)
-                    Picker("", selection: minuteBinding) {
-                        ForEach(minuteOptions, id: \.self) { Text("\($0)m").tag($0) }
-                    }
-                    .pickerStyle(.wheel)
+                    minuteWheel(label: { "\($0)m" }, expand: false)
                 }
                 .frame(width: 180, height: 150)
             } else if is24 {
@@ -448,11 +467,8 @@ struct SteppedWheel: View {
                         ForEach(0..<24, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
                     }
                     .pickerStyle(.wheel)
-                    Text(":").font(.system(size: 20, weight: .semibold))
-                    Picker("", selection: minuteBinding) {
-                        ForEach(minuteOptions, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
-                    }
-                    .pickerStyle(.wheel)
+                    colon
+                    minuteWheel(label: { String(format: "%02d", $0) }, expand: false)
                 }
                 .frame(width: 180, height: 150)
             } else {
@@ -462,11 +478,8 @@ struct SteppedWheel: View {
                         ForEach(1...12, id: \.self) { Text("\($0)").tag($0) }
                     }
                     .pickerStyle(.wheel).frame(maxWidth: .infinity)
-                    Text(":").font(.system(size: 20, weight: .semibold))
-                    Picker("", selection: minuteBinding) {
-                        ForEach(minuteOptions, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
-                    }
-                    .pickerStyle(.wheel).frame(maxWidth: .infinity)
+                    colon
+                    minuteWheel(label: { String(format: "%02d", $0) }, expand: true)
                     Picker("", selection: isPMBinding) {
                         Text("AM").tag(false)
                         Text("PM").tag(true)
@@ -491,6 +504,15 @@ struct IntervalWheel: View {
 
     private var amountRange: ClosedRange<Int> { unitIsHours ? 1...10 : 1...59 }
 
+    /// Pull `amount` back into the current unit's range. Without this a restored
+    /// out-of-range value would leave the wheel pointing at a row that doesn't
+    /// exist. Run on appear and on every amount/unit change. [#142]
+    private func clampAmount() {
+        let r = amountRange
+        if amount < r.lowerBound { amount = r.lowerBound }
+        else if amount > r.upperBound { amount = r.upperBound }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             Picker("", selection: $amount) {
@@ -506,10 +528,9 @@ struct IntervalWheel: View {
         .frame(width: 190, height: 150)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .onChange(of: unitIsHours) { _, hours in
-            if hours, amount > 10 { amount = 10 }
-            if amount < 1 { amount = 1 }
-        }
+        .onAppear { clampAmount() }
+        .onChange(of: unitIsHours) { _, _ in clampAmount() }
+        .onChange(of: amount) { _, _ in clampAmount() }
     }
 }
 
@@ -583,8 +604,7 @@ struct GlassKeypad: View {
             // Clear glass — more see-through/glassy than .regular.
             shape.fill(.clear).glassEffect(.clear, in: shape).ignoresSafeArea(edges: .bottom)
         } else {
-            BlurView(style: .systemUltraThinMaterial)
-                .clipShape(shape)
+            glassBlurFallback(style: .systemUltraThinMaterial, in: shape)   // shared fallback [#150]
                 .ignoresSafeArea(edges: .bottom)
         }
     }

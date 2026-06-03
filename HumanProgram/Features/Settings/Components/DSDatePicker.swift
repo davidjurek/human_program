@@ -14,7 +14,7 @@ struct DSCalendarView: View {
 
     private let cal = Calendar.current
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
-    private let weekdays = ["S", "M", "T", "W", "T", "F", "S"]
+    private let weekdays = Weekday.shortLetters   // canonical S M T W T F S (1=Sun) [#148][#193]
 
     var body: some View {
         VStack(spacing: 12) {

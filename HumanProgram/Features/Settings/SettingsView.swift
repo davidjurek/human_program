@@ -36,15 +36,3 @@ struct SettingsView: View {
         }
     }
 }
-
-struct PlaceholderSettingsView: View {
-    let title: String
-    var body: some View {
-        SettingsScreen {
-            DSText("\(title) settings coming soon")
-                .dsTextStyle(.subheadline)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 40)
-        }
-    }
-}

@@ -51,9 +51,34 @@ struct AppInterstitialView: View {
                 .frame(width: 140, height: 140)
                 .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         } else {
-            Image(systemName: "figure.stand")
-                .font(.system(size: 90))
-                .foregroundStyle(.primary)
+            // DSKit icon instead of a raw .system(size:) glyph. [#101]
+            DSImageView(systemName: "figure.stand", size: 90, tint: .color(.primary))
+        }
+    }
+}
+
+/// Shared onboarding layout: a frozen `header` over a scrolling `content`, on the
+/// lavender gradient background. Used by the onboarding presentations of Terms and
+/// Tutorial so the chrome (paddings, freeze-over-scroll) lives in ONE place. [#166]
+struct OnboardingScrollScaffold<Header: View, Content: View>: View {
+    @ViewBuilder let header: Header
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ZStack {
+            SettingsBackground()
+            VStack(spacing: 0) {
+                // Frozen header — stays put while the body scrolls.
+                header
+                    .padding(.horizontal, 24)
+                    .padding(.top, 40)
+                    .padding(.bottom, 18)
+                ScrollView {
+                    content
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 40)
+                }
+            }
         }
     }
 }

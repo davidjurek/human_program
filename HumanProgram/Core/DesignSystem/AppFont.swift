@@ -140,6 +140,10 @@ enum FontChoice: String, CaseIterable, Identifiable {
         case .libertinus: return FontSpec(psName: "LibertinusSerif-Bold")
         case .martelSans: return FontSpec(psName: "MartelSans-Bold")
         case .lilex:      return FontSpec(psName: "Lilex-Thin", variations: [AXIS_WGHT: 700])
+        // Bitcount (the default) is single-weight: this bold spec is intentionally
+        // identical to `regularSpec`, so `bold: true` shows no extra emphasis on a
+        // fresh install. That's deliberate — don't chase a "bold not working" bug.
+        // Bump AXIS_WGHT here only if the owner wants real bold for Bitcount. [#100]
         case .bitcount:   return FontSpec(psName: "BitcountGridSingle-Regular_Thin-Italic",
                                           variations: [AXIS_WGHT: 344, AXIS_SLNT: 0, AXIS_CRSV: 0],
                                           sizeMultiplier: 1.0)   // 1.18 clipped titles/nav labels [#54]
@@ -151,6 +155,9 @@ enum FontChoice: String, CaseIterable, Identifiable {
     }
 
     /// SwiftUI Font for previewing this choice in its own typeface in the picker.
+    /// Deliberately ignores the global font-size scale (`appScaledSize`) so every
+    /// preview renders at the same constant size — they read as a fair side-by-side
+    /// style comparison, not at whatever size the user has chosen. [#99]
     func previewFont(size: CGFloat) -> Font {
         Font(regularSpec.uiFont(size))
     }
@@ -198,6 +205,23 @@ func appScaledSize(_ base: CGFloat) -> CGFloat {
 func appUIFont(_ size: CGFloat, bold: Bool = false) -> UIFont {
     let raw = UserDefaults.standard.string(forKey: DefaultsKey.fontChoice) ?? FontChoice.default.rawValue
     return resolvedUIFont(raw: raw, size: size, bold: bold)
+}
+
+// MARK: - App version info
+
+/// One place that reads the app's bundle version, so the version string isn't looked
+/// up inline (with ad-hoc fallbacks) in several spots. [#81]
+enum AppInfo {
+    /// Marketing version, e.g. "1.0" (CFBundleShortVersionString).
+    static var shortVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+    }
+    /// Build number, e.g. "1" (CFBundleVersion).
+    static var build: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+    }
+    /// Display form: "1.0 (1)".
+    static var displayVersion: String { "\(shortVersion) (\(build))" }
 }
 
 // MARK: - Clock time formatting (12h / 24h)

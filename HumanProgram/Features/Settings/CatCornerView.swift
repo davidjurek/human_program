@@ -9,10 +9,14 @@ import UIKit
 // hides its chrome on zoom). No save/share affordances.
 
 struct CatCornerView: View {
-    private let photos: [String] = (1...20).compactMap { index in
+    /// Resolved photo asset names, probed ONCE for the app's lifetime and cached —
+    /// not re-checked on every view init (was 20 synchronous `UIImage(named:)` probes
+    /// on the main thread each time the view appeared, all failing while empty). [#162]
+    private static let resolvedPhotos: [String] = (1...20).compactMap { index in
         let name = String(format: "cat_%02d", index)
         return UIImage(named: name) != nil ? name : nil
     }
+    private var photos: [String] { Self.resolvedPhotos }
 
     @State private var currentIndex = 0
     @State private var isZoomed = false

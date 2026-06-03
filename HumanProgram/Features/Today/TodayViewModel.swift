@@ -23,6 +23,13 @@ public final class TodayViewModel {
         }
     }
 
+    /// One place to log a swallowed mutation error. The catch sites stay
+    /// non-throwing (the UI keeps working); failures surface in the console with a
+    /// consistent tag instead of a scattered `print` per method. [#106]
+    private func logError(_ op: String, _ error: Error) {
+        print("[TodayViewModel] \(op) error: \(error)")
+    }
+
     /// Re-lock the currently-loaded page if it's an unlocked past day. Used when
     /// navigating to another day or leaving the Today screen.
     private func relockCurrentIfPast() {
@@ -86,7 +93,7 @@ public final class TodayViewModel {
         do {
             page = try pageRepo.reorderTasks(ordered, on: p)
         } catch {
-            print("[TodayViewModel] reorderTasks error: \(error)")
+            logError("reorderTasks", error)
         }
     }
 
@@ -103,7 +110,7 @@ public final class TodayViewModel {
             )
             exerciseRoutine = try exerciseRepo.fetchRoutine(for: viewingDate)
         } catch {
-            print("[TodayViewModel] loadPage error: \(error)")
+            logError("loadPage", error)
         }
     }
 
@@ -116,7 +123,7 @@ public final class TodayViewModel {
         do {
             page = try pageRepo.syncCalendarTasks(events, on: p)
         } catch {
-            print("[TodayViewModel] syncCalendarTasks error: \(error)")
+            logError("syncCalendarTasks", error)
         }
     }
 
@@ -141,18 +148,21 @@ public final class TodayViewModel {
         do {
             page = try pageRepo.toggleTask(task, on: p)
         } catch {
-            print("[TodayViewModel] toggleTask error: \(error)")
+            logError("toggleTask", error)
         }
     }
 
+    /// Add a manual task and refresh the page itself, so callers don't need a
+    /// follow-up loadPage (matches the other mutators). [#114]
     public func addManualTask() async {
         guard !newTaskTitle.trimmingCharacters(in: .whitespaces).isEmpty,
               let p = page else { return }
         do {
             try pageRepo.addManualTask(title: newTaskTitle, to: p)
             newTaskTitle = ""
+            await loadPage()
         } catch {
-            print("[TodayViewModel] addManualTask error: \(error)")
+            logError("addManualTask", error)
         }
     }
 
@@ -168,7 +178,7 @@ public final class TodayViewModel {
         do {
             try pageRepo.deleteTask(task, from: p)
         } catch {
-            print("[TodayViewModel] deleteTask error: \(error)")
+            logError("deleteTask", error)
         }
     }
 
@@ -177,7 +187,7 @@ public final class TodayViewModel {
         do {
             try pageRepo.unlockPastPage(p)
         } catch {
-            print("[TodayViewModel] unlockPastDay error: \(error)")
+            logError("unlockPastDay", error)
         }
     }
 
@@ -186,7 +196,7 @@ public final class TodayViewModel {
         do {
             try pageRepo.lockPastPage(p)
         } catch {
-            print("[TodayViewModel] relockPastDay error: \(error)")
+            logError("relockPastDay", error)
         }
     }
 
@@ -196,7 +206,7 @@ public final class TodayViewModel {
             try pageRepo.updateTask(task, title: title, notes: notes, on: p)
             await loadPage()
         } catch {
-            print("[TodayViewModel] updateTask error: \(error)")
+            logError("updateTask", error)
         }
     }
 

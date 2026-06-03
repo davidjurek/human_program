@@ -5,6 +5,16 @@ import DSKit
 // Routines menu — a grid of squares (2 across), each showing the routine's emoji
 // centered with the name below. + opens a full editor page (no popup). Pushed from
 // the hub; back arrow returns there.
+/// Shared display fallbacks for a routine's empty title / emoji, so the tile and the
+/// editor show the same placeholders and can't drift apart. [#173]
+enum RoutineDisplay {
+    static let untitled = "Untitled"
+    static let emojiFallback = "📋"
+
+    static func title(_ s: String) -> String { s.isEmpty ? untitled : s }
+    static func emoji(_ s: String) -> String { s.isEmpty ? emojiFallback : s }
+}
+
 struct RoutinesView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -49,14 +59,17 @@ struct RoutinesView: View {
 
     private var topBar: some View {
         HStack {
-            Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+            // DSKit top-bar glyphs (same pattern as Calendar's top bar). [#199]
+            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))
+                .fontWeight(.semibold)
+                .frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
             Button { pushNew = true } label: {
-                Image(systemName: "plus").font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                DSImageView(systemName: "plus", size: 20, tint: .color(.primary))
+                    .fontWeight(.medium)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
                     .a11yTapBorder(Rectangle())
             }.buttonStyle(.plain)
         }
@@ -71,8 +84,8 @@ private struct RoutineTile: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Text(emoji.isEmpty ? "📋" : emoji).font(.system(size: 40))
-            DSText(name.isEmpty ? "Untitled" : name).dsTextStyle(.headline)
+            Text(RoutineDisplay.emoji(emoji)).font(.system(size: 40))
+            DSText(RoutineDisplay.title(name)).dsTextStyle(.headline)
                 .multilineTextAlignment(.center)
                 .longTitle()
                 .padding(.horizontal, 8)

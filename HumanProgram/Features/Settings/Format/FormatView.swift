@@ -1,9 +1,12 @@
 import SwiftUI
 import DSKit
 
-// Format area. STRUCTURE + SCREENS first — selections persist (@AppStorage)
-// but are not yet applied to date/time rendering across the app. Wiring them
-// into the live formatters is a follow-up.
+// Format area. Time Format is applied LIVE — `clockString(...)` reads
+// `settings.timeFormat` at every displayed clock time. Date Format persists and is
+// honored by `AppDateFormat.userPreferred(_:)`, but the main display sites (Today /
+// Backlog / Stats) still use the fixed `monthDayYear`/`weekday…` formatters, so the
+// Date Format picker has no app-wide effect yet — routing those sites through
+// `userPreferred` is a separate, behavior-changing task. [#158]
 
 struct FormatView: View {
     var body: some View {

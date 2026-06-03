@@ -145,6 +145,20 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
 }
 
 extension View {
+    /// Shared discard-changes guard for the planning editors: shows the standard
+    /// "Discard Changes?" confirm popup when `isPresented` is set, dismissing the
+    /// editor on confirm. Replaces the copy-pasted popup block + dismiss wiring in
+    /// each editor (the per-editor `attemptBack` just toggles `isPresented`). [#197]
+    func discardChangesGuard(isPresented: Binding<Bool>, onDiscard: @escaping () -> Void) -> some View {
+        overlay {
+            if isPresented.wrappedValue {
+                ConfirmPopup(message: "Discard Changes?", confirmTitle: "Discard",
+                             onConfirm: onDiscard,
+                             onCancel: { isPresented.wrappedValue = false })
+            }
+        }
+    }
+
     /// Faint gradient frost behind a top bar so the buttons stay legible when
     /// content scrolls up under them. Shared so EVERY screen's bar matches
     /// (Settings + Today/Backlog/Calendar/Routines/Stats). [#47]
@@ -356,15 +370,10 @@ struct SettingsRowContent<Trailing: View>: View {
                 DSImageView(systemName: systemImage, size: .font(.title3),
                             tint: destructive ? .color(.red) : .color(.primary))
             }
-            if destructive {
-                DSText(label).dsTextStyle(.title3, Color.red)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                DSText(label).dsTextStyle(.title3)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            // One label; only its color depends on the destructive flag. [#147]
+            DSText(label).dsTextStyle(.title3, destructive ? Color.red : Color.primary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 16) {
                 if let value {
                     // Full row font size (matches the label), kept grey.
