@@ -21,134 +21,181 @@ struct TimelineItem: Identifiable {
     var labelEndMin: Int? = nil
 }
 
-// The Daily "Schedule" square on the Today screen. It is exactly as tall as it is
-// wide (a square), with a left time column (00:00 … 24:00 in 3-hour steps), two
-// lanes of blocks (schedule on the left, calendar on the right — distinguished by
-// position, no colored fills, no divider line), and item labels in the open space
-// to the right. When viewing today, a live red "now" line spans the full width
-// with a time pill over the time column.
+// The Daily "Schedule" square on the Today screen. A left time column (honoring
+// the 12h/24h setting), two lanes of blocks (schedule on the left, calendar on
+// the right), and item labels to the right. When viewing today a live red "now"
+// line spans the block column with a centred time pill over the time column.
+//
+// PINCH-ZOOM: the viewport is a fixed square; pinching vertically zooms the day
+// in (down to a 4-hour window) and out (the full 00:00–24:00). The grid gains
+// finer lines as it zooms — 3-hour lines, then hourly, then half-hourly — and
+// every visible line is labelled. The content scrolls vertically when taller
+// than the viewport. Zoom is in-memory only (resets when the screen is left;
+// survives backgrounding). [owner]
 struct DailyTimeline: View {
     let items: [TimelineItem]
     let showNow: Bool
     let now: Date
+    /// Called with the tapped calendar event's id. Schedule blocks are inert.
+    var onTapCalendar: (String) -> Void = { _ in }
 
-    private let timeColW: CGFloat = 52   // fits "00:00" in the pixel font
-    private let laneW: CGFloat = 25      // 30% narrower (was 36)
-    private let laneGap: CGFloat = 0     // schedule + calendar lanes flush, no gap
-    private let laneLeadingGap: CGFloat = 9   // gap between time column and lanes/lines (halved from 18)
+    private let timeColW = TimelineMetrics.gutterW
+    private let laneW: CGFloat = 25
+    private let laneGap: CGFloat = 0
+    private let laneLeadingGap = TimelineMetrics.gutterGap
 
     /// Fixed light blue for the calendar (right) lane (shared design token). [#31]
     private static let calendarBlue = appCalendarLaneBlue.opacity(0.55)
 
+    /// zoom == 1 → whole day fills the square (00:00–24:00). zoom == maxZoom → a
+    /// 4-hour window. (contentHeight = viewport * zoom.)
+    private let maxZoom: CGFloat = 6
+    @State private var zoom: CGFloat = 1
+    @State private var scrollY: CGFloat = 0      // content top offset, ≤ 0
+    @State private var pinchBaseZoom: CGFloat = 1
+    @State private var pinchBaseScroll: CGFloat = 0
+    @State private var pinching = false
+    @State private var dragBaseScroll: CGFloat = 0
+    @State private var dragging = false
+
     var body: some View {
-        // A clear square (height == width) reserves the layout height; the
-        // GeometryReader overlay then lays the timeline out inside it.
         Color.clear
             .aspectRatio(1, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .overlay {
                 GeometryReader { geo in
-                    content(S: geo.size.width)
+                    let W = geo.size.width
+                    let viewportH = geo.size.height
+                    let contentH = viewportH * zoom
+                    content(W: W, contentH: contentH)
+                        .frame(width: W, height: contentH, alignment: .topLeading)
+                        .offset(y: scrollY)
+                        .frame(width: W, height: viewportH, alignment: .topLeading)
+                        .clipped()
+                        .contentShape(Rectangle())
+                        .highPriorityGesture(dragGesture(viewportH: viewportH),
+                                             including: zoom > 1 ? .all : .subviews)
+                        .simultaneousGesture(magnifyGesture(viewportH: viewportH))
                 }
             }
     }
 
+    // MARK: - Content
+
     @ViewBuilder
-    private func content(S: CGFloat) -> some View {
+    private func content(W: CGFloat, contentH: CGFloat) -> some View {
         let orangeX = timeColW + laneLeadingGap
         let greenX = orangeX + laneW + laneGap
         let labelX = greenX + laneW + 10
-        let labelW = max(40, S - labelX)
-        let placed = placedLabels(S: S)
+        let labelW = max(40, W - labelX)
+        let laneSpan = laneW * 2 + laneGap
+        let placed = placedLabels(contentH: contentH)
+        let marks = gridMarks()
 
         ZStack(alignment: .topLeading) {
-            let laneSpan = laneW * 2 + laneGap
-
-            // Schedule lane (left) + calendar lane (right). Calendar blocks are a
-            // fixed light blue; schedule blocks use their assigned colour (gray
-            // fallback). Drawn BEFORE the grid lines so the hour lines sit on top.
+            // Blocks (drawn before the grid so the hour lines sit on top). Calendar
+            // blocks are tappable (→ event card); schedule blocks are inert.
             ForEach(items) { it in
-                let top = yFor(it.startMin, S: S)
-                let h = max(3, yFor(it.endMin, S: S) - top)
+                let top = yFor(it.startMin, contentH: contentH)
+                let h = max(3, yFor(it.endMin, contentH: contentH) - top)
                 RoundedRectangle(cornerRadius: 4)
                     .fill(it.isCalendar ? Self.calendarBlue : (it.color ?? Color.primary.opacity(0.50)))
                     .frame(width: laneW, height: h)
+                    .contentShape(Rectangle())
+                    .allowsHitTesting(it.isCalendar)
+                    .onTapGesture { if it.isCalendar { onTapCalendar(it.id) } }
                     .offset(x: it.isCalendar ? greenX : orangeX, y: top)
             }
 
-            // Hour grid lines (span only the two lanes) + 3-hour labels. Drawn on
-            // top of the blocks so the hour lines stay visible across them.
-            ForEach(Array(stride(from: 0, through: 24, by: 3)), id: \.self) { h in
-                let y = CGFloat(h) / 24 * S
-                // Label is framed to a fixed height and CENTERED on y so it lines
-                // up with its hour line (both centred on the same y). The line
-                // starts at orangeX, leaving the laneLeadingGap after the labels.
-                // Label centred on its line. No end-clamping (clamping the first
-                // and last labels was compressing the top/bottom gaps and making
-                // the spacing look uneven). The -7 centres the pixel-font digits
-                // (which sit high in the box) on the line at y.
-                Text(String(format: "%02d:00", h))
+            // Grid lines + labels. The set of lines (3-hour / hourly / half-hourly)
+            // and their weight come from the current zoom; every line is labelled.
+            ForEach(marks, id: \.minute) { mark in
+                let y = yFor(mark.minute, contentH: contentH)
+                lineFor(mark)
+                    .frame(width: laneSpan, height: mark.lineWidth)
+                    .offset(x: orangeX, y: y - mark.lineWidth / 2)
+                Text(clockString(minutesOfDay: mark.minute))
                     .font(appFont(13)).foregroundStyle(.secondary)
-                    .fixedSize()
-                    .frame(height: 16)
-                    .offset(x: 0, y: y - 7)
-                Rectangle().fill(Color.primary.opacity(0.18))
-                    .frame(width: laneSpan, height: 1)
-                    .offset(x: orangeX, y: y)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .frame(width: timeColW, height: 16, alignment: .center)
+                    .offset(x: 0, y: y - 8)
             }
 
-            // Item labels in the open space to the right, top-aligned to each
-            // block, stacked so they don't collide.
+            // Item labels to the right, top-aligned per block, stacked to avoid
+            // collisions. "Title period–period" (no comma), honoring 12h/24h.
             ForEach(placed, id: \.item.id) { entry in
-                Text("\(entry.item.title), \(hhmm(entry.item.startMin))–\(hhmm(entry.item.labelEndMin ?? entry.item.endMin))")
+                Text("\(entry.item.title) \(clockString(minutesOfDay: entry.item.startMin))–\(clockString(minutesOfDay: entry.item.labelEndMin ?? entry.item.endMin))")
                     .font(appFont(13)).foregroundStyle(.primary)
                     .lineLimit(1).truncationMode(.tail)
                     .frame(width: labelW, alignment: .leading)
                     .offset(x: labelX, y: entry.y)
             }
 
-            // Live "now" line: pill over the time column + full-width red line.
+            // Live "now" line: centred pill over the time column + red line across
+            // the block column.
             if showNow {
-                let y = yFor(currentMinute, S: S)
-                // Shared, clamped centre for BOTH the line and the pill so they stay
-                // vertically centred on each other even near 00:00 / 24:00. The pill
-                // is ~20pt tall, so its centre must stay within [10, S-10] to keep it
-                // inside the square; clamping the line to the same centre (instead of
-                // only the pill) is what keeps them aligned at the extremes.
-                let cy = min(max(y, 10), S - 10)
-                // Stop the line at the right edge of the block column (time column +
-                // both lanes), not the full square width.
+                let y = yFor(currentMinute, contentH: contentH)
+                let cy = min(max(y, TimelineMetrics.pillH / 2), contentH - TimelineMetrics.pillH / 2)
                 Rectangle().fill(Color.red).frame(width: orangeX + laneSpan, height: 1)
                     .offset(x: 0, y: cy)
-                Text(hhmm(currentMinute))
-                    .font(appFont(13, bold: true)).foregroundStyle(.white)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Capsule().fill(Color.red))
-                    // Shift left by the capsule's horizontal padding (6) so the pill's
-                    // time digits line up with the hour-label digits; the rounded left
-                    // edge is allowed to spill into the left margin.
-                    .offset(x: -6, y: cy - 10)
+                NowPill(minutesOfDay: currentMinute)
+                    .frame(width: timeColW, alignment: .center)
+                    .offset(x: 0, y: cy - TimelineMetrics.pillH / 2)
             }
         }
     }
 
-    /// Top-aligned label y per item, pushed down to avoid overlapping the prior.
-    private func placedLabels(S: CGFloat) -> [(item: TimelineItem, y: CGFloat)] {
-        let labelH: CGFloat = 14
+    // MARK: - Grid marks
+
+    private struct GridMark {
+        let minute: Int
+        let tier: Int          // 0 = 3-hour, 1 = hourly, 2 = half-hourly
+        let lineWidth: CGFloat
+    }
+
+    /// The lines to draw at the current zoom. Below 3× only 3-hour lines; from 3×
+    /// hourly lines appear (3-hour lines thicken); from 6× half-hourly lines
+    /// appear (dashed), with the 3-hour lines thickest.
+    private func gridMarks() -> [GridMark] {
+        let step: Int = zoom >= maxZoom ? 30 : (zoom >= 3 ? 60 : 180)
+        return stride(from: 0, through: 1440, by: step).map { m in
+            let tier = (m % 180 == 0) ? 0 : (m % 60 == 0 ? 1 : 2)
+            let width: CGFloat
+            switch tier {
+            case 0: width = zoom >= maxZoom ? 2 : (zoom >= 3 ? 1.5 : 1)
+            case 1: width = 1
+            default: width = 1
+            }
+            return GridMark(minute: m, tier: tier, lineWidth: width)
+        }
+    }
+
+    private func lineFor(_ mark: GridMark) -> some View {
+        // Half-hour separators are dotted-dashed; 3-hour/hourly lines are solid.
+        let opacity = (mark.tier == 0 && zoom >= 3) ? 0.30 : 0.18
+        return HLine().stroke(Color.primary.opacity(opacity),
+                              style: StrokeStyle(lineWidth: mark.lineWidth,
+                                                 dash: mark.tier == 2 ? [3, 3] : []))
+    }
+
+    // MARK: - Labels
+
+    private func placedLabels(contentH: CGFloat) -> [(item: TimelineItem, y: CGFloat)] {
+        let labelH: CGFloat = 16
         var result: [(item: TimelineItem, y: CGFloat)] = []
         var lastBottom: CGFloat = -labelH
         for it in items.sorted(by: { $0.startMin < $1.startMin }) where !it.suppressLabel {
-            var y = yFor(it.startMin, S: S)
+            var y = yFor(it.startMin, contentH: contentH)
             if y < lastBottom { y = lastBottom }
-            y = min(y, S - labelH)
+            y = min(y, contentH - labelH)
             result.append((it, y))
             lastBottom = y + labelH
         }
         return result
     }
 
-    private func yFor(_ minute: Int, S: CGFloat) -> CGFloat {
-        CGFloat(min(max(minute, 0), 1440)) / 1440 * S
+    private func yFor(_ minute: Int, contentH: CGFloat) -> CGFloat {
+        CGFloat(min(max(minute, 0), 1440)) / 1440 * contentH
     }
 
     private var currentMinute: Int {
@@ -156,8 +203,49 @@ struct DailyTimeline: View {
         return (c.hour ?? 0) * 60 + (c.minute ?? 0)
     }
 
-    private func hhmm(_ minutes: Int) -> String {
-        let m = ((minutes % 1440) + 1440) % 1440
-        return String(format: "%02d:%02d", m / 60, m % 60)
+    /// A single horizontal line at the vertical centre of its frame.
+    private struct HLine: Shape {
+        func path(in rect: CGRect) -> Path {
+            var p = Path()
+            p.move(to: CGPoint(x: 0, y: rect.midY))
+            p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            return p
+        }
+    }
+
+    // MARK: - Gestures
+
+    private func maxScroll(_ viewportH: CGFloat) -> CGFloat { max(0, viewportH * zoom - viewportH) }
+
+    /// Vertical pinch zoom that keeps the time under the fingers fixed. Damped so
+    /// it takes a bit more finger travel — easier to control. [owner]
+    private func magnifyGesture(viewportH: CGFloat) -> some Gesture {
+        MagnifyGesture(minimumScaleDelta: 0)
+            .onChanged { value in
+                if !pinching { pinching = true; pinchBaseZoom = zoom; pinchBaseScroll = scrollY }
+                let damped = 1 + (value.magnification - 1) * 0.55
+                let newZoom = min(max(pinchBaseZoom * damped, 1), maxZoom)
+                // Keep the content point under the pinch's start location anchored.
+                let focal = value.startLocation.y
+                let u = (focal - pinchBaseScroll) / pinchBaseZoom     // base (zoom-1) y
+                var newScroll = focal - u * newZoom
+                let limit = viewportH * newZoom - viewportH
+                newScroll = min(0, max(-(max(0, limit)), newScroll))
+                zoom = newZoom
+                scrollY = newScroll
+            }
+            .onEnded { _ in pinching = false }
+    }
+
+    /// Vertical scroll of the zoomed-in day. Only active when zoomed (the modifier
+    /// masks it out at 1×, so the page itself scrolls instead).
+    private func dragGesture(viewportH: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 6)
+            .onChanged { value in
+                if !dragging { dragging = true; dragBaseScroll = scrollY }
+                let proposed = dragBaseScroll + value.translation.height
+                scrollY = min(0, max(-maxScroll(viewportH), proposed))
+            }
+            .onEnded { _ in dragging = false }
     }
 }

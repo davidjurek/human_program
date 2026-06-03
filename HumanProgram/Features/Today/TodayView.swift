@@ -19,6 +19,12 @@ struct TodayView: View {
     @State private var now = Date()
     @State private var calendarService = CalendarAdapterService()
     @State private var calendarItems: [TimelineItem] = []
+    // The EKEvents behind the green lane, keyed by id, so tapping a calendar block
+    // in the timeline can open its event card. Schedule blocks are inert.
+    @State private var calendarEvents: [String: EKEvent] = [:]
+    @State private var tappedEvent: TimelineTappedEvent? = nil
+    @State private var editEvent: TimelineTappedEvent? = nil
+    @Environment(\.modelContext) private var modelContext
     // Keyboard "safety gap" — height of the bottom spacer that gives the scroll
     // range for KeyboardScrollNudge to lift the focused field (mirrors Schedule).
     @State private var keyboardSpacer: CGFloat = 0
@@ -118,6 +124,16 @@ struct TodayView: View {
         .sheet(isPresented: $showDatePicker) {
             TodayDatePicker(date: vm.viewingDate) { vm.jumpTo(date: $0) }
         }
+        // Tapping a calendar block in the timeline opens its event card; "Edit"
+        // there opens the same editor the Calendar screen uses.
+        .sheet(item: $tappedEvent, onDismiss: { Task { await loadCalendarItems() } }) { wrap in
+            CalendarEventDetailSheet(event: wrap.event, date: vm.viewingDate, context: modelContext,
+                                     onEdit: { let e = wrap; tappedEvent = nil; editEvent = e })
+        }
+        .sheet(item: $editEvent, onDismiss: { Task { await loadCalendarItems() } }) { wrap in
+            AddCalendarEventView(eventToEdit: wrap.event, defaultDate: vm.viewingDate,
+                                 calendarService: calendarService, onSave: { Task { await loadCalendarItems() } })
+        }
     }
 
     // MARK: - Calendar events for the green lane
@@ -140,13 +156,17 @@ struct TodayView: View {
         let hidden = vm.hiddenCalendarIds(for: start)
         let visible = events.filter { ev in !(ev.eventIdentifier.map { hidden.contains($0) } ?? false) }
 
+        var eventMap: [String: EKEvent] = [:]
         calendarItems = visible.map { ev in
-            TimelineItem(id: ev.eventIdentifier ?? UUID().uuidString,
-                         title: ev.title ?? "(no title)",
-                         startMin: minutesOfDay(ev.startDate, dayStart: start),
-                         endMin: minutesOfDay(ev.endDate, dayStart: start),
-                         isCalendar: true)
+            let id = ev.eventIdentifier ?? UUID().uuidString
+            eventMap[id] = ev
+            return TimelineItem(id: id,
+                                title: ev.title ?? "(no title)",
+                                startMin: minutesOfDay(ev.startDate, dayStart: start),
+                                endMin: minutesOfDay(ev.endDate, dayStart: start),
+                                isCalendar: true)
         }
+        calendarEvents = eventMap
 
         // Flow chosen-calendar events into the Tasks list (only events with a stable
         // identifier; sorted into the calendar group by start time). An empty
@@ -275,7 +295,8 @@ struct TodayView: View {
             DailyTimeline(
                 items: scheduleItems + calendarItems,
                 showNow: vm.isToday,
-                now: now
+                now: now,
+                onTapCalendar: { id in if let ev = calendarEvents[id] { tappedEvent = TimelineTappedEvent(event: ev) } }
             )
         }
     }

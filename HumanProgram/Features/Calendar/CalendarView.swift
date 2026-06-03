@@ -412,7 +412,7 @@ struct CalendarView: View {
         .padding(.vertical, 4)
     }
 
-    private let weekTimeColW: CGFloat = 48   // wide enough for 00:00 [#23/#25]
+    private let weekTimeColW: CGFloat = TimelineMetrics.gutterW   // shared with Today + Day [owner]
     private let weekHourHeight: CGFloat = 44
 
     // 7-day time grid: left time column, 24 hour lines, red now-bar, events placed
@@ -468,13 +468,9 @@ struct CalendarView: View {
                         let nowY = CGFloat(nowMin) / 60 * weekHourHeight
                         Rectangle().fill(Color.red).frame(width: colW * 7, height: 1)
                             .offset(x: weekTimeColW, y: nowY)
-                        Text(nowTimeString)
-                            .font(appFont(13, bold: true)).foregroundStyle(.white)
-                            .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Capsule().fill(Color.red))
-                            .fixedSize()
-                            .frame(width: weekTimeColW, alignment: .center)   // centered in time column [#26]
-                            .offset(x: 0, y: nowY - 11)
+                        NowPill(minutesOfDay: nowMin)
+                            .frame(width: weekTimeColW, alignment: .center)   // centered in time column
+                            .offset(x: 0, y: nowY - TimelineMetrics.pillH / 2)
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: totalH, alignment: .topLeading)
@@ -539,7 +535,8 @@ struct CalendarView: View {
                                 Text(hourLabel(hour))
                                     .font(appFont(13))                        // [#28]
                                     .foregroundStyle(Color.secondary)
-                                    .frame(width: 48, alignment: .trailing)
+                                    .lineLimit(1).minimumScaleFactor(0.7)
+                                    .frame(width: TimelineMetrics.gutterW, alignment: .trailing)
                                 Rectangle().fill(Color.primary.opacity(0.08))
                                     .frame(height: 1)
                                     .padding(.top, 7)
@@ -566,7 +563,7 @@ struct CalendarView: View {
                         }
                         .buttonStyle(.plain)
                         .a11yTapBorder(RoundedRectangle(cornerRadius: 4))
-                        .offset(x: 56, y: topOffset)
+                        .offset(x: TimelineMetrics.gutterW + 8, y: topOffset)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.trailing, 16)
                     }
@@ -575,27 +572,17 @@ struct CalendarView: View {
                     // its right edge. [#26/#28]
                     if isToday {
                         let topOffset = CGFloat(nowMinute) / 60.0 * hourHeight
-                        // spacing 0 + the pill trailing-aligned in the time column so
-                        // the line starts exactly at the pill's right edge (attached),
-                        // not after the column gap.
-                        HStack(spacing: 0) {
-                            Text(nowTimeString)
-                                .font(appFont(13, bold: true)).foregroundStyle(.white)
-                                .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(Capsule().fill(Color.red))
-                                .fixedSize()
-                                // 48 (time-column width) + 5 (the capsule's right
-                                // padding) so the pill's DIGITS land on the column's
-                                // trailing edge — aligned with the hour labels — while
-                                // the capsule's right edge (and the attached line) sit
-                                // just past it.
-                                .frame(width: 53, alignment: .trailing)
-                            Rectangle().fill(Color.red).frame(height: 1)
-                        }
-                        .padding(.trailing, 8)
-                        .frame(maxWidth: .infinity)
-                        .offset(y: topOffset - 11)
-                        .id("currentTime")
+                        // Red line across the day + the shared centred pill over the
+                        // time column (same shape/size as Today and the week view).
+                        Rectangle().fill(Color.red).frame(height: 1)
+                            .padding(.leading, TimelineMetrics.gutterW)
+                            .padding(.trailing, 8)
+                            .frame(maxWidth: .infinity)
+                            .offset(y: topOffset)
+                            .id("currentTime")
+                        NowPill(minutesOfDay: nowMinute)
+                            .frame(width: TimelineMetrics.gutterW, alignment: .center)
+                            .offset(y: topOffset - TimelineMetrics.pillH / 2)
                     }
                 }
             }
@@ -897,14 +884,8 @@ struct CalendarView: View {
     }
 
     private func hourLabel(_ hour: Int) -> String {
-        // Week/Day timeline gutter is ALWAYS 24-hour (00:00 … 23:00), matching the
-        // Today schedule, regardless of the time-format setting. [#cal-allday]
-        String(format: "%02d:00", hour)
-    }
-
-    private var nowTimeString: String {
-        let c = Calendar.current.dateComponents([.hour, .minute], from: Date())
-        return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+        // Week/Day timeline gutter honors the 12h/24h setting, matching Today. [owner]
+        clockString(minutesOfDay: hour * 60)
     }
 
     static func monthStart(for date: Date) -> Date {
