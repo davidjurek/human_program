@@ -9,23 +9,38 @@ import Foundation
 @MainActor
 final class HprgmBackupRoundTripTests: XCTestCase {
 
+    // The export/import services read/write UserDefaults.standard directly (no
+    // injectable suite is exposed by the app), so these tests must touch the real
+    // process-wide store. To avoid polluting it, we snapshot every key the backup
+    // touches before each test and restore the exact prior value afterwards.
+    // Using [String: Any] (NOT Any?) keeps "key was absent" unambiguous: absent
+    // keys are simply not in the dictionary, so restore removes them.
     private let settingKeys = [
         "settings.fontChoice", "settings.fontSizeStep", "settings.appearanceMode",
         "settings.appIcon", "settings.bgLight", "settings.bgDark",
         "settings.dateFormat", "settings.timeFormat", "selectedCalendarIds"
     ]
-    private var savedDefaults: [String: Any?] = [:]
+    private var savedDefaults: [String: Any] = [:]
 
     override func setUp() {
         super.setUp()
-        for k in settingKeys { savedDefaults[k] = UserDefaults.standard.object(forKey: k) }
+        savedDefaults.removeAll()
+        for k in settingKeys {
+            if let v = UserDefaults.standard.object(forKey: k) { savedDefaults[k] = v }
+        }
     }
     override func tearDown() {
+        restoreDefaults()
+        super.tearDown()
+    }
+
+    /// Restores every snapshotted key to its prior value (or removes it if it was
+    /// absent). Runs in tearDown, which XCTest executes even when a test throws.
+    private func restoreDefaults() {
         for k in settingKeys {
-            if let v = savedDefaults[k] ?? nil { UserDefaults.standard.set(v, forKey: k) }
+            if let v = savedDefaults[k] { UserDefaults.standard.set(v, forKey: k) }
             else { UserDefaults.standard.removeObject(forKey: k) }
         }
-        super.tearDown()
     }
 
     func testFullExportImportRoundTripRestoresEverything() throws {
@@ -68,6 +83,11 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         task.completed = true
         task.page = page
         src.insert(task)
+        // A calendar-sourced task: its source tag + id must survive the round-trip. [#179]
+        let calTask = DailyPageTask(title: "Dentist", sourceType: .calendar, sourceId: "evt-cal-99", sortOrder: 1)
+        calTask.completed = false
+        calTask.page = page
+        src.insert(calTask)
 
         let reminder = NotificationReminder(title: "Stretch", message: "time to stretch")
         reminder.fireHour = 14
@@ -142,6 +162,7 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         XCTAssertEqual(exercises.first?.items.first?.sets, 3)
 
         let schedules = try dst.fetch(FetchDescriptor<ScheduleTemplate>())
+        XCTAssertEqual(schedules.count, 1, "exactly one schedule template must be restored [#181]")
         XCTAssertEqual(schedules.first?.blocks.first?.title, "Sleep")
         XCTAssertEqual(schedules.first?.blocks.first?.colorHex, "5B6CF0", "block colour must survive backup [#20]")
         XCTAssertEqual(schedules.first?.assignedWeekdays, [2, 3, 4, 5, 6])
@@ -149,8 +170,14 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         let pages = try dst.fetch(FetchDescriptor<DailyPage>())
         XCTAssertEqual(pages.count, 1, "junk page wiped, backup page restored")
         XCTAssertTrue(pages.first?.isPastLocked == true, "locked snapshot restored as locked")
-        XCTAssertEqual(pages.first?.tasks.count, 1)
-        XCTAssertEqual(pages.first?.tasks.first?.title, "Snapshot task")
+        XCTAssertEqual(pages.first?.tasks.count, 2, "both the manual and calendar tasks must restore")
+        let restoredTasks = try XCTUnwrap(pages.first?.tasks)
+        let manualTask = try XCTUnwrap(restoredTasks.first { $0.sourceType == .manual })
+        XCTAssertEqual(manualTask.title, "Snapshot task")
+        // The calendar task's source tag and id must come back. [#179]
+        let calendarTask = try XCTUnwrap(restoredTasks.first { $0.sourceType == .calendar })
+        XCTAssertEqual(calendarTask.title, "Dentist")
+        XCTAssertEqual(calendarTask.sourceId, "evt-cal-99", "calendar task's sourceId must survive backup")
         XCTAssertEqual(pages.first?.scheduleBlocks.first?.colorHex, "4F9DF7", "page block colour must survive backup [#20]")
 
         XCTAssertEqual(try dst.fetch(FetchDescriptor<NotificationReminder>()).first?.fireHour, 14)

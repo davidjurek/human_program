@@ -84,39 +84,22 @@ public struct StreakCalculator: Sendable {
             }
         }
 
-        // Calculate longest streak: iterate sorted dates, detect consecutive complete runs
+        // Calculate longest streak: iterate sorted dates, detect consecutive complete runs.
+        // If the previous day plus one equals the current day and the current day is
+        // complete, grow the run; otherwise reset to 1 (or 0 on an incomplete day). [#58]
         var longestStreak = 0
         var runLength = 0
         var previousDate: Date? = nil
 
         for date in sortedDates {
             let isComplete = completionByDay[date] ?? false
+            let isConsecutive = previousDate
+                .flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
+                .map { $0 == date } ?? false
 
-            if isComplete {
-                // Check if this day is consecutive with the previous tracked complete day
-                var isConsecutive = false
-                if let prev = previousDate {
-                    if let expectedNext = calendar.date(byAdding: .day, value: 1, to: prev),
-                       calendar.startOfDay(for: expectedNext) == date {
-                        isConsecutive = true
-                    }
-                }
-
-                if isConsecutive {
-                    runLength += 1
-                } else {
-                    runLength = 1
-                }
-
-                if runLength > longestStreak {
-                    longestStreak = runLength
-                }
-                previousDate = date
-            } else {
-                // Break in the run — reset tracking for next potential run
-                runLength = 0
-                previousDate = nil
-            }
+            runLength = isComplete ? (isConsecutive ? runLength + 1 : 1) : 0
+            longestStreak = max(longestStreak, runLength)
+            previousDate = date
         }
 
         return StreakStats(

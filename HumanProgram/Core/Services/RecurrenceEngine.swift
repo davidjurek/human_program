@@ -44,16 +44,15 @@ public struct RecurrenceEngine: Sendable {
             ? countOccurrences(of: rule, before: startDay, calendar: calendar)
             : 0
 
-        for offset in 0..<limit {
-            guard let candidate = calendar.date(byAdding: .day, value: offset, to: startDay) else {
-                continue
-            }
-            guard rule.occurs(on: candidate, calendar: calendar) else { continue }
-            if let occLimit = rule.occurrenceLimit, priorCount >= occLimit { return nil }
-            return candidate
+        var result: Date? = nil
+        forEachDay(from: startDay, offsets: 0..<limit, calendar: calendar) { candidate, stop in
+            guard rule.occurs(on: candidate, calendar: calendar) else { return }
+            if let occLimit = rule.occurrenceLimit, priorCount >= occLimit { stop = true; return }
+            result = candidate
+            stop = true
         }
 
-        return nil
+        return result
     }
 
     // MARK: - occurrences(of:in:calendar:)
@@ -80,13 +79,10 @@ public struct RecurrenceEngine: Sendable {
             ? countOccurrences(of: rule, before: startDay, calendar: calendar)
             : 0
 
-        for offset in 0...totalDays {
-            guard let candidate = calendar.date(byAdding: .day, value: offset, to: startDay) else {
-                continue
-            }
-            guard rule.occurs(on: candidate, calendar: calendar) else { continue }
+        forEachDay(from: startDay, offsets: 0...totalDays, calendar: calendar) { candidate, stop in
+            guard rule.occurs(on: candidate, calendar: calendar) else { return }
             if let limit = rule.occurrenceLimit {
-                if priorCount >= limit { break }   // limit reached — no later day can fire
+                if priorCount >= limit { stop = true; return }   // limit reached — no later day can fire
                 priorCount += 1
             }
             results.append(candidate)
@@ -125,15 +121,35 @@ public struct RecurrenceEngine: Sendable {
 
         // We use the base occurs(on:) rather than matches() to avoid recursive limit checking
         var count = 0
-        for offset in 0..<totalDays {
-            guard let candidate = calendar.date(byAdding: .day, value: offset, to: origin) else {
-                continue
-            }
+        forEachDay(from: origin, offsets: 0..<totalDays, calendar: calendar) { candidate, _ in
             if rule.occurs(on: candidate, calendar: calendar) {
                 count += 1
             }
         }
 
         return count
+    }
+
+    /// Steps day-by-day from `start`, calling `body` with the date at each offset in
+    /// `offsets`. Set the `inout stop` flag to end the walk early. Centralizes the
+    /// day-stepping loop the three methods above used to each rebuild. [#61]
+    ///
+    /// The `guard let … else { continue }` is defensive only: `calendar.date(byAdding:)`
+    /// never returns nil for these normal whole-day offsets, so skipping a nil candidate
+    /// can't drop a real occurrence. [#59]
+    private func forEachDay<S: Sequence>(
+        from start: Date,
+        offsets: S,
+        calendar: Calendar,
+        _ body: (_ date: Date, _ stop: inout Bool) -> Void
+    ) where S.Element == Int {
+        for offset in offsets {
+            guard let candidate = calendar.date(byAdding: .day, value: offset, to: start) else {
+                continue
+            }
+            var stop = false
+            body(candidate, &stop)
+            if stop { break }
+        }
     }
 }

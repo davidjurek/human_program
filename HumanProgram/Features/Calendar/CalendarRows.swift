@@ -2,6 +2,15 @@ import SwiftUI
 import EventKit
 import DSKit
 
+// MARK: - Shared EKEvent display helpers [#125]
+
+extension EKEvent {
+    /// The calendar's color for drawing this event (bar, chip, block).
+    var displayColor: Color { Color(cgColor: calendar.cgColor) }
+    /// Title to show, with one consistent fallback for untitled events.
+    var displayTitle: String { (title?.isEmpty == false) ? title! : "(No title)" }
+}
+
 // MARK: - Month day cell
 
 struct MonthDayCell: View {
@@ -58,12 +67,12 @@ struct EventRowView: View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 Rectangle()
-                    .fill(Color(cgColor: event.calendar.cgColor))
+                    .fill(event.displayColor)
                     .frame(width: 3)
                     .clipShape(Capsule())
 
                 VStack(alignment: .leading, spacing: 2) {
-                    DSText(event.title ?? "(No title)")
+                    DSText(event.displayTitle)
                         .dsTextStyle(.body)
                         .lineLimit(1)
                     if !event.isAllDay {
@@ -96,10 +105,10 @@ struct DayEventBlock: View {
     var body: some View {
         HStack(spacing: 0) {
             Rectangle()
-                .fill(Color(cgColor: event.calendar.cgColor))
+                .fill(event.displayColor)
                 .frame(width: 3)
             VStack(alignment: .leading, spacing: 2) {
-                Text(event.title ?? "(No title)")
+                Text(event.displayTitle)
                     .font(appFont(12))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
@@ -113,11 +122,11 @@ struct DayEventBlock: View {
             .padding(.vertical, 3)
             Spacer(minLength: 0)
         }
-        .background(Color(cgColor: event.calendar.cgColor).opacity(0.15))
+        .background(event.displayColor.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay(
             RoundedRectangle(cornerRadius: 4)
-                .stroke(Color(cgColor: event.calendar.cgColor).opacity(0.3), lineWidth: 0.5)
+                .stroke(event.displayColor.opacity(0.3), lineWidth: 0.5)
         )
     }
 }

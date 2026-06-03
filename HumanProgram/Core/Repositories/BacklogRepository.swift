@@ -5,9 +5,11 @@ import SwiftData
 public final class BacklogRepository {
     private let context: ModelContext
     private let maintenance = BacklogMaintenanceService()
+    private let calendar: Calendar
 
-    public init(context: ModelContext) {
+    public init(context: ModelContext, calendar: Calendar = .current) {
         self.context = context
+        self.calendar = calendar
     }
 
     // MARK: - CRUD
@@ -23,7 +25,7 @@ public final class BacklogRepository {
         let item = BacklogItem(title: title)
         item.notes = notes
         item.project = project
-        item.assignedDate = assignedDate.map { Calendar.current.startOfDay(for: $0) }
+        item.assignedDate = assignedDate.map { calendar.dayStart($0) }
         context.insert(item)
         try context.save()
         return item
@@ -42,7 +44,7 @@ public final class BacklogRepository {
         item.title = title
         item.notes = notes
         item.project = project
-        item.assignedDate = assignedDate.map { Calendar.current.startOfDay(for: $0) }
+        item.assignedDate = assignedDate.map { calendar.dayStart($0) }
         item.updatedAt = Date()
         try context.save()
     }
@@ -66,6 +68,8 @@ public final class BacklogRepository {
 
     /// Fetch active items (status == .backlog).
     /// SwiftData #Predicate enum comparisons are unreliable — fetch all and filter in memory.
+    /// TODO [#68]: at scale, store status as a raw String and filter in the store via
+    /// a #Predicate. Left as-is for now (needs a migration + a verifying test first).
     public func fetchActive() throws -> [BacklogItem] {
         let all = try fetchAll()
         return all.filter { $0.status == .backlog }
@@ -73,10 +77,7 @@ public final class BacklogRepository {
 
     /// Fetch all items including done.
     public func fetchAll() throws -> [BacklogItem] {
-        let descriptor = FetchDescriptor<BacklogItem>(
-            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
-        )
-        return try context.fetch(descriptor)
+        try context.fetchSorted(by: [SortDescriptor(\.createdAt, order: .forward)])
     }
 
     // MARK: - Projects
@@ -103,10 +104,7 @@ public final class BacklogRepository {
 
     /// Fetch all project buckets.
     public func fetchProjects() throws -> [ProjectBucket] {
-        let descriptor = FetchDescriptor<ProjectBucket>(
-            sortBy: [SortDescriptor(\.name, order: .forward)]
-        )
-        return try context.fetch(descriptor)
+        try context.fetchSorted(by: [SortDescriptor(\.name, order: .forward)])
     }
 
     // MARK: - Maintenance

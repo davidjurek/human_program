@@ -1,5 +1,8 @@
 import Foundation
 
+/// Length of the repeating exercise cycle (Workout A, B, C, Rest). [#63]
+public let splitCycleLength = 4
+
 public enum RecurrenceFrequency: String, Codable, Hashable, CaseIterable, Sendable {
     case everyDay
     case weekdays        // Mon–Fri (weekday 2–6)
@@ -64,6 +67,20 @@ public struct RecurrenceRule: Codable, Hashable, Sendable {
         RecurrenceRule(frequency: .everyNWeeks, weekdays: weekdays, interval: n, anchorDate: anchor)
     }
 
+    // MARK: - Derived
+
+    /// The set of weekdays (1=Sun … 7=Sat) this rule visibly highlights in the UI.
+    /// Canonical home for the helper that was duplicated in `RecurringTasksView` and
+    /// `RecurringTaskEditorView`; those two should switch to this. [#191]
+    public var highlightedWeekdays: Set<Int> {
+        switch frequency {
+        case .everyDay: return Set(1...daysPerWeek)
+        case .weekdays: return [2, 3, 4, 5, 6]
+        case .weekends: return [1, 7]
+        default: return Set(weekdays)
+        }
+    }
+
     // MARK: - Core Matching
 
     /// Returns true if this rule fires on the given date.
@@ -101,10 +118,7 @@ public struct RecurrenceRule: Codable, Hashable, Sendable {
             return self.weekdays.contains(weekday)
 
         case .everyNDays:
-            let anchor = resolvedAnchor(calendar: calendar)
-            let days = daysBetween(anchor, and: date, calendar: calendar)
-            guard days >= 0 else { return false }
-            return days % max(1, interval) == 0
+            return firesEveryNDays(interval, on: date, calendar: calendar)
 
         case .everyNWeeks:
             let anchor = resolvedAnchor(calendar: calendar)
@@ -116,28 +130,36 @@ public struct RecurrenceRule: Codable, Hashable, Sendable {
             // weekday, which the old `remainder == 0` gate incorrectly required.
             let anchorWeekStart = startOfWeek(anchor, calendar: calendar)
             let dateWeekStart = startOfWeek(dayStart, calendar: calendar)
-            let weeks = daysBetween(anchorWeekStart, and: dateWeekStart, calendar: calendar) / 7
+            let weeks = daysBetween(anchorWeekStart, and: dateWeekStart, calendar: calendar) / daysPerWeek
             guard weeks % max(1, interval) == 0 else { return false }
             return self.weekdays.contains(weekday)
 
         case .everyOtherDay:
-            let anchor = resolvedAnchor(calendar: calendar)
-            let days = daysBetween(anchor, and: date, calendar: calendar)
-            guard days >= 0 else { return false }
-            return days % 2 == 0
+            // Identical to everyNDays with a fixed interval of 2 — share the one path
+            // (the `interval` field is ignored here on purpose). [#60]
+            return firesEveryNDays(2, on: date, calendar: calendar)
 
         case .fourDaySplit:
             // 4-day cycle: day 0 = Workout A, day 1 = Workout B, day 2 = Workout C, day 3 = Rest
-            // Active positions are 0, 1, 2 (not rest day 3)
+            // Active positions are 0, 1, 2 (not the last, rest day)
             let anchor = resolvedAnchor(calendar: calendar)
             let days = daysBetween(anchor, and: date, calendar: calendar)
             guard days >= 0 else { return false }
-            let cycleIndex = days % 4
-            return cycleIndex != 3
+            let cycleIndex = days % splitCycleLength
+            return cycleIndex != splitCycleLength - 1
         }
     }
 
     // MARK: - Private Helpers
+
+    /// True if a fixed N-day interval lands on `date` (every N days from the anchor).
+    /// Shared by the `.everyNDays` and `.everyOtherDay` (N=2) cases. [#60]
+    private func firesEveryNDays(_ n: Int, on date: Date, calendar: Calendar) -> Bool {
+        let anchor = resolvedAnchor(calendar: calendar)
+        let days = daysBetween(anchor, and: date, calendar: calendar)
+        guard days >= 0 else { return false }
+        return days % max(1, n) == 0
+    }
 
     /// Returns the anchor to use for interval calculations.
     /// Falls back to startDate, then Unix epoch start if neither is set.
@@ -158,6 +180,8 @@ public struct RecurrenceRule: Codable, Hashable, Sendable {
         let fromDay = calendar.startOfDay(for: from)
         let toDay = calendar.startOfDay(for: to)
         let components = calendar.dateComponents([.day], from: fromDay, to: toDay)
+        // `.day` is always present for two start-of-day dates; the `?? 0` is defensive
+        // only and means "treat as the same day" on impossible input. [#59]
         return components.day ?? 0
     }
 

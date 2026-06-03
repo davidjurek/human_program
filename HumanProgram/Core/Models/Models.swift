@@ -1,6 +1,11 @@
 import Foundation
 import SwiftData
 
+// ── Shared constants ──────────────────────────────────────────────
+// Named once so the same value can't drift between copies. [#63]
+public let minutesPerDay = 1440
+public let daysPerWeek = 7
+
 // ── Enums (plain Codable types, NOT @Model) ───────────────────────
 
 public enum BacklogStatus: String, Codable, Sendable {
@@ -9,6 +14,18 @@ public enum BacklogStatus: String, Codable, Sendable {
 
 public enum DailyTaskSourceType: String, Codable, Sendable {
     case recurring, backlog, manual, calendar
+}
+
+// ── Schedule block duration (shared math) ─────────────────────────
+// Minutes a block covers, handling overnight wrap (end <= start). Lives in ONE
+// place so the template type and the page-snapshot type can't drift. [#62][#63]
+func scheduleBlockDurationMinutes(startMinuteOfDay: Int, endMinuteOfDay: Int) -> Int {
+    if endMinuteOfDay > startMinuteOfDay {
+        return endMinuteOfDay - startMinuteOfDay
+    } else {
+        // Overnight block: e.g. 21:30 (1290) to 05:30 (330)
+        return (minutesPerDay - startMinuteOfDay) + endMinuteOfDay
+    }
 }
 
 // ── ScheduleBlock ─────────────────────────────────────────────────
@@ -29,12 +46,7 @@ public struct ScheduleBlock: Codable, Identifiable, Hashable, Sendable {
     public var isSleep: Bool { title == Self.sleepBlockTitle }
 
     public var durationMinutes: Int {
-        if endMinuteOfDay > startMinuteOfDay {
-            return endMinuteOfDay - startMinuteOfDay
-        } else {
-            // Overnight block: e.g. 21:30 (1290) to 05:30 (330)
-            return (1440 - startMinuteOfDay) + endMinuteOfDay
-        }
+        scheduleBlockDurationMinutes(startMinuteOfDay: startMinuteOfDay, endMinuteOfDay: endMinuteOfDay)
     }
 
     public init(
@@ -62,6 +74,12 @@ public struct DailyPageScheduleBlock: Codable, Identifiable, Hashable, Sendable 
     public var endMinuteOfDay: Int
     public var sortOrder: Int
     public var colorHex: String?       // snapshot of the block colour [#20]
+
+    /// Minutes this block covers, handling overnight wrap — same math as
+    /// `ScheduleBlock.durationMinutes` so the duration lives in one place. [#62]
+    public var durationMinutes: Int {
+        scheduleBlockDurationMinutes(startMinuteOfDay: startMinuteOfDay, endMinuteOfDay: endMinuteOfDay)
+    }
 
     public init(
         id: String = UUID().uuidString,

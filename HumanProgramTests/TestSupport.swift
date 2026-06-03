@@ -1,5 +1,6 @@
 import XCTest
 import Foundation
+@testable import HumanProgram
 
 /// Shared calendars for the test suite. The UTC-vs-local split is deliberate:
 /// `utc` builds absolute dates without DST-driven flakiness, while `local` matches how
@@ -29,5 +30,16 @@ extension XCTestCase {
         comps.minute = 0
         comps.second = 0
         return calendar.date(from: comps)!
+    }
+
+    /// Shared builder for a `RecurringTaskInput` — used by the generator and
+    /// past-page snapshot tests so the input shape lives in one place.
+    func makeRecurring(
+        id: String = UUID().uuidString,
+        title: String,
+        rule: RecurrenceRule,
+        active: Bool = true
+    ) -> RecurringTaskInput {
+        RecurringTaskInput(id: id, title: title, notes: "", rule: rule, active: active)
     }
 }

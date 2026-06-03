@@ -211,6 +211,21 @@ final class RecurrenceEngineTests: XCTestCase {
         XCTAssertTrue(engine.matches(rule, on: anchorPlus(4), calendar: gregorianUTC))
     }
 
+    // MARK: - 9b. everyOtherDay is equivalent to everyNDays(2) across a range [#184]
+
+    func test_everyOtherDay_equalsEveryNDays2_overRange() {
+        let everyOther = RecurrenceRule(frequency: .everyOtherDay, anchorDate: anchor)
+        let everyTwo   = RecurrenceRule.everyNDays(2, anchor: anchor)
+        for offset in 0..<20 {
+            let date = anchorPlus(offset)
+            XCTAssertEqual(
+                engine.matches(everyOther, on: date, calendar: gregorianUTC),
+                engine.matches(everyTwo, on: date, calendar: gregorianUTC),
+                "everyOtherDay must match everyNDays(2) on anchor+\(offset)"
+            )
+        }
+    }
+
     // MARK: - 10. startDate exclusion
 
     func test_startDate_exclusion() {
@@ -258,7 +273,7 @@ final class RecurrenceEngineTests: XCTestCase {
                        "day after end should not match")
     }
 
-    // MARK: - 12. occurrenceLimit: returns false after limit is reached
+    // MARK: - 13. occurrenceLimit: returns false after limit is reached
 
     func test_occurrenceLimit_returnsAfterLimitReached() {
         // everyDay rule with startDate = anchor and occurrenceLimit = 3
@@ -311,7 +326,7 @@ final class RecurrenceEngineTests: XCTestCase {
                        "3rd weekday occurrence (Wednesday) should not match (limit exceeded)")
     }
 
-    // MARK: - 13. fourDaySplit active days (0,1,2 match; 3 = rest does not)
+    // MARK: - 14. fourDaySplit active days (0,1,2 match; 3 = rest does not)
 
     func test_fourDaySplit_activeDays() {
         let rule = RecurrenceRule(frequency: .fourDaySplit, anchorDate: anchor)
@@ -326,7 +341,7 @@ final class RecurrenceEngineTests: XCTestCase {
                        "day 3 (Rest) should not match")
     }
 
-    // MARK: - 14. fourDaySplit cycle repeats
+    // MARK: - 15. fourDaySplit cycle repeats
 
     func test_fourDaySplit_cycle_repeats() {
         let rule = RecurrenceRule(frequency: .fourDaySplit, anchorDate: anchor)

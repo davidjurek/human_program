@@ -24,14 +24,7 @@ final class PastPageSnapshotTests: XCTestCase {
     /// The day before today: Tuesday 2025-05-20 (weekday 3).
     var yesterday: Date { makeDate(year: 2025, month: 5, day: 20) }
 
-    func makeRecurring(
-        id: String = UUID().uuidString,
-        title: String,
-        rule: RecurrenceRule,
-        active: Bool = true
-    ) -> RecurringTaskInput {
-        RecurringTaskInput(id: id, title: title, notes: "", rule: rule, active: active)
-    }
+    // makeRecurring(...) is shared from TestSupport.swift.
 
     // MARK: - Test 1: Changing a template's weekday does not rewrite yesterday's page
 
@@ -86,9 +79,11 @@ final class PastPageSnapshotTests: XCTestCase {
         )
 
         // Re-fetch yesterday's page and assert it is untouched.
-        let fetchedYesterday = try repo.fetch(date: yesterday, calendar: localCalendar)
-        XCTAssertNotNil(fetchedYesterday, "Yesterday's page should still exist.")
-        let tasks = fetchedYesterday!.tasks
+        let fetchedYesterday = try XCTUnwrap(
+            try repo.fetch(date: yesterday, calendar: localCalendar),
+            "Yesterday's page should still exist."
+        )
+        let tasks = fetchedYesterday.tasks
         XCTAssertEqual(tasks.count, 1, "Yesterday's page should still have exactly one task.")
         XCTAssertEqual(tasks.first?.title, "Task A", "Yesterday's task A should not have been removed.")
     }
@@ -207,14 +202,14 @@ final class PastPageSnapshotTests: XCTestCase {
         )
 
         // Today's page should now have both tasks.
-        let refreshedToday = try repo.fetch(date: today, calendar: localCalendar)!
+        let refreshedToday = try XCTUnwrap(try repo.fetch(date: today, calendar: localCalendar))
         let todayTitles = Set(refreshedToday.tasks.map { $0.title })
         XCTAssertTrue(todayTitles.contains("Daily Task"), "Today's page must retain the original task.")
         XCTAssertTrue(todayTitles.contains("New Wednesday Task"), "Today's page must gain the new template task after refresh.")
         XCTAssertEqual(refreshedToday.tasks.count, 2, "Today's page must have exactly 2 tasks.")
 
         // Yesterday's page must not have gained the new task.
-        let fetchedYesterday = try repo.fetch(date: yesterday, calendar: localCalendar)!
+        let fetchedYesterday = try XCTUnwrap(try repo.fetch(date: yesterday, calendar: localCalendar))
         XCTAssertEqual(fetchedYesterday.tasks.count, 1, "Yesterday's page must remain unchanged.")
         XCTAssertEqual(fetchedYesterday.tasks.first?.title, "Daily Task", "Yesterday's task must not have changed.")
     }
@@ -245,7 +240,7 @@ final class PastPageSnapshotTests: XCTestCase {
         )
 
         // Fetch today's page and add a manual task.
-        let page = try repo.fetch(date: today, calendar: localCalendar)!
+        let page = try XCTUnwrap(try repo.fetch(date: today, calendar: localCalendar))
         try repo.addManualTask(title: "My Manual Task", to: page)
 
         // Verify both tasks are present before refresh.
@@ -261,7 +256,7 @@ final class PastPageSnapshotTests: XCTestCase {
         )
 
         // The manual task must survive.
-        let refreshed = try repo.fetch(date: today, calendar: localCalendar)!
+        let refreshed = try XCTUnwrap(try repo.fetch(date: today, calendar: localCalendar))
         let titles = refreshed.tasks.map { $0.title }
         XCTAssertTrue(titles.contains("My Manual Task"), "Manual task must survive refreshTodayAndFuture.")
         XCTAssertTrue(titles.contains("Recurring Task"), "Recurring task must still be present after refresh.")
@@ -311,10 +306,102 @@ final class PastPageSnapshotTests: XCTestCase {
         )
 
         // The task with the same sourceId must still be marked complete.
-        let refreshed = try repo.fetch(date: today, calendar: localCalendar)!
-        let refreshedTask = refreshed.tasks.first { $0.sourceId == tId }
-        XCTAssertNotNil(refreshedTask, "The recurring task must still exist after refresh.")
-        XCTAssertTrue(refreshedTask!.completed, "Completion state must be preserved after refreshTodayAndFuture.")
-        XCTAssertNotNil(refreshedTask!.completedAt, "completedAt timestamp must be preserved after refresh.")
+        let refreshed = try XCTUnwrap(try repo.fetch(date: today, calendar: localCalendar))
+        let refreshedTask = try XCTUnwrap(
+            refreshed.tasks.first { $0.sourceId == tId },
+            "The recurring task must still exist after refresh."
+        )
+        XCTAssertTrue(refreshedTask.completed, "Completion state must be preserved after refreshTodayAndFuture.")
+        XCTAssertNotNil(refreshedTask.completedAt, "completedAt timestamp must be preserved after refresh.")
+    }
+
+    // MARK: - Test 6: A FUTURE page gets new template tasks and stays unlocked [#178]
+
+    /// Directly pins that a future page (a) is created unlocked and (b) gains a
+    /// new template's task on refresh — the positive half of the snapshot rule.
+    func testFuturePageRefreshesFromTemplatesAndStaysUnlocked() throws {
+        let container = try makeTestModelContainer()
+        let context = ModelContext(container)
+        let repo = DailyPageRepository(context: context)
+
+        // Tomorrow is Thursday 2025-05-22 (weekday 5) — a future, unlocked page.
+        let tomorrow = makeDate(year: 2025, month: 5, day: 22)
+
+        let t1 = makeRecurring(id: UUID().uuidString, title: "Daily Task", rule: RecurrenceRule.daily())
+
+        // Create tomorrow's page with only T1.
+        let futurePage = try repo.getOrCreate(
+            date: tomorrow,
+            today: today,
+            recurringTemplates: [t1],
+            backlogItems: [],
+            scheduleTemplates: [],
+            calendar: localCalendar
+        )
+        XCTAssertFalse(futurePage.isPastLocked, "A future page must NOT be past-locked on creation.")
+        XCTAssertEqual(futurePage.tasks.count, 1)
+
+        // Add T2, which matches Thursday (weekday 5 = tomorrow).
+        let t2 = makeRecurring(id: UUID().uuidString, title: "New Thursday Task", rule: RecurrenceRule.on([5]))
+
+        try repo.refreshTodayAndFuture(
+            today: today,
+            recurringTemplates: [t1, t2],
+            backlogItems: [],
+            scheduleTemplates: [],
+            calendar: localCalendar
+        )
+
+        let refreshed = try XCTUnwrap(try repo.fetch(date: tomorrow, calendar: localCalendar))
+        XCTAssertFalse(refreshed.isPastLocked, "A future page must stay unlocked after a refresh.")
+        let titles = Set(refreshed.tasks.map { $0.title })
+        XCTAssertTrue(titles.contains("Daily Task"), "Future page must retain its original task.")
+        XCTAssertTrue(titles.contains("New Thursday Task"), "Future page must gain the new template task after refresh.")
+        XCTAssertEqual(refreshed.tasks.count, 2, "Future page must have exactly 2 tasks after refresh.")
+    }
+
+    // MARK: - Test 7: A locked (isPastLocked) page is skipped by refresh [#178]
+
+    /// Directly pins the lock flag itself: a page marked isPastLocked is left
+    /// untouched by refreshTodayAndFuture even when its date is today/future —
+    /// the lock, not just the date, is what protects it.
+    func testLockedPageIsSkippedByRefreshEvenWhenDated() throws {
+        let container = try makeTestModelContainer()
+        let context = ModelContext(container)
+        let repo = DailyPageRepository(context: context)
+
+        let t1 = makeRecurring(id: UUID().uuidString, title: "Daily Task", rule: RecurrenceRule.daily())
+
+        // Create today's page (unlocked) with T1.
+        let page = try repo.getOrCreate(
+            date: today,
+            today: today,
+            recurringTemplates: [t1],
+            backlogItems: [],
+            scheduleTemplates: [],
+            calendar: localCalendar
+        )
+        XCTAssertEqual(page.tasks.count, 1)
+        XCTAssertFalse(page.isPastLocked)
+
+        // Force the lock flag on while leaving the date as today.
+        page.isPastLocked = true
+        try context.save()
+
+        // A new template that would otherwise match today (Wednesday, weekday 4).
+        let t2 = makeRecurring(id: UUID().uuidString, title: "Should Not Appear", rule: RecurrenceRule.on([4]))
+
+        try repo.refreshTodayAndFuture(
+            today: today,
+            recurringTemplates: [t1, t2],
+            backlogItems: [],
+            scheduleTemplates: [],
+            calendar: localCalendar
+        )
+
+        let refreshed = try XCTUnwrap(try repo.fetch(date: today, calendar: localCalendar))
+        XCTAssertTrue(refreshed.isPastLocked, "The locked flag must remain set.")
+        XCTAssertEqual(refreshed.tasks.count, 1, "A locked page must not gain the new template's task.")
+        XCTAssertEqual(refreshed.tasks.first?.title, "Daily Task", "A locked page's existing task must be untouched.")
     }
 }

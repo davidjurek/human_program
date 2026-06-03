@@ -8,6 +8,22 @@ import UIKit
 // (text backlog, CSV backlog, restore .hprgm); Export offers one (.hprgm full
 // backup). Every step is a real pushed page.
 
+// MARK: - Shared toolbar button
+
+/// A trailing toolbar text button (Load / Import / Done) — one place owns the tap
+/// target size and accessibility border the three import pages share. [#165]
+struct TextNavButton: View {
+    let title: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(title).font(appFont(18)).foregroundStyle(.primary)
+                .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
+                .contentShape(Rectangle()).a11yTapBorder(Rectangle())
+        }
+    }
+}
+
 // MARK: - Import flow coordinator
 
 /// Drives the text/CSV import push stack from one place so "Done" on the final
@@ -86,8 +102,6 @@ struct ExportView: View {
                     exportBackup()
                 }
             }
-            DSText("Export a full app state.")
-                .dsTextStyle(.subheadline)
             if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
         }
         .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
@@ -111,12 +125,9 @@ struct TextBacklogImportView: View {
     var body: some View {
         @Bindable var flow = flow
         SettingsScreen(centered: true, trailing: {
-            Button {
+            TextNavButton(title: "Load") {
                 let rows = BacklogImportParser.parseText(text)
                 if !rows.isEmpty { flow.openSelection(rows: rows, skipped: 0) }
-            } label: {
-                Text("Load").font(appFont(18)).foregroundStyle(.primary).frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
-                    .contentShape(Rectangle()).a11yTapBorder(Rectangle())
             }
         }) {
             SettingsSectionLabel(title: "Paste titles — one per line")
@@ -195,14 +206,12 @@ struct ImportSelectionView: View {
     @Environment(ImportFlow.self) private var flow
     @Environment(\.modelContext) private var context
     @State private var selected: Set<UUID> = []
+    @State private var didSeed = false
 
     var body: some View {
         @Bindable var flow = flow
         SettingsScreen(centered: true, trailing: {
-            Button { runImport() } label: {
-                Text("Import").font(appFont(18)).foregroundStyle(.primary).frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
-                    .contentShape(Rectangle()).a11yTapBorder(Rectangle())
-            }
+            TextNavButton(title: "Import") { runImport() }
         }) {
             SettingsSectionLabel(title: "\(selected.count) of \(flow.rows.count) selected")
             ForEach(flow.rows) { row in
@@ -221,7 +230,11 @@ struct ImportSelectionView: View {
                 }.buttonStyle(.plain).a11yTapBorder(Rectangle())
             }
         }
-        .onAppear { if selected.isEmpty { selected = Set(flow.rows.map { $0.id }) } }
+        // Seed every row selected ONCE. Keying off "empty" would re-select all when the
+        // page reappears, silently undoing a user who deliberately cleared everything. [#157]
+        .onAppear {
+            if !didSeed { selected = Set(flow.rows.map { $0.id }); didSeed = true }
+        }
         .navigationDestination(isPresented: $flow.showSummary) {
             ImportSummaryView().environment(flow)
         }
@@ -248,10 +261,7 @@ struct ImportSummaryView: View {
 
     var body: some View {
         SettingsScreen(centered: true, trailing: {
-            Button { flow.backToMenu() } label: {
-                Text("Done").font(appFont(18)).foregroundStyle(.primary).frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)
-                    .contentShape(Rectangle()).a11yTapBorder(Rectangle())
-            }
+            TextNavButton(title: "Done") { flow.backToMenu() }
         }) {
             SettingsSectionLabel(title: "Import complete")
             disclosure("Imported", flow.summary?.imported ?? [], color: .green)
@@ -330,8 +340,11 @@ struct HprgmRestoreConfirmView: View {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         do {
-            let bundle = try HprgmImportService().preview(fileURL: url)
-            try HprgmImportService().importData(bundle, context: context)
+            // Decode the file ONCE and hand the bundle straight to import — reuse one
+            // service instance so the backup isn't read/parsed a second time. [#164]
+            let service = HprgmImportService()
+            let bundle = try service.preview(fileURL: url)
+            try service.importData(bundle, context: context)
             // Full-screen "backup restored" interstitial → Today.
             appState.pendingInterstitial = .restored
         } catch {

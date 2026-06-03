@@ -51,8 +51,17 @@ public final class ExerciseRepository {
     /// Return the first active routine whose recurrence rule matches the given date.
     /// Returns nil if no routine matches.
     public func fetchRoutine(for date: Date, calendar: Calendar = .current) throws -> ExerciseRoutine? {
-        let all = try fetchAll()
-        return all.first { routine in
+        matchingRoutine(for: date, in: try fetchAll(), calendar: calendar)
+    }
+
+    /// Same match against an ALREADY-FETCHED routine list, so a multi-day caller fetches
+    /// once and reuses it across dates instead of re-fetching and re-sorting per day. [#69]
+    public func matchingRoutine(
+        for date: Date,
+        in routines: [ExerciseRoutine],
+        calendar: Calendar = .current
+    ) -> ExerciseRoutine? {
+        routines.first { routine in
             routine.active && engine.matches(routine.recurrenceRule, on: date, calendar: calendar)
         }
     }
@@ -85,8 +94,7 @@ public final class ExerciseRepository {
         reps: Int? = nil,
         notes: String = ""
     ) throws -> ExerciseRoutineItem {
-        let nextSortOrder = (routine.items.map { $0.sortOrder }.max() ?? -1) + 1
-        let item = ExerciseRoutineItem(text: text, sortOrder: nextSortOrder)
+        let item = ExerciseRoutineItem(text: text, sortOrder: nextSortOrder(in: routine.items) { $0.sortOrder })
         item.sets = sets
         item.reps = reps
         item.notes = notes
@@ -113,9 +121,7 @@ public final class ExerciseRepository {
     /// Reorder the items in a routine.
     /// Accepts the new desired order; assigns sortOrder 0, 1, 2, … matching that order.
     public func reorderItems(_ items: [ExerciseRoutineItem], in routine: ExerciseRoutine) throws {
-        for (index, item) in items.enumerated() {
-            item.sortOrder = index
-        }
+        applyReorder(items, set: { $0.sortOrder = $1 }, get: { $0.sortOrder })
         routine.updatedAt = Date()
         try context.save()
     }

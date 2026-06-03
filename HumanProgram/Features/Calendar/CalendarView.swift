@@ -115,8 +115,9 @@ struct CalendarView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+            DSImageView(systemName: "chevron.left", size: 18, tint: .color(.primary))
+                .fontWeight(.semibold)
+                .frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
                 .onTapGesture { dismiss() }
             Spacer()
@@ -127,8 +128,9 @@ struct CalendarView: View {
             }
             .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
             Button { showAddEvent = true } label: {
-                Image(systemName: "plus").font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
+                DSImageView(systemName: "plus", size: 18, tint: .color(.primary))
+                    .fontWeight(.medium)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
                     .a11yTapBorder(Rectangle())
             }.buttonStyle(.plain)
         }
@@ -271,7 +273,7 @@ struct CalendarView: View {
 
     private var weekdayHeaderRow: some View {
         HStack(spacing: 0) {
-            ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { _, day in
+            ForEach(Array(Self.weekdayAbbreviations.enumerated()), id: \.offset) { _, day in
                 DSText(day)
                     .dsTextStyle(.caption1)
                     .frame(maxWidth: .infinity)
@@ -391,8 +393,8 @@ struct CalendarView: View {
     private func weekDayHeaderRow(weekStart displayedWeekStart: Date) -> some View {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
-        let weekDays = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: displayedWeekStart) }
-        let abbrevs = ["S", "M", "T", "W", "T", "F", "S"]
+        let weekDays = weekDays(from: displayedWeekStart)
+        let abbrevs = Self.weekdayAbbreviations
         return HStack(spacing: 0) {
             Color.clear.frame(width: weekTimeColW, height: 1)
             ForEach(Array(weekDays.enumerated()), id: \.offset) { idx, day in
@@ -420,7 +422,7 @@ struct CalendarView: View {
     private func weekTimeline(weekStart displayedWeekStart: Date, colW: CGFloat) -> some View {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
-        let weekDays = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: displayedWeekStart) }
+        let weekDays = weekDays(from: displayedWeekStart)
         let nowMin = minuteOfDay(Date())
         let totalH = weekHourHeight * 24
 
@@ -451,11 +453,11 @@ struct CalendarView: View {
                             Button {
                                 selectedDate = day; selectedEvent = event; showEventDetail = true
                             } label: {
-                                Text(event.title ?? "")
+                                Text(event.displayTitle)
                                     .font(appFont(9)).foregroundStyle(.white)
                                     .lineLimit(2).padding(.horizontal, 3).padding(.vertical, 1)
                                     .frame(width: colW - 2, height: h, alignment: .topLeading)
-                                    .background(RoundedRectangle(cornerRadius: 3).fill(Color(cgColor: event.calendar.cgColor)))
+                                    .background(RoundedRectangle(cornerRadius: 3).fill(event.displayColor))
                             }.buttonStyle(.plain)
                             .a11yTapBorder(RoundedRectangle(cornerRadius: 3))
                             .offset(x: weekTimeColW + CGFloat(idx) * colW + 1,
@@ -744,8 +746,7 @@ struct CalendarView: View {
     /// its fixed height (even when empty) so the timeline below doesn't jump as events
     /// come and go. [owner: all-day section stays even if empty]
     private func weekAllDayBand(weekStart displayedWeekStart: Date, colW: CGFloat) -> some View {
-        let cal = Calendar.current
-        let weekDays = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: displayedWeekStart) }
+        let weekDays = weekDays(from: displayedWeekStart)
         return HStack(spacing: 0) {
             Color.clear.frame(width: weekTimeColW, height: weekAllDayBandHeight)
             ForEach(Array(weekDays.enumerated()), id: \.offset) { _, day in
@@ -796,13 +797,13 @@ struct CalendarView: View {
         return ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 2) {
                 ForEach(shown, id: \.eventIdentifier) { e in
-                    Text(e.title ?? "")
+                    Text(e.displayTitle)
                         .font(appFont(font)).foregroundStyle(.white)
                         .lineLimit(1)
                         .padding(.horizontal, 4)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .frame(height: chipHeight)
-                        .background(RoundedRectangle(cornerRadius: 3).fill(Color(cgColor: e.calendar.cgColor)))
+                        .background(RoundedRectangle(cornerRadius: 3).fill(e.displayColor))
                 }
                 Spacer(minLength: 0)
             }
@@ -839,9 +840,9 @@ struct CalendarView: View {
                             } label: {
                                 HStack(spacing: 8) {
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color(cgColor: e.calendar.cgColor))
+                                        .fill(e.displayColor)
                                         .frame(width: 4, height: 20)
-                                    DSText(e.title ?? "").dsTextStyle(.body)
+                                    DSText(e.displayTitle).dsTextStyle(.body)
                                         .lineLimit(1)
                                     Spacer(minLength: 8)
                                 }
@@ -867,15 +868,20 @@ struct CalendarView: View {
         let cal = Calendar.current
         guard let monthRange = cal.range(of: .day, in: .month, for: monthStart) else { return [] }
         let firstWeekday = cal.component(.weekday, from: monthStart) // 1=Sun
-        let leadingBlanks = firstWeekday - 1
+        let dayCount = monthRange.count
 
-        var days: [Date] = []
-        for offset in stride(from: -leadingBlanks, to: monthRange.count + (7 - ((leadingBlanks + monthRange.count) % 7)) % 7, by: 1) {
-            if let day = cal.date(byAdding: .day, value: offset, to: monthStart) {
-                days.append(day)
-            }
+        // Blank cells before the 1st so day-of-week columns line up (Sun-first).
+        let leadingBlanks = firstWeekday - 1
+        // Pad the tail so the grid ends on a full week-of-7 boundary.
+        let usedCells = leadingBlanks + dayCount
+        let trailingBlanks = (7 - usedCells % 7) % 7
+        let totalCells = usedCells + trailingBlanks   // always a multiple of 7
+
+        // Walk day offsets from the month start: negatives are leading blanks,
+        // 0..<dayCount are this month, the rest are trailing blanks.
+        return (0..<totalCells).compactMap { i in
+            cal.date(byAdding: .day, value: i - leadingBlanks, to: monthStart)
         }
-        return days
     }
 
     private func minuteOfDay(_ date: Date) -> Int {
@@ -899,5 +905,16 @@ struct CalendarView: View {
         let weekday = cal.component(.weekday, from: date)
         let offset = -(weekday - 1)
         return cal.date(byAdding: .day, value: offset, to: cal.startOfDay(for: date)) ?? date
+    }
+
+    // MARK: - Week math (shared) [#124]
+
+    /// Single-letter weekday headers, Sunday-first (matches the 1=Sun encoding).
+    static let weekdayAbbreviations = ["S", "M", "T", "W", "T", "F", "S"]
+
+    /// The 7 consecutive days starting at `weekStart` (Sun…Sat for a normalized start).
+    private func weekDays(from weekStart: Date) -> [Date] {
+        let cal = Calendar.current
+        return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) }
     }
 }

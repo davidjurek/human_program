@@ -13,10 +13,7 @@ public final class RecurringTaskRepository {
 
     /// Fetch all recurring task templates, both active and inactive, sorted by title.
     public func fetchAll() throws -> [RecurringTaskTemplate] {
-        let descriptor = FetchDescriptor<RecurringTaskTemplate>(
-            sortBy: [SortDescriptor(\.title, order: .forward)]
-        )
-        return try context.fetch(descriptor)
+        try context.fetchSorted(by: [SortDescriptor(\.title, order: .forward)])
     }
 
     // MARK: - create

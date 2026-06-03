@@ -32,8 +32,7 @@ public final class RoutineRepository {
 
     @discardableResult
     public func addItem(to routine: Routine, text: String) throws -> RoutineItem {
-        let next = (routine.items.map { $0.sortOrder }.max() ?? -1) + 1
-        let item = RoutineItem(text: text, sortOrder: next)
+        let item = RoutineItem(text: text, sortOrder: nextSortOrder(in: routine.items) { $0.sortOrder })
         item.routine = routine
         routine.items.append(item)
         routine.updatedAt = Date()
@@ -50,7 +49,7 @@ public final class RoutineRepository {
     }
 
     public func reorderItems(_ items: [RoutineItem], in routine: Routine) throws {
-        for (i, item) in items.enumerated() { item.sortOrder = i }
+        applyReorder(items, set: { $0.sortOrder = $1 }, get: { $0.sortOrder })
         routine.updatedAt = Date()
         try context.save()
     }

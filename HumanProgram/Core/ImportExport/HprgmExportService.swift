@@ -199,6 +199,16 @@ struct HprgmExportService {
 
     // MARK: - Private
 
+    /// Sorts a model's child rows by their `sortOrder` and maps each to its JSON
+    /// mirror — the one ordering rule reused by every parent→children export. [#79]
+    private func sortedChildren<Model, JSON>(
+        _ children: [Model],
+        order: (Model) -> Int,
+        map: (Model) -> JSON
+    ) -> [JSON] {
+        children.sorted { order($0) < order($1) }.map(map)
+    }
+
     private func buildBundle(context: ModelContext) throws -> HprgmBundle {
         let backlogItems         = try fetchBacklogItems(context: context)
         let projectBuckets       = try fetchProjectBuckets(context: context)
@@ -235,9 +245,9 @@ struct HprgmExportService {
         let descriptor = FetchDescriptor<Routine>(sortBy: [SortDescriptor(\.createdAt)])
         let routines = try context.fetch(descriptor)
         return routines.map { routine in
-            let items = routine.items
-                .sorted { $0.sortOrder < $1.sortOrder }
-                .map { RoutineItemJSON(id: $0.id, text: $0.text, notes: $0.notes, sortOrder: $0.sortOrder) }
+            let items = sortedChildren(routine.items, order: { $0.sortOrder }) {
+                RoutineItemJSON(id: $0.id, text: $0.text, notes: $0.notes, sortOrder: $0.sortOrder)
+            }
             return RoutineJSON(
                 id: routine.id,
                 title: routine.title,
@@ -334,18 +344,16 @@ struct HprgmExportService {
         let descriptor = FetchDescriptor<ExerciseRoutine>(sortBy: [SortDescriptor(\.createdAt)])
         let routines = try context.fetch(descriptor)
         return routines.map { routine in
-            let items = routine.items
-                .sorted { $0.sortOrder < $1.sortOrder }
-                .map { item in
-                    ExerciseRoutineItemJSON(
-                        id: item.id,
-                        text: item.text,
-                        sets: item.sets,
-                        reps: item.reps,
-                        notes: item.notes,
-                        sortOrder: item.sortOrder
-                    )
-                }
+            let items = sortedChildren(routine.items, order: { $0.sortOrder }) { item in
+                ExerciseRoutineItemJSON(
+                    id: item.id,
+                    text: item.text,
+                    sets: item.sets,
+                    reps: item.reps,
+                    notes: item.notes,
+                    sortOrder: item.sortOrder
+                )
+            }
             return ExerciseRoutineJSON(
                 id: routine.id,
                 name: routine.name,
@@ -381,20 +389,18 @@ struct HprgmExportService {
         let descriptor = FetchDescriptor<DailyPage>(sortBy: [SortDescriptor(\.date)])
         let pages = try context.fetch(descriptor)
         return pages.map { page in
-            let tasks = page.tasks
-                .sorted { $0.sortOrder < $1.sortOrder }
-                .map { task in
-                    DailyPageTaskJSON(
-                        id: task.id,
-                        sourceType: task.sourceType,
-                        sourceId: task.sourceId,
-                        title: task.title,
-                        notes: task.notes,
-                        completed: task.completed,
-                        completedAt: task.completedAt,
-                        sortOrder: task.sortOrder
-                    )
-                }
+            let tasks = sortedChildren(page.tasks, order: { $0.sortOrder }) { task in
+                DailyPageTaskJSON(
+                    id: task.id,
+                    sourceType: task.sourceType,
+                    sourceId: task.sourceId,
+                    title: task.title,
+                    notes: task.notes,
+                    completed: task.completed,
+                    completedAt: task.completedAt,
+                    sortOrder: task.sortOrder
+                )
+            }
             return DailyPageJSON(
                 id: page.id,
                 date: page.date,

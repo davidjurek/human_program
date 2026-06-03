@@ -14,10 +14,7 @@ public final class NotificationReminderRepository {
     // MARK: - Fetch
 
     public func fetchAll() throws -> [NotificationReminder] {
-        let descriptor = FetchDescriptor<NotificationReminder>(
-            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
-        )
-        return try context.fetch(descriptor)
+        try context.fetchSorted(by: [SortDescriptor(\.createdAt, order: .forward)])
     }
 
     // MARK: - Create

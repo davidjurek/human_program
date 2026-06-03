@@ -123,7 +123,7 @@ struct AddCalendarEventView: View {
         }) {
             SettingsSectionLabel(title: "Event")
             AppTextField(text: $title, placeholder: "Title", fontSize: appScaledSize(20))
-            AppTextField(text: $location, placeholder: "Location", fontSize: 17)
+            AppTextField(text: $location, placeholder: "Location", fontSize: appScaledSize(17))
 
             SettingsGroup(title: "Time") {
                 HStack {
@@ -142,7 +142,10 @@ struct AddCalendarEventView: View {
                     DSText("Ends").dsTextStyle(.body); Spacer()
                     DSDateField(date: $endDate, minDate: startDate)     // [#13]
                     if !allDay { DSTimeField(date: $endDate) }          // [#13]
-                }.frame(height: 34)
+                }
+                .frame(height: 34)
+                // The time wheel can push end before start; clamp it back. [#120]
+                .onChange(of: endDate) { _, new in if new < startDate { endDate = startDate } }
             }
 
             SettingsGroup(title: "Options") {
@@ -162,9 +165,9 @@ struct AddCalendarEventView: View {
             }
 
             SettingsSectionLabel(title: "Note")
-            AppTextField(text: $notes, placeholder: "Note", fontSize: 17, multiline: true)
+            AppTextField(text: $notes, placeholder: "Note", fontSize: appScaledSize(17), multiline: true)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-            AppTextField(text: $urlText, placeholder: "URL", fontSize: 17)
+            AppTextField(text: $urlText, placeholder: "URL", fontSize: appScaledSize(17))
                 .background(KeyboardScrollNudge())   // lift the focused field above the keyboard
 
             if let error = errorMessage {
@@ -176,12 +179,25 @@ struct AddCalendarEventView: View {
         .keyboardSpacer($keyboardSpacer)
         .onAppear {
             allCalendars = calendarService.fetchAllCalendars()
-            if selectedCalendarId == nil { selectedCalendarId = allCalendars.first?.calendarIdentifier }
+            // Auto-pick a default calendar only for brand-new events; an edited
+            // event keeps its own calendar (set from the event in init). [#118]
+            if !isEditing, selectedCalendarId == nil {
+                selectedCalendarId = allCalendars.first?.calendarIdentifier
+            }
         }
     }
 
     private var selectedCalendarName: String {
-        allCalendars.first(where: { $0.calendarIdentifier == selectedCalendarId })?.title ?? "Default"
+        // Prefer the matched picker entry. When editing an event whose real
+        // calendar isn't in the editable list (read-only/subscribed), show that
+        // calendar's actual name instead of a misleading "Default". [#118]
+        if let match = allCalendars.first(where: { $0.calendarIdentifier == selectedCalendarId }) {
+            return match.title
+        }
+        if let eventCal = eventToEdit?.calendar, eventCal.calendarIdentifier == selectedCalendarId {
+            return eventCal.title
+        }
+        return "Default"
     }
 
     private func menuRow<Content: View>(_ label: String, _ value: String,
@@ -205,6 +221,8 @@ struct AddCalendarEventView: View {
     }
 
     private func saveEvent() {
+        // Final guard: never save an event that ends before it starts. [#120]
+        if endDate < startDate { endDate = startDate }
         var recurrence: EKRecurrenceRule? = nil
         if let freq = repeatRule.frequency {
             recurrence = EKRecurrenceRule(recurrenceWith: freq, interval: 1, end: nil)

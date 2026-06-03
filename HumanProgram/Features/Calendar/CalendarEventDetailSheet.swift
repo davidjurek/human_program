@@ -80,19 +80,19 @@ struct CalendarEventDetailSheet: View {
             HStack(spacing: 12) {
                 // Calendar color indicator
                 Rectangle()
-                    .fill(Color(cgColor: event.calendar.cgColor))
+                    .fill(event.displayColor)
                     .frame(width: 4)
                     .clipShape(Capsule())
                     .frame(height: 48)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    // Title: use override if set, otherwise event title
-                    let displayTitle = titleOverride.isEmpty ? (event.title ?? "(No title)") : titleOverride
+                    // Title: use override if set, otherwise the event's display title.
+                    let displayTitle = titleOverride.isEmpty ? event.displayTitle : titleOverride
                     DSText(displayTitle)
                         .dsTextStyle(.title2)
 
                     DSText(event.calendar.title)
-                        .dsTextStyle(.subheadline, Color(cgColor: event.calendar.cgColor))
+                        .dsTextStyle(.subheadline, event.displayColor)
                 }
 
                 Spacer()

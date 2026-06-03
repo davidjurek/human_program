@@ -86,16 +86,8 @@ final class CoreServicesTests: XCTestCase {
                        "Empty task list should return false")
     }
 
-    // Test 4: All tasks complete but list empty → isComplete = false (same as empty)
-    // An empty list cannot have "all tasks complete" — guard !tasks.isEmpty fires first.
-    @MainActor
-    func test_emptyListAlwaysFalse_regardlessOfCompletionIntent() throws {
-        // This is the same guard: an empty array is always false, whether conceptually
-        // "all complete" or not, because there are no tasks to satisfy the day.
-        let service = CompletionService()
-        XCTAssertFalse(service.isComplete(tasks: []),
-                       "Empty list must always return false — no tasks means no completion")
-    }
+    // (Removed redundant empty-list test — Test 3 already covers
+    //  isComplete(tasks: []) == false. [#182])
 
     // ──────────────────────────────────────────────────────────────
     // MARK: - BacklogMaintenanceService Tests
@@ -240,6 +232,32 @@ final class CoreServicesTests: XCTestCase {
         XCTAssertEqual(result?.itemId, item.id)
         XCTAssertEqual(result?.newStatus, .backlog)
         XCTAssertEqual(item.status, .backlog, "BacklogItem status should be restored to .backlog")
+    }
+
+    // Test 11b: syncUncompletion: non-matching date → returns nil, item untouched [#180]
+    @MainActor
+    func test_syncUncompletion_nonMatchingDate_returnsNil() throws {
+        let container = try makeTestModelContainer()
+        let context = container.mainContext
+        let today    = makeDate(year: 2025, month: 6, day: 15)
+        let pageDate = today
+        // Item is assigned to a different date than the page date.
+        let differentDate = makeDate(year: 2025, month: 6, day: 16)
+
+        let item = makeBacklogItem(in: context, assignedDate: differentDate, status: .done)
+        let task = makeBacklogTask(in: context, sourceId: item.id, completed: true)
+
+        let service = BacklogMaintenanceService()
+        let result = service.syncUncompletion(
+            task: task,
+            pageDate: pageDate,
+            backlogItems: [item],
+            today: today,
+            calendar: gregorianUTC
+        )
+
+        XCTAssertNil(result, "syncUncompletion should return nil when item's assignedDate does not match pageDate")
+        XCTAssertEqual(item.status, .done, "Item status should remain unchanged when dates don't match")
     }
 
     // ──────────────────────────────────────────────────────────────

@@ -17,7 +17,7 @@ public enum BacklogImportParser {
     /// Each non-blank line becomes one title-only row. Blank lines are ignored.
     public static func parseText(_ text: String) -> [ParsedBacklogRow] {
         text.split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .map { ParsedBacklogRow(title: $0, project: nil, date: nil, notes: "") }
     }
@@ -35,7 +35,7 @@ public enum BacklogImportParser {
     public static func parseCSV(_ csv: String) -> CSVResult {
         let lines = csv.split(whereSeparator: \.isNewline)
             .map { String($0) }
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .filter { !isBlank($0) }
 
         var rows: [ParsedBacklogRow] = []
         var skipped = 0
@@ -50,6 +50,10 @@ public enum BacklogImportParser {
             let dateRaw = cols[2].trimmingCharacters(in: .whitespaces)
             let notes = cols[3]
 
+            // A titleless row is skipped uniformly — check it BEFORE validating the
+            // date so a blank row with a bad date doesn't reject the whole file. [#78]
+            if title.isEmpty { skipped += 1; continue }
+
             var date: Date? = nil
             if !dateRaw.isEmpty {
                 guard let d = parseYMD(dateRaw) else {
@@ -57,7 +61,6 @@ public enum BacklogImportParser {
                 }
                 date = d
             }
-            if title.isEmpty { skipped += 1; continue }
             rows.append(ParsedBacklogRow(title: title,
                                          project: projectRaw.isEmpty ? nil : projectRaw,
                                          date: date, notes: notes))
@@ -73,18 +76,26 @@ public enum BacklogImportParser {
 
     // MARK: - Helpers
 
+    /// True for a line that's empty once leading/trailing whitespace and newlines are
+    /// stripped — the single blank-line rule shared by the text and CSV parsers. [#80]
+    static func isBlank(_ line: String) -> Bool {
+        line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// Minimal CSV line parser supporting double-quoted fields (with commas / escaped "").
+    /// Steps through the string's own characters (no copied index array). [#76]
     static func parseCSVLine(_ line: String) -> [String] {
         var fields: [String] = []
         var field = ""
         var inQuotes = false
-        var chars = Array(line)
-        var i = 0
-        while i < chars.count {
-            let c = chars[i]
+        var iter = line.makeIterator()
+        var pending = iter.next()
+        while let c = pending {
+            // Look ahead one character so an escaped "" inside quotes can be detected.
+            let next = iter.next()
             if inQuotes {
                 if c == "\"" {
-                    if i + 1 < chars.count && chars[i + 1] == "\"" { field.append("\""); i += 1 }
+                    if next == "\"" { field.append("\""); pending = iter.next(); continue }
                     else { inQuotes = false }
                 } else { field.append(c) }
             } else {
@@ -92,18 +103,23 @@ public enum BacklogImportParser {
                 else if c == "," { fields.append(field); field = "" }
                 else { field.append(c) }
             }
-            i += 1
+            pending = next
         }
         fields.append(field)
         return fields
     }
 
-    static func parseYMD(_ s: String) -> Date? {
+    /// One cached YYYY-MM-DD formatter — avoids rebuilding it per dated import row. [#161]
+    private static let ymdFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone.current
         f.dateFormat = "yyyy-MM-dd"
         f.isLenient = false
-        return f.date(from: s)
+        return f
+    }()
+
+    static func parseYMD(_ s: String) -> Date? {
+        ymdFormatter.date(from: s)
     }
 }

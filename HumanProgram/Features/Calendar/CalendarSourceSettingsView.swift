@@ -94,8 +94,9 @@ struct CalendarSourceSettingsView: View {
             let key = cal.source?.title ?? "Other"
             map[key, default: []].append(cal)
         }
-        return map.keys.sorted().map { key in
-            CalendarGroup(source: key, calendars: map[key]!.sorted { $0.title < $1.title })
+        // Iterate the entries directly (sorted by source) — no force-unwrap. [#119]
+        return map.sorted { $0.key < $1.key }.map { source, calendars in
+            CalendarGroup(source: source, calendars: calendars.sorted { $0.title < $1.title })
         }
     }
 

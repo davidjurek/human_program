@@ -197,7 +197,10 @@ struct HprgmImportService {
                 task.id = taskJSON.id
                 task.notes = taskJSON.notes
                 task.completed = taskJSON.completed
-                task.completedAt = taskJSON.completedAt
+                // Reconcile the done flag with its time: a hand-edited backup could mark a
+                // task not-done yet still carry a completion time, which would show an
+                // inconsistent state. Keep the time only when the task is actually done. [#77]
+                task.completedAt = taskJSON.completed ? taskJSON.completedAt : nil
                 task.page = page
                 context.insert(task)
             }

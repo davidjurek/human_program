@@ -12,6 +12,15 @@ public final class DailyPageRepository {
     /// start time on a freshly generated page. Manual tasks append after (max+1).
     static let calendarSortBase = 10_000
 
+    /// The seed `sortOrder` for a freshly materialized calendar task: the calendar
+    /// zone base offset by the event's start minute, so calendar tasks land after the
+    /// recurring/backlog group and read earliest→latest. One place owns the zone math
+    /// so the recurring → calendar → manual layering can't be broken by a stray
+    /// offset. [#64]
+    static func calendarSortOrder(startMinuteOfDay: Int) -> Int {
+        calendarSortBase + startMinuteOfDay
+    }
+
     public init(context: ModelContext) {
         self.context = context
     }
@@ -29,8 +38,8 @@ public final class DailyPageRepository {
         scheduleTemplates: [ScheduleBlockInput],
         calendar: Calendar = .current
     ) throws -> DailyPage {
-        let normalizedDate = calendar.startOfDay(for: date)
-        let normalizedToday = calendar.startOfDay(for: today)
+        let normalizedDate = calendar.dayStart(date)
+        let normalizedToday = calendar.dayStart(today)
         let isPast = normalizedDate < normalizedToday
 
         // Attempt to fetch existing page.
@@ -56,32 +65,21 @@ public final class DailyPageRepository {
             return existing
         }
 
-        // Create a new page.
+        // Create a new page. The lock flag (set above) is the only past/today
+        // difference — generation itself is identical, so it runs once. A past page
+        // is just the same generated content, locked as a snapshot. [#66]
         let page = DailyPage(date: normalizedDate, createdAutomatically: true)
         page.isPastLocked = isPast
         context.insert(page)
 
-        if isPast {
-            // Past page: snapshot what would have been generated and lock it.
-            let generated = generator.generate(
-                date: normalizedDate,
-                recurringTemplates: recurringTemplates,
-                backlogItems: backlogItems,
-                scheduleTemplates: scheduleTemplates,
-                calendar: calendar
-            )
-            populatePage(page, from: generated)
-        } else {
-            // Today/future: generate fresh.
-            let generated = generator.generate(
-                date: normalizedDate,
-                recurringTemplates: recurringTemplates,
-                backlogItems: backlogItems,
-                scheduleTemplates: scheduleTemplates,
-                calendar: calendar
-            )
-            populatePage(page, from: generated)
-        }
+        let generated = generator.generate(
+            date: normalizedDate,
+            recurringTemplates: recurringTemplates,
+            backlogItems: backlogItems,
+            scheduleTemplates: scheduleTemplates,
+            calendar: calendar
+        )
+        populatePage(page, from: generated)
 
         completionService.recalculate(page: page)
         try context.save()
@@ -99,16 +97,17 @@ public final class DailyPageRepository {
         scheduleTemplates: [ScheduleBlockInput],
         calendar: Calendar = .current
     ) throws {
-        let normalizedToday = calendar.startOfDay(for: today)
+        let normalizedToday = calendar.dayStart(today)
 
-        let descriptor = FetchDescriptor<DailyPage>()
-        let allPages = try context.fetch(descriptor)
+        // Only load today/future pages from the store, not the whole history. [#186]
+        let descriptor = FetchDescriptor<DailyPage>(
+            predicate: #Predicate { $0.date >= normalizedToday }
+        )
+        let pages = try context.fetch(descriptor)
 
-        for page in allPages {
-            // Skip past-locked pages.
+        for page in pages {
+            // Skip past-locked pages (a future page should never be, but guard anyway).
             guard !page.isPastLocked else { continue }
-            // Skip pages that are before today (should be past-locked, but guard anyway).
-            guard page.date >= normalizedToday else { continue }
 
             try applyRefresh(
                 to: page,
@@ -139,12 +138,11 @@ public final class DailyPageRepository {
 
     /// Add a manual task to a page.
     public func addManualTask(title: String, to page: DailyPage) throws {
-        let nextSortOrder = (page.tasks.map { $0.sortOrder }.max() ?? -1) + 1
         let task = DailyPageTask(
             title: title,
             sourceType: .manual,
             sourceId: nil,
-            sortOrder: nextSortOrder
+            sortOrder: nextSortOrder(in: page.tasks) { $0.sortOrder }
         )
         task.page = page
         page.tasks.append(task)
@@ -160,9 +158,7 @@ public final class DailyPageRepository {
     /// index in `ordered`. The flat sort in the view then reproduces this order.
     @discardableResult
     public func reorderTasks(_ ordered: [DailyPageTask], on page: DailyPage) throws -> DailyPage {
-        for (index, task) in ordered.enumerated() {
-            if task.sortOrder != index { task.sortOrder = index }
-        }
+        applyReorder(ordered, set: { $0.sortOrder = $1 }, get: { $0.sortOrder })
         page.updatedAt = Date()
         try context.save()
         return page
@@ -226,7 +222,7 @@ public final class DailyPageRepository {
                 title: ev.title,
                 sourceType: .calendar,
                 sourceId: ev.eventId,
-                sortOrder: Self.calendarSortBase + ev.startMinuteOfDay
+                sortOrder: Self.calendarSortOrder(startMinuteOfDay: ev.startMinuteOfDay)
             )
             task.page = page
             page.tasks.append(task)
@@ -251,10 +247,13 @@ public final class DailyPageRepository {
     /// independent new task while the past snapshot stays put. The backlog items and
     /// calendar events themselves are NOT touched.
     public func severPastTasks(today: Date, calendar: Calendar = .current) throws {
-        let normalizedToday = calendar.startOfDay(for: today)
-        let pages = try context.fetch(FetchDescriptor<DailyPage>())
+        let normalizedToday = calendar.dayStart(today)
+        // Only load past pages from the store, not the whole history. [#186]
+        let pages = try context.fetch(
+            FetchDescriptor<DailyPage>(predicate: #Predicate { $0.date < normalizedToday })
+        )
         var changed = false
-        for page in pages where page.date < normalizedToday {
+        for page in pages {
             for task in page.tasks where task.sourceType != .manual || task.sourceId != nil {
                 task.sourceType = .manual
                 task.sourceId = nil
@@ -297,7 +296,7 @@ public final class DailyPageRepository {
 
     /// Fetch a page by date (nil if not found yet).
     public func fetch(date: Date, calendar: Calendar = .current) throws -> DailyPage? {
-        let normalizedDate = calendar.startOfDay(for: date)
+        let normalizedDate = calendar.dayStart(date)
         var descriptor = FetchDescriptor<DailyPage>(
             predicate: #Predicate { $0.date == normalizedDate }
         )
@@ -310,10 +309,7 @@ public final class DailyPageRepository {
 
     /// Fetch all pages (for streak calculation etc.)
     public func fetchAll() throws -> [DailyPage] {
-        let descriptor = FetchDescriptor<DailyPage>(
-            sortBy: [SortDescriptor(\.date, order: .forward)]
-        )
-        return try context.fetch(descriptor)
+        try context.fetchSorted(by: [SortDescriptor(\.date, order: .forward)])
     }
 
     // MARK: - Private Helpers

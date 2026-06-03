@@ -345,6 +345,14 @@ public struct DailyPageGenerator: Sendable {
         }
 
         // Determine the highest existing sortOrder so new tasks are appended after.
+        //
+        // ARRIVAL-ORDER APPENDING (intentional): unlike generate() — which always lays
+        // out recurring tasks before backlog tasks — refresh() appends every newly
+        // matching task AFTER the highest existing sortOrder, in arrival order. Over
+        // several refreshes the on-page order can therefore differ from a freshly
+        // generated page (a backlog task added early can sort before a recurring task
+        // added later). This preserves the user's existing rows in place rather than
+        // renumbering them on every refresh; do NOT renumber here without owner sign-off. [#57]
         let maxExistingSortOrder = existingTasks.map { $0.sortOrder }.max() ?? -1
         var nextSortOrder = maxExistingSortOrder + 1
 

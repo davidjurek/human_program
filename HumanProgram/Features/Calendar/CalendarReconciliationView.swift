@@ -120,7 +120,7 @@ struct CalendarReconciliationView: View {
             .alignmentGuide(.titleCenter) { $0[VerticalAlignment.center] }
 
             VStack(alignment: .leading, spacing: 2) {
-                DSText(d.event.title ?? "(No title)").dsTextStyle(.body).longTitle(lineLimit: 2)
+                DSText(d.event.displayTitle).dsTextStyle(.body).longTitle(lineLimit: 2)
                     .alignmentGuide(.titleCenter) { $0[VerticalAlignment.center] }
                 DSText(timeDateLabel(d)).dsTextStyle(.subheadline)
             }

@@ -15,19 +15,18 @@ public struct ScheduleConflict: Sendable {
 @MainActor
 public final class ScheduleRepository {
     private let context: ModelContext
+    private let calendar: Calendar
 
-    public init(context: ModelContext) {
+    public init(context: ModelContext, calendar: Calendar = .current) {
         self.context = context
+        self.calendar = calendar
     }
 
     // MARK: - fetchAll
 
     /// Fetch all schedule templates sorted by name.
     public func fetchAll() throws -> [ScheduleTemplate] {
-        let descriptor = FetchDescriptor<ScheduleTemplate>(
-            sortBy: [SortDescriptor(\.name, order: .forward)]
-        )
-        return try context.fetch(descriptor)
+        try context.fetchSorted(by: [SortDescriptor(\.name, order: .forward)])
     }
 
     // MARK: - create
@@ -96,9 +95,11 @@ public final class ScheduleRepository {
             template.blocks.append(Self.defaultSleepBlock())
         }
 
-        let lastBlock = template.blocks.sorted { $0.sortOrder < $1.sortOrder }.last!
+        // Block with the highest sortOrder, found in one pass. The `blocks.isEmpty`
+        // guard above guarantees there is at least the Sleep block. [#188]
+        let lastBlock = template.blocks.max { $0.sortOrder < $1.sortOrder }!
         let startMinute = lastBlock.endMinuteOfDay
-        let endMinute = (startMinute + durationMinutes) % 1440
+        let endMinute = (startMinute + durationMinutes) % minutesPerDay
         let nextSortOrder = lastBlock.sortOrder + 1
 
         let newBlock = ScheduleBlock(
@@ -217,7 +218,7 @@ public final class ScheduleRepository {
             // Recompute endMinuteOfDay from startMinuteOfDay + new duration.
             // normalizeBlocks will cascade start times for subsequent blocks.
             let start = template.blocks[index].startMinuteOfDay
-            template.blocks[index].endMinuteOfDay = (start + duration) % 1440
+            template.blocks[index].endMinuteOfDay = (start + duration) % minutesPerDay
         }
 
         normalizeBlocks(in: template)
@@ -258,7 +259,7 @@ public final class ScheduleRepository {
             for i in 1..<sorted.count {
                 let duration = sorted[i].durationMinutes
                 sorted[i].startMinuteOfDay = cursor
-                sorted[i].endMinuteOfDay = (cursor + duration) % 1440
+                sorted[i].endMinuteOfDay = (cursor + duration) % minutesPerDay
                 cursor = sorted[i].endMinuteOfDay
             }
         }
@@ -295,10 +296,10 @@ public final class ScheduleRepository {
                 else {
                     continue
                 }
-                let tStartDay = Calendar.current.startOfDay(for: tStart)
-                let tEndDay = Calendar.current.startOfDay(for: tEnd)
-                let oStartDay = Calendar.current.startOfDay(for: oStart)
-                let oEndDay = Calendar.current.startOfDay(for: oEnd)
+                let tStartDay = calendar.dayStart(tStart)
+                let tEndDay = calendar.dayStart(tEnd)
+                let oStartDay = calendar.dayStart(oStart)
+                let oEndDay = calendar.dayStart(oEnd)
 
                 // Ranges overlap if one starts before the other ends.
                 let overlaps = tStartDay <= oEndDay && oStartDay <= tEndDay

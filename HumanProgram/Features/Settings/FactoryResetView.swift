@@ -132,10 +132,10 @@ struct FactoryResetGate: View {
 struct FactoryResetView: View {
 
     @Environment(\.modelContext) private var context
-    @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
 
     @State private var isResetting: Bool = false
+    @State private var error: String?
 
     var body: some View {
         DestructiveConfirmScreen(
@@ -144,6 +144,7 @@ struct FactoryResetView: View {
             confirmWord: "RESET",
             buttonTitle: "Factory Reset",
             busy: isResetting,
+            errorText: error,
             onConfirm: performReset
         )
     }
@@ -156,6 +157,7 @@ struct FactoryResetView: View {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                         to: nil, from: nil, for: nil)
         isResetting = true
+        error = nil
 
         do {
             try AppDataRepository(context: context).deleteEverything()
@@ -171,9 +173,11 @@ struct FactoryResetView: View {
             // runs again after it.
             appState.pendingInterstitial = .reset
         } catch {
-            // If save fails, still leave the screen — the deletes may be partial
-            // but we don't want to strand the user here.
-            dismiss()
+            // The reset may have partly run — surface the failure (like the Restore
+            // screen) instead of silently dismissing, so the user knows it didn't
+            // fully complete rather than being left with hidden half-deleted data. [#156]
+            isResetting = false
+            self.error = "Reset failed: \(error.localizedDescription)"
         }
     }
 

@@ -21,13 +21,7 @@ final class DailyPageGeneratorTests: XCTestCase {
 
     let generator = DailyPageGenerator()
 
-    // Convenience builder for a RecurringTaskInput
-    func makeRecurring(id: String = UUID().uuidString,
-                       title: String,
-                       rule: RecurrenceRule,
-                       active: Bool = true) -> RecurringTaskInput {
-        RecurringTaskInput(id: id, title: title, notes: "", rule: rule, active: active)
-    }
+    // makeRecurring(...) is shared from TestSupport.swift.
 
     // Convenience builder for a BacklogTaskInput
     func makeBacklog(id: String = UUID().uuidString,
