@@ -122,11 +122,10 @@ struct CalendarView: View {
             Spacer()
             Button { goToday() } label: {
                 DSText("Today").dsTextStyle(.subheadline)
-                    .frame(height: 44)   // full top-bar height [owner]
+                    .frame(height: 44)   // same height as the + button
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
-            Spacer()
             Button { showAddEvent = true } label: {
                 Image(systemName: "plus").font(.system(size: 18, weight: .medium))
                     .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())
@@ -142,7 +141,7 @@ struct CalendarView: View {
     private var syncCenterButton: some View {
         Button { showReconciliation = true } label: {
             Text("Sync: \(syncDiffCount) \(syncDiffCount == 1 ? "difference" : "differences")")
-                .font(appFont(15))
+                .font(appFont(19))
                 .foregroundStyle(syncDiffCount == 0 ? appOnboardingBlue : Color.orange)
                 .frame(height: 44)
                 .contentShape(Rectangle())
@@ -769,6 +768,14 @@ struct CalendarView: View {
             }
         }
         .frame(height: weekAllDayBandHeight)
+        // Vertical day-column separators, matching the timeline gridlines below. [#cal-allday]
+        .overlay(alignment: .topLeading) {
+            ForEach(0...7, id: \.self) { i in
+                Rectangle().fill(Color.primary.opacity(0.06))
+                    .frame(width: 1, height: weekAllDayBandHeight)
+                    .offset(x: weekTimeColW + CGFloat(i) * colW)
+            }
+        }
     }
 
     /// Day all-day band: a single fixed-height column, aligned to the timeline's event
@@ -779,6 +786,13 @@ struct CalendarView: View {
             Color.clear.frame(width: 48, height: dayAllDayBandHeight)
             allDayColumn(items, height: dayAllDayBandHeight, font: 12, chipHeight: 22) {
                 allDayPopupDate = day
+            }
+            // Vertical separators framing the all-day cell (parallels the Week band). [#cal-allday]
+            .overlay(alignment: .leading) {
+                Rectangle().fill(Color.primary.opacity(0.06)).frame(width: 1)
+            }
+            .overlay(alignment: .trailing) {
+                Rectangle().fill(Color.primary.opacity(0.06)).frame(width: 1)
             }
             .padding(.trailing, 16)
         }

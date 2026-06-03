@@ -27,6 +27,17 @@ enum AppDateFormat {
         "\(monthDay(start)) – \(monthDay(end))"
     }
 
+    /// Formats a date using the user's chosen Date Format setting
+    /// (`settings.dateFormat`, default "MMM d, yyyy" — includes the year). Honors
+    /// the device locale like the others. Reuses one formatter, re-pointing its
+    /// pattern only when the setting changes (called on the main thread).
+    static func userPreferred(_ date: Date) -> String {
+        let pattern = UserDefaults.standard.string(forKey: DefaultsKey.dateFormat) ?? "MMM d, yyyy"
+        if userFormatter.dateFormat != pattern { userFormatter.dateFormat = pattern }
+        return userFormatter.string(from: date)
+    }
+    private static let userFormatter = make("MMM d, yyyy")
+
     // MARK: - Cached instances
 
     private static let monthDayFormatter           = make("MMM d")

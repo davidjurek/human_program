@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 // ── AppLockViewModel ───────────────────────────────────────────────────────────
 // Drives the lock screen, PIN setup, and all lock/unlock logic.
@@ -53,7 +54,7 @@ public final class AppLockViewModel {
     }
 
     // ── Maximum PIN length ─────────────────────────────────────────────────────
-    public let maxPINLength = 20
+    public let maxPINLength = 40
     public let minPINLength = 4
 
     // ── Lock lifecycle ─────────────────────────────────────────────────────────
@@ -74,6 +75,14 @@ public final class AppLockViewModel {
     /// a Face ID cancel doesn't re-loop. [owner: Face ID should auto-engage]
     public func autoPromptBiometricIfArmed() {
         guard isLocked, repo.isBiometricEnabled, autoBiometricArmed, !isAuthenticating else { return }
+        // Only present Face ID when the app is genuinely ACTIVE. With a 0s ("Lock
+        // immediately") timeout the lock engages while the app is backgrounding —
+        // that mounts the lock screen and runs its `.task` while we're still inactive.
+        // Evaluating biometrics then fails silently and would burn the one-shot arm,
+        // so the real warm return never prompts (cold launch worked because the app
+        // is active by then). Staying armed until active fixes the warm-return case;
+        // `didBecomeActiveNotification` re-calls this the moment we're active.
+        guard UIApplication.shared.applicationState == .active else { return }
         autoBiometricArmed = false
         Task { await unlockWithBiometrics() }
     }

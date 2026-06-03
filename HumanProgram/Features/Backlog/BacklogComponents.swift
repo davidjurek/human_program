@@ -61,7 +61,9 @@ struct BacklogRow: View {
     }
 
     private var faceContent: some View {
-        HStack(spacing: 12) {
+        // Baseline-align the leading glyph to the title's FIRST line so the bullet
+        // sits next to line 1 of a multi-line item, not centered against the whole row.
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             leadingGlyph
             VStack(alignment: .leading, spacing: 2) {
                 DSText(title).dsTextStyle(.title3).longTitle(lineLimit: 3)
@@ -110,7 +112,9 @@ struct BacklogTextBarButton: View {
 
     var body: some View {
         Button(action: action) {
-            DSText(title).dsTextStyle(.headline).contentShape(Rectangle())
+            DSText(title).dsTextStyle(.headline)
+                .frame(height: 44)              // match the other top-bar buttons' height
+                .contentShape(Rectangle())
         }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.horizontal, 6)
     }
 }

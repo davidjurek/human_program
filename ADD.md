@@ -17,7 +17,7 @@ These are locked-in decisions. Do not second-guess or work around them without e
 | Persistence | SwiftData only |
 | UI framework | DSKit (MIT) — owner-approved 2026-05-29. Ships DSKit + SDWebImage + SDWebImageSwiftUI (all MIT), credited in the in-app Licenses screen. Reverses the former "zero third-party deps" rule. Any OTHER package still needs owner approval. XcodeGen remains a dev tool only. |
 | Cloud, analytics, Firebase, trackers, ads | Not present, not planned |
-| App lock | Face ID + PIN (4–20 digits). Forget PIN = reset app. No recovery phrase. |
+| App lock | Face ID + PIN (4–40 digits). Forget PIN = reset app. No recovery phrase. |
 | Backup encryption | .hprgm backups are NOT encrypted. App lock protects on-device data. iOS encrypts at rest when device is locked. |
 | Sleep block | Mandatory first block in every schedule template. Cannot be deleted. |
 | Exercise and completion | Exercise does NOT count toward day completion unless a separate required task exists for it. |
@@ -789,7 +789,7 @@ App lock is optional. Off by default. Once enabled, the app requires biometric o
 ### Lock Options
 
 - Face ID (or Touch ID on compatible devices) with PIN fallback
-- PIN: 4 to 20 digits
+- PIN: 4 to 40 digits
 - Lock timing: configurable — immediate, 30 seconds, 1 minute, 5 minutes, 15 minutes
 
 ### PIN Setup

@@ -198,12 +198,11 @@ struct BacklogView: View {
                 BacklogBarButton(icon: "trash", tint: .red) { deleteSelected() }
                 BacklogTextBarButton(title: "Done") { selecting = false; selected = [] }
             } else {
-                // View toggle shows the CURRENT view as a word. Both words are
-                // left-aligned at the same x (fixed width); "Task" leaves a wide
-                // gap to the sort button — intended.
+                // View toggle shows the CURRENT view as a word. Sized to its text
+                // (no fixed width) so there's no empty space to the right of the
+                // label, which also nudges it rightward toward the sort button.
                 Button { mode = mode == .tasks ? .projects : .tasks } label: {
                     DSText(mode == .tasks ? "Task" : "Project").dsTextStyle(.headline)
-                        .frame(width: 78, alignment: .leading)
                         .frame(height: 44).contentShape(Rectangle())
                 }.buttonStyle(.plain).a11yTapBorder(Rectangle())
                 sortMenu

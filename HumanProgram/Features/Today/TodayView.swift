@@ -226,7 +226,7 @@ struct TodayView: View {
     private func navButton(_ icon: String, size: CGFloat = 16, _ action: @escaping () -> Void) -> some View {
         Button(action: { if dismissAddIfOpen() { return }; action() }) {
             Image(systemName: icon).font(.system(size: size, weight: .semibold))
-                .foregroundStyle(.primary).frame(width: 30, height: 30)
+                .foregroundStyle(.primary).frame(width: 44, height: 44)   // square, matches "Today" height
                 .contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
         }.buttonStyle(.plain)

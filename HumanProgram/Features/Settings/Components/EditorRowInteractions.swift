@@ -551,12 +551,7 @@ struct GlassKeypad: View {
             .buttonStyle(.plain)
             .a11yTapBorder(Capsule())
         case .backspace:
-            Button(action: onBackspace) {
-                Image(systemName: "delete.left").font(.system(size: 20))
-                    .keypadKeyChrome()
-            }
-            .buttonStyle(.plain)
-            .a11yTapBorder(Capsule())
+            BackspaceKey(onBackspace: onBackspace)
         case .done:
             Button(action: onDone) {
                 Image(systemName: "checkmark").font(.system(size: 20, weight: .semibold))
@@ -565,6 +560,52 @@ struct GlassKeypad: View {
             .buttonStyle(.plain)
             .a11yTapBorder(Capsule())
         }
+    }
+}
+
+/// Backspace key with press-and-hold auto-repeat, shared by every GlassKeypad use
+/// (PIN entry + the planning editors). A quick tap deletes once; holding repeats
+/// with a natural acceleration — the first 3 deletes at a regular pace, the next 2
+/// quicker, then a steady faster pace. [owner: hold-to-delete]
+private struct BackspaceKey: View {
+    let onBackspace: () -> Void
+    @State private var repeatTask: Task<Void, Never>? = nil
+    @State private var pressing = false
+
+    var body: some View {
+        Image(systemName: "delete.left").font(.system(size: 20))
+            .keypadKeyChrome()
+            .contentShape(Capsule())
+            .a11yTapBorder(Capsule())
+            // A min-distance-0 drag fires on touch-down (start the repeat) and on
+            // lift (stop it); the repeat cadence is driven by our own task, so a
+            // perfectly still hold still repeats.
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in if !pressing { begin() } }
+                    .onEnded { _ in end() }
+            )
+    }
+
+    private func begin() {
+        pressing = true
+        repeatTask?.cancel()
+        repeatTask = Task { @MainActor in
+            var count = 0
+            while !Task.isCancelled {
+                onBackspace()
+                count += 1
+                // Gap BEFORE the next delete: deletes 1–3 regular, 4–5 quicker, 6+ fastest.
+                let gap: Double = count <= 2 ? 0.32 : (count <= 4 ? 0.17 : 0.09)
+                try? await Task.sleep(nanoseconds: UInt64(gap * 1_000_000_000))
+            }
+        }
+    }
+
+    private func end() {
+        pressing = false
+        repeatTask?.cancel()
+        repeatTask = nil
     }
 }
 

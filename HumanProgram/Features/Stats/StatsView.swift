@@ -53,7 +53,9 @@ struct StatsView: View {
                 .onTapGesture { dismiss() }
             Spacer()
             Button { withAnimation { statsPage = statsPageIndex(forOffset: 0) } } label: {  // jump to current week
-                DSText("Today").dsTextStyle(.subheadline).contentShape(Rectangle())
+                DSText("Today").dsTextStyle(.subheadline)
+                    .frame(height: 44)   // full top-bar height, matches the calendar button
+                    .contentShape(Rectangle())
             }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.trailing, 18)
             Image(systemName: "calendar").font(.system(size: 18, weight: .medium))   // [#35]
                 .foregroundStyle(.primary).frame(width: 44, height: 44).contentShape(Rectangle())

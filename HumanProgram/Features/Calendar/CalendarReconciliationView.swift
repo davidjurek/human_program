@@ -36,23 +36,17 @@ struct CalendarReconciliationView: View {
     typealias Discrepancy = CalendarReconciliation.Discrepancy
 
     var body: some View {
-        SettingsScreen(centered: true, trailing: { restoreButton }) {
-            DSText("Sync")
-                .dsTextStyle(.title2)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 4)
-
+        SettingsScreen(centered: true, trailing: { trailingButtons }) {
             if discrepancies.isEmpty {
                 DSText("Today is in sync with your calendar")
                     .dsTextStyle(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 60)
             } else {
-                ForEach(groupedDates, id: \.self) { day in
-                    SettingsGroup(title: AppDateFormat.weekdayMonthDay(day)) {
-                        ForEach(discrepancies.filter { $0.date == day }) { d in
-                            row(d)
-                        }
+                // Flat list (no date grouping); each row is title + "time date".
+                SettingsGroup {
+                    ForEach(discrepancies) { d in
+                        row(d)
                     }
                 }
             }
@@ -65,38 +59,70 @@ struct CalendarReconciliationView: View {
         .onAppear(perform: reload)
     }
 
-    // MARK: - Toolbar restore button
+    // MARK: - Toolbar (select-all toggle + Restore)
 
     @ViewBuilder
-    private var restoreButton: some View {
+    private var trailingButtons: some View {
         if !discrepancies.isEmpty {
-            Button {
-                if selected.isEmpty { restoreAll() } else { restoreSelected() }
-            } label: {
-                Text(selected.isEmpty ? "Restore All" : "Restore (\(selected.count))")
-                    .font(appFont(17))
-                    .foregroundStyle(.primary)
-                    .frame(minHeight: 44).padding(.horizontal, 8)
-                    .contentShape(Rectangle())
-                    .a11yTapBorder(cornerRadius: 6)
+            HStack(spacing: 4) {
+                toggleAllButton
+                restoreButton
             }
-            .buttonStyle(.plain)
         }
+    }
+
+    /// True when every discrepancy is currently selected.
+    private var allSelected: Bool {
+        !discrepancies.isEmpty && selected.count == discrepancies.count
+    }
+
+    /// Selects all when none / some are selected; clears when all are selected.
+    private var toggleAllButton: some View {
+        Button {
+            if allSelected { selected = [] }
+            else { selected = Set(discrepancies.map { $0.id }) }
+        } label: {
+            Text("Toggle All")
+                .font(appFont(17))
+                .foregroundStyle(.primary)
+                .frame(minHeight: 44).padding(.horizontal, 8)
+                .contentShape(Rectangle())
+                .a11yTapBorder(cornerRadius: 6)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Restores the SELECTED items. Greyed + disabled until something is selected.
+    private var restoreButton: some View {
+        Button { restoreSelected() } label: {
+            Text("Restore")
+                .font(appFont(17))
+                .foregroundStyle(selected.isEmpty ? .secondary : .primary)
+                .frame(minHeight: 44).padding(.horizontal, 8)
+                .contentShape(Rectangle())
+                .a11yTapBorder(cornerRadius: 6)
+        }
+        .buttonStyle(.plain)
+        .disabled(selected.isEmpty)
     }
 
     // MARK: - Row
 
     private func row(_ d: Discrepancy) -> some View {
-        HStack(spacing: 12) {
+        // The circle is centered on the TITLE line only; the time/date sits below
+        // and does not shift that alignment (custom `.titleCenter` guide).
+        HStack(alignment: .titleCenter, spacing: 12) {
             Button { toggle(d.id) } label: {
                 SelectionCircle(isOn: selected.contains(d.id))
             }
             .buttonStyle(.plain)
             .a11yTapBorder(Circle())
+            .alignmentGuide(.titleCenter) { $0[VerticalAlignment.center] }
 
             VStack(alignment: .leading, spacing: 2) {
                 DSText(d.event.title ?? "(No title)").dsTextStyle(.body).longTitle(lineLimit: 2)
-                DSText(timeLabel(d.event)).dsTextStyle(.subheadline)
+                    .alignmentGuide(.titleCenter) { $0[VerticalAlignment.center] }
+                DSText(timeDateLabel(d)).dsTextStyle(.subheadline)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -110,17 +136,22 @@ struct CalendarReconciliationView: View {
         .frame(minHeight: 48)
     }
 
-    private func timeLabel(_ ev: EKEvent) -> String {
-        if ev.isAllDay { return "All day" }
-        guard let start = ev.startDate else { return "" }
-        return clockString(date: start)
+    /// "time date" on one line, honoring the Time + Date Format settings,
+    /// e.g. "7:00 PM Jun 2, 2026" (or "All day Jun 2, 2026").
+    private func timeDateLabel(_ d: Discrepancy) -> String {
+        let time: String
+        if d.event.isAllDay {
+            time = "All day"
+        } else if let start = d.event.startDate {
+            time = clockString(date: start)
+        } else {
+            time = ""
+        }
+        let date = AppDateFormat.userPreferred(d.date)
+        return time.isEmpty ? date : "\(time) \(date)"
     }
 
     // MARK: - Data
-
-    private var groupedDates: [Date] {
-        Array(Set(discrepancies.map { $0.date })).sorted()
-    }
 
     private func reload() {
         discrepancies = CalendarReconciliation.discrepancies(
@@ -144,7 +175,17 @@ struct CalendarReconciliationView: View {
     }
 
     private func restoreSelected() { restore(discrepancies.filter { selected.contains($0.id) }) }
-    private func restoreAll() { restore(discrepancies) }
+}
+
+// MARK: - Title-centered alignment
+
+private extension VerticalAlignment {
+    /// Centers an external view (the selection circle) on the title line of a
+    /// title-over-subtitle group, ignoring the subtitle below.
+    enum TitleCenterID: AlignmentID {
+        static func defaultValue(in d: ViewDimensions) -> CGFloat { d[VerticalAlignment.center] }
+    }
+    static let titleCenter = VerticalAlignment(TitleCenterID.self)
 }
 
 // MARK: - Shared discrepancy computation

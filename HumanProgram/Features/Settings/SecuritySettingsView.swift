@@ -139,7 +139,7 @@ private struct CreateOrChangePINView: View {
     var body: some View {
         PINEntryView(
             title: title,
-            subtitle: step == .enter ? "Digits only · 4–20 digits" : nil,
+            subtitle: step == .enter ? "Digits only · 4–40 digits" : nil,
             minLength: vm.minPINLength,
             maxLength: vm.maxPINLength,
             showsBack: true,
@@ -268,7 +268,7 @@ private struct AppLockTimingView: View {
     }
 
     var body: some View {
-        SettingsScreen {
+        SettingsScreen(centered: true) {   // option screen → symmetric 20-20 margins [owner]
             SettingsGroup(title: "App Lock") {
                 ForEach(Self.options, id: \.seconds) { option in
                     SettingsSelectRow(label: option.label, isSelected: selection == option.seconds) {

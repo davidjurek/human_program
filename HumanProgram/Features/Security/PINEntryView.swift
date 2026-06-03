@@ -7,10 +7,10 @@ import SwiftUI
 struct PINEntryView: View {
     /// Small instruction near the field (nil = nothing, e.g. the unlock gate).
     var title: String? = nil
-    /// Sub-hint under the title (e.g. "4–20 digits").
+    /// Sub-hint under the title (e.g. "4–40 digits").
     var subtitle: String? = nil
     var minLength: Int = 4
-    var maxLength: Int = 20
+    var maxLength: Int = 40
     /// Shows a back chevron top-left (pushed pages); the gate passes false.
     var showsBack: Bool = false
     var onBack: (() -> Void)? = nil
@@ -111,18 +111,20 @@ struct PINEntryView: View {
 
     private var maskedField: some View {
         let chars = Array(entry)
-        // Tighter gap between marks (single space, was two). Left-aligned, and once the
-        // entry overflows the field, head-truncation keeps the LAST typed digit visible
-        // by scrolling the start off to the left. [owner]
+        // Marks are CENTERED while they fit; once the row overflows the field,
+        // head-truncation drops the leftmost marks so the LAST typed digit always
+        // lands near the right edge (the cluster is pushed off the left). Wider
+        // tracking gives a clear gap between marks. [owner]
         let masked = chars.enumerated()
             .map { i, c in i == chars.count - 1 ? String(c) : "•" }
             .joined(separator: " ")
         return Text(masked.isEmpty ? " " : masked)
             .font(appFont(30))
+            .tracking(6)
             .foregroundStyle(.primary)
             .lineLimit(1)
             .truncationMode(.head)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 18)
             .frame(height: 58)
             .background(Color.primary.opacity(0.06),
