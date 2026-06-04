@@ -31,10 +31,13 @@ struct BacklogView: View {
     @State private var showMove = false
     @State private var projectsPendingDelete: [ProjectBucket] = []
     @State private var pushEditorForNew = false
+    @State private var showSort = false
+    @State private var anchorFrames: [String: CGRect] = [:]
+    private let anchorSpace = "backlogAnchorSpace"
 
     enum Mode: String { case tasks, projects }
     enum TaskSort: String, CaseIterable {
-        case created = "Date created", az = "A–Z", za = "Z–A", date = "Assigned date"
+        case created = "Creation date", date = "Assigned date", az = "A–Z", za = "Z–A"
     }
     enum ProjectSort: String, CaseIterable { case az = "A–Z", za = "Z–A" }
 
@@ -65,6 +68,8 @@ struct BacklogView: View {
         .toolbar(.hidden, for: .navigationBar)
         .enableSwipeBack()
         .overlay { overlays }
+        .coordinateSpace(.named(anchorSpace))
+        .onPreferenceChange(AnchorFrameKey.self) { anchorFrames = $0 }
         .navigationDestination(isPresented: $pushEditorForNew) {
             BacklogTaskDetailView(item: nil, startInEdit: true)
         }
@@ -78,7 +83,7 @@ struct BacklogView: View {
                 BacklogFolderView(project: pid.flatMap { id in projects.first(where: { $0.id == id }) })
             }
         }
-        .onChange(of: mode) { _, _ in rows.swipeOpenId = nil; selecting = false; selected = [] }
+        .onChange(of: mode) { _, _ in rows.swipeOpenId = nil; selecting = false; selected = []; showSort = false }
     }
 
     // MARK: - Content
@@ -250,27 +255,64 @@ struct BacklogView: View {
         .topBarFrost()                                       // [#47]
     }
 
+    // DSKit anchored sort popup (app font), replacing the system Menu (system font).
     private var sortMenu: some View {
-        Menu {
-            if mode == .tasks {
-                ForEach(TaskSort.allCases, id: \.self) { s in
-                    Button { taskSort = s } label: {
-                        if taskSort == s { Label(s.rawValue, systemImage: "checkmark") } else { Text(s.rawValue) }
-                    }
-                }
-            } else {
-                ForEach(ProjectSort.allCases, id: \.self) { s in
-                    Button { projectSort = s } label: {
-                        if projectSort == s { Label(s.rawValue, systemImage: "checkmark") } else { Text(s.rawValue) }
-                    }
-                }
-            }
-        } label: {
+        Button { showSort.toggle() } label: {
             DSImageView(systemName: "arrow.up.arrow.down", size: 17, tint: .color(.primary))   // [#199]
                 .frame(width: 40, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
         }
-        .tint(.primary)   // keep the glyph black, not the menu accent (blue)
+        .buttonStyle(.plain)
+        .anchorFrame("sort", in: .named(anchorSpace))
+    }
+
+    /// Tight popup width: longest option (in the .body font, reg 17) + the checkmark
+    /// column + gaps + padding. The checkmark column is always reserved, so the width
+    /// is the same whichever option is selected. [owner]
+    private var sortPopupWidth: CGFloat {
+        let titles = mode == .tasks ? TaskSort.allCases.map(\.rawValue) : ProjectSort.allCases.map(\.rawValue)
+        let font = appUIFont(17)
+        let textW = titles.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        return ceil(textW) + 14 + 12 + 8 + 36   // checkmark + gap + trailing min + h-padding
+    }
+
+    @ViewBuilder
+    private var sortPopup: some View {
+        if let rect = anchorFrames["sort"] {
+            let isTasks = mode == .tasks
+            let count = isTasks ? TaskSort.allCases.count : ProjectSort.allCases.count
+            AnchoredPopup(anchor: rect, width: sortPopupWidth, estimatedHeight: CGFloat(count) * 44 + 12,
+                          alignment: .leading, space: .named(anchorSpace),
+                          onClose: { showSort = false }) {
+                VStack(spacing: 0) {
+                    if isTasks {
+                        ForEach(TaskSort.allCases, id: \.self) { s in
+                            sortOptionRow(title: s.rawValue, selected: taskSort == s) { taskSort = s; showSort = false }
+                        }
+                    } else {
+                        ForEach(ProjectSort.allCases, id: \.self) { s in
+                            sortOptionRow(title: s.rawValue, selected: projectSort == s) { projectSort = s; showSort = false }
+                        }
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+        }
+    }
+
+    private func sortOptionRow(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary).opacity(selected ? 1 : 0).frame(width: 14)
+                DSText(title).dsTextStyle(.body)
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 18)
+            .frame(height: 44).frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
     }
 
     private func addTapped() {
@@ -294,6 +336,9 @@ struct BacklogView: View {
             MoveToProjectPopup(projects: sortedProjects,
                                onPick: { moveSelected(to: $0) },
                                onCancel: { showMove = false })
+        }
+        if showSort {
+            sortPopup
         }
         if !projectsPendingDelete.isEmpty {
             ConfirmPopup(
