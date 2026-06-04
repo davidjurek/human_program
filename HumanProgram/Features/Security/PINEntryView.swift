@@ -144,16 +144,19 @@ struct PINEntryView: View {
     // MARK: - Keypad
 
     private func digit(_ d: String) {
+        Haptics.impact(.light)   // tactile feedback on every keypad press [owner]
         guard entry.count < maxLength else { return }
         entry += d
     }
 
     private func backspace() {
-        guard !entry.isEmpty else { return }
+        guard !entry.isEmpty else { return }   // nothing to delete → no haptic [owner]
+        Haptics.impact(.light)
         entry.removeLast()
     }
 
     private func done() {
+        Haptics.impact(.light)
         // Too-short ✓ is a "wrong" entry too: shake + clear, same as a parent
         // rejection, so every wrong path clears the digits identically. [#171]
         guard entry.count >= minLength else { triggerShake(); return }
