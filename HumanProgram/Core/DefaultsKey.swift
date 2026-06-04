@@ -35,6 +35,12 @@ enum DefaultsKey {
     static let lockTimeout         = "hp.lock.timeout"
     static let backlogViewMode     = "hp.backlog.viewMode"   // persisted Task/Project view
     static let backlogTaskSort     = "hp.backlog.taskSort"   // persisted backlog sort
+    /// Set true on the first launch of an install. iOS wipes UserDefaults on uninstall
+    /// but KEEPS the Keychain, so a PIN from a prior install survives a fresh install.
+    /// Its ABSENCE marks a fresh install, which lets us purge that orphaned PIN. It is
+    /// deliberately NOT in `allKeys` — a factory reset must not clear it (a reset is not
+    /// an uninstall, and the reset clears the PIN inline). [owner: fresh install showed a PIN]
+    static let installMarker       = "hp.installMarker"
 
     // MARK: Shared color-preset library
 

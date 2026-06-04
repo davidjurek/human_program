@@ -88,23 +88,10 @@ struct BacklogTaskDetailView: View {
 
                 // Assigned date + toggle
                 SettingsRowContent(label: "Assigned Date", hasTrailingAccessory: true) {
-                    if editing {
-                        // Quick-assign to today (sets the date and turns the toggle on). [#5]
-                        Button {
-                            hasDate = true
-                            date = Calendar.current.startOfDay(for: Date())
-                        } label: {
-                            DSText("Today").dsTextStyle(.subheadline)
-                                .padding(.horizontal, 10).padding(.vertical, 4)
-                                .background(Color.primary.opacity(0.08), in: Capsule())
-                                .contentShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .a11yTapBorder(Capsule())
-                    }
                     if hasDate {
                         if editing {
-                            DSDateField(date: $date)   // custom DSKit calendar [#13]
+                            // custom DSKit calendar [#13]; value shown as 06/03/2026
+                            DSDateField(date: $date, format: { AppDateFormat.numericMDY($0) })
                         } else {
                             DSText(dateString).dsTextStyle(.subheadline)
                         }
@@ -182,7 +169,7 @@ struct BacklogTaskDetailView: View {
     }
 
     private var dateString: String {
-        AppDateFormat.monthDayYear(date)
+        AppDateFormat.userPreferred(date)   // matches the Date Format setting
     }
 
     private func loadIfNeeded() {
@@ -205,11 +192,63 @@ struct BacklogTaskDetailView: View {
         let project = projectId.flatMap { pid in projects.first(where: { $0.id == pid }) }
         let assigned = hasDate ? Calendar.current.startOfDay(for: date) : nil
         if let existing = effectiveItem {
+            let before = BacklogItemSnapshot(existing)
             try? repo.setDetails(existing, title: trimmed, notes: notes, project: project, assignedDate: assigned)
+            let desc = Self.editDescription(before: before, newTitle: trimmed, newNotes: notes,
+                                            newProject: project, newDate: assigned)
+            Undo.edited(desc, before: before, after: BacklogItemSnapshot(existing))
         } else {
             // New task: create, then stay on the page in read mode. [#28]
-            savedItem = try? repo.create(title: trimmed, notes: notes, project: project, assignedDate: assigned)
+            let created = try? repo.create(title: trimmed, notes: notes, project: project, assignedDate: assigned)
+            savedItem = created
             editing = false
+            if let created { Undo.created("Add backlog item " + undoTitle(trimmed), BacklogItemSnapshot(created)) }
         }
+    }
+
+    /// A specific undo label for a backlog edit: states exactly WHAT changed
+    /// (renamed, note added/edited/removed, moved/unfiled, date added/removed/changed).
+    /// One change → a self-contained phrase; several → "Edit “Title”: a, b".
+    private static func editDescription(before: BacklogItemSnapshot, newTitle: String,
+                                        newNotes: String, newProject: ProjectBucket?,
+                                        newDate: Date?) -> String {
+        let name = undoTitle(newTitle)
+        // (full self-contained phrase, terse fragment for the combined form)
+        var changes: [(full: String, short: String)] = []
+
+        if before.title != newTitle {
+            changes.append(("Rename " + undoTitle(before.title) + " to " + name, "renamed"))
+        }
+        if before.notes != newNotes {
+            if before.notes.isEmpty {
+                changes.append(("Add note to " + name, "note added"))
+            } else if newNotes.isEmpty {
+                changes.append(("Remove note from " + name, "note removed"))
+            } else {
+                changes.append(("Edit note of " + name, "note edited"))
+            }
+        }
+        if before.projectId != newProject?.id {
+            if let p = newProject {
+                changes.append(("Move " + name + " to " + undoTitle(p.name), "moved to " + undoTitle(p.name)))
+            } else {
+                changes.append(("Remove " + name + " from project", "unfiled"))
+            }
+        }
+        if before.assignedDate != newDate {
+            if before.assignedDate == nil, let d = newDate {
+                let md = AppDateFormat.monthDay(d)
+                changes.append(("Add date \(md) to " + name, "date added \(md)"))
+            } else if newDate == nil {
+                changes.append(("Remove date from " + name, "date removed"))
+            } else if let d = newDate {
+                let md = AppDateFormat.monthDay(d)
+                changes.append(("Change date of " + name + " to \(md)", "date → \(md)"))
+            }
+        }
+
+        if changes.isEmpty { return "Edit backlog item " + name }
+        if changes.count == 1 { return changes[0].full }
+        return "Edit " + name + ": " + changes.map(\.short).joined(separator: ", ")
     }
 }

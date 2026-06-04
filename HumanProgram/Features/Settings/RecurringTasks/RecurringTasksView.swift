@@ -30,7 +30,10 @@ struct RecurringTasksView: View {
 
     private func toggle(_ template: RecurringTaskTemplate) {
         do {
+            let before = RecurringSnapshot(template)
             try RecurringTaskRepository(context: context).update(template, active: !template.active)
+            Undo.edited((template.active ? "Enable recurring task " : "Disable recurring task ") + undoTitle(template.title),
+                        before: before, after: RecurringSnapshot(template), post: .pageRefresh)
             try PageRefreshService.refresh(context: context)
         } catch { print("[RecurringTasks] toggle error: \(error)") }
     }

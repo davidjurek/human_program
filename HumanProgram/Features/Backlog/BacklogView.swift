@@ -370,12 +370,47 @@ struct BacklogView: View {
     }
 
     private func delete(_ item: BacklogItem) {
+        Undo.deleted("Delete backlog item " + undoTitle(item.title), BacklogItemSnapshot(item))
         try? repo.delete(item)
+    }
+
+    /// Record (then perform) deletion of a set of backlog items as ONE undo action.
+    private func recordAndDeleteItems(_ items: [BacklogItem]) {
+        guard !items.isEmpty else { return }
+        let snaps = items.map { BacklogItemSnapshot($0) }
+        Undo.record(items.count == 1 ? "Delete backlog item " + undoTitle(items[0].title)
+                                     : "Delete \(items.count) backlog items",
+                    undoOps: snaps.map { .upsert($0) },
+                    redoOps: snaps.map { .remove(BacklogItemSnapshot.self, $0.id) })
+        for item in items { try? repo.delete(item) }
+    }
+
+    /// Record deletion of whole projects as ONE undo action. Capture BEFORE deleting
+    /// (the items are still attached). `cascadeItems` = the items are deleted too
+    /// (confirmed non-empty delete) vs nullified to Unorganized (empty / immediate).
+    private func recordDeleteProjects(_ buckets: [ProjectBucket], cascadeItems: Bool) {
+        guard !buckets.isEmpty else { return }
+        var undoOps: [UndoOp] = []
+        var redoOps: [UndoOp] = []
+        for project in buckets {
+            let snaps = project.items.map { BacklogItemSnapshot($0) }
+            undoOps.append(.upsert(ProjectSnapshot(project)))
+            undoOps.append(contentsOf: snaps.map { .upsert($0) })
+            if cascadeItems {
+                redoOps.append(contentsOf: snaps.map { .remove(BacklogItemSnapshot.self, $0.id) })
+            } else {
+                redoOps.append(contentsOf: snaps.map { .upsert($0.reassigned(toProjectId: nil)) })
+            }
+            redoOps.append(.remove(ProjectSnapshot.self, project.id))
+        }
+        Undo.record(buckets.count == 1 ? "Delete project " + undoTitle(buckets[0].name)
+                                       : "Delete \(buckets.count) projects",
+                    undoOps: undoOps, redoOps: redoOps)
     }
 
     private func deleteSelected() {
         if mode == .tasks {
-            for item in allItems where selected.contains(item.id) { try? repo.delete(item) }
+            recordAndDeleteItems(allItems.filter { selected.contains($0.id) })
             selected = []; selecting = false
         } else {
             let chosen = projects.filter { selected.contains($0.id) }
@@ -383,9 +418,9 @@ struct BacklogView: View {
             let nonEmptyIds = Set(nonEmpty.map { $0.id })
             // Empty projects (no active tasks) delete immediately; the rest are queued
             // into ONE confirmation covering all of them, so none are silently dropped.
-            for project in chosen where !nonEmptyIds.contains(project.id) {
-                try? repo.deleteProject(project)
-            }
+            let empties = chosen.filter { !nonEmptyIds.contains($0.id) }
+            recordDeleteProjects(empties, cascadeItems: false)
+            for project in empties { try? repo.deleteProject(project) }
             if nonEmpty.isEmpty {
                 selected = []; selecting = false
             } else {
@@ -401,12 +436,14 @@ struct BacklogView: View {
         if project.items.contains(where: { $0.status == .backlog }) {
             projectsPendingDelete = [project]
         } else {
+            recordDeleteProjects([project], cascadeItems: false)
             try? repo.deleteProject(project)
         }
     }
 
     private func confirmDeleteProjects() {
         // "Yes, delete the project(s) and their tasks": delete the tasks too.
+        recordDeleteProjects(projectsPendingDelete, cascadeItems: true)
         for project in projectsPendingDelete {
             for item in project.items { try? repo.delete(item) }
             try? repo.deleteProject(project)
@@ -416,12 +453,19 @@ struct BacklogView: View {
     }
 
     private func moveSelected(to destination: ProjectBucket?) {
+        let items: [BacklogItem]
         if mode == .tasks {
-            try? repo.move(allItems.filter { selected.contains($0.id) }, to: destination)
+            items = allItems.filter { selected.contains($0.id) }
         } else {
             // Move ALL tasks of selected projects into the destination.
-            let items = projects.filter { selected.contains($0.id) }.flatMap { $0.items }
-            try? repo.move(items, to: destination)
+            items = projects.filter { selected.contains($0.id) }.flatMap { $0.items }
+        }
+        let before = items.map { BacklogItemSnapshot($0) }
+        try? repo.move(items, to: destination)
+        let after = items.map { BacklogItemSnapshot($0) }
+        if !items.isEmpty {
+            Undo.record(items.count == 1 ? "Move " + undoTitle(items[0].title) : "Move \(items.count) items",
+                        undoOps: before.map { .upsert($0) }, redoOps: after.map { .upsert($0) })
         }
         showMove = false; selected = []; selecting = false
     }
@@ -431,7 +475,8 @@ struct BacklogView: View {
         guard !name.isEmpty else { return }
         // Uniqueness is enforced by the repository (#131); surface its rejection.
         do {
-            try repo.createProject(name: name)
+            let project = try repo.createProject(name: name)
+            Undo.created("Add project " + undoTitle(project.name), ProjectSnapshot(project))
             showNewProject = false
         } catch {
             newProjectError = "A project with that name already exists."
@@ -469,7 +514,12 @@ struct BacklogFolderView: View {
 
     var body: some View {
         rows.canInteract = { !selecting }
-        rows.deleteRow = { id in if let it = allItems.first(where: { $0.id == id }) { try? repo.delete(it) } }
+        rows.deleteRow = { id in
+            if let it = allItems.first(where: { $0.id == id }) {
+                Undo.deleted("Delete backlog item " + undoTitle(it.title), BacklogItemSnapshot(it))
+                try? repo.delete(it)
+            }
+        }
 
         return ZStack {
             SettingsBackground()
@@ -538,11 +588,26 @@ struct BacklogFolderView: View {
     }
 
     private func deleteSelected() {
-        for item in allItems where selected.contains(item.id) { try? repo.delete(item) }
+        let items = allItems.filter { selected.contains($0.id) }
+        let snaps = items.map { BacklogItemSnapshot($0) }
+        if !items.isEmpty {
+            Undo.record(items.count == 1 ? "Delete backlog item " + undoTitle(items[0].title)
+                                         : "Delete \(items.count) backlog items",
+                        undoOps: snaps.map { .upsert($0) },
+                        redoOps: snaps.map { .remove(BacklogItemSnapshot.self, $0.id) })
+        }
+        for item in items { try? repo.delete(item) }
         selected = []; selecting = false
     }
     private func moveSelected(to destination: ProjectBucket?) {
-        try? repo.move(allItems.filter { selected.contains($0.id) }, to: destination)
+        let items = allItems.filter { selected.contains($0.id) }
+        let before = items.map { BacklogItemSnapshot($0) }
+        try? repo.move(items, to: destination)
+        let after = items.map { BacklogItemSnapshot($0) }
+        if !items.isEmpty {
+            Undo.record(items.count == 1 ? "Move " + undoTitle(items[0].title) : "Move \(items.count) items",
+                        undoOps: before.map { .upsert($0) }, redoOps: after.map { .upsert($0) })
+        }
         showMove = false; selected = []; selecting = false
     }
 }

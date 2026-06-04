@@ -30,6 +30,13 @@ struct RoutineEditorView: View {
     @State private var showDiscard = false
     @State private var discarded = false
 
+    // Undo is recorded once per editor visit (this lazy-create / commit-on-leave
+    // editor would be noisy if recorded per keystroke): the routine + its items at
+    // open are diffed against the persisted state on exit. See recordSession().
+    @State private var beforeRoutineSnap: RoutineSnapshot?
+    @State private var beforeItemSnaps: [RoutineItemSnapshot] = []
+    @State private var sessionRecorded = false
+
     private var repo: RoutineRepository { RoutineRepository(context: context) }
 
     private var isDirty: Bool {
@@ -44,6 +51,7 @@ struct RoutineEditorView: View {
         showDiscard = false
         discarded = true                                             // skip commitOnLeave
         if routine == nil, let r = working { try? repo.delete(r) }   // new → delete if materialized
+        recordSession()   // discard still keeps live-committed item edits — record the net change
         working = nil
         dismiss()
     }
@@ -202,6 +210,8 @@ struct RoutineEditorView: View {
             working = routine
             name = routine.title; emoji = routine.emoji
             editing = false
+            beforeRoutineSnap = RoutineSnapshot(routine)
+            beforeItemSnaps = routine.items.map { RoutineItemSnapshot($0) }
         } else {
             // New routine: do NOT create yet. Materialize only when there's real
             // content (a name/emoji or the first item) so a blank-then-leave never
@@ -258,6 +268,7 @@ struct RoutineEditorView: View {
     private func deleteRoutine() {
         discarded = true                       // don't let commitOnLeave re-create it
         if let r = working { try? repo.delete(r) }
+        recordSession()                        // before = existing routine, after = gone → "Delete routine"
         working = nil
         dismiss()
     }
@@ -270,6 +281,46 @@ struct RoutineEditorView: View {
         if let r = working, r.title.trimmingCharacters(in: .whitespaces).isEmpty {
             try? repo.delete(r)
         }
+        recordSession()
+    }
+
+    // MARK: - Undo (one action per editor visit)
+
+    /// Diff the routine + items captured at open against the persisted state now,
+    /// and record it as a single Add / Edit / Delete routine action. Runs at most
+    /// once per visit. The after-state is re-read by id so it reflects exactly what
+    /// was persisted (or absence, if the routine ended up deleted).
+    private func recordSession() {
+        guard !sessionRecorded else { return }
+        sessionRecorded = true
+        let rid = beforeRoutineSnap?.id ?? working?.id
+        let afterRoutine: Routine? = rid.flatMap { id in
+            var d = FetchDescriptor<Routine>(predicate: #Predicate { $0.id == id }); d.fetchLimit = 1
+            return (try? context.fetch(d))?.first
+        }
+        let afterParent = afterRoutine.map { RoutineSnapshot($0) }
+        let afterChildren = (afterRoutine?.items ?? []).map { RoutineItemSnapshot($0) }
+        guard sessionChanged(afterParent: afterParent, afterChildren: afterChildren) else { return }
+        let desc: String
+        if beforeRoutineSnap == nil {
+            desc = "Add routine " + undoTitle(afterParent?.title ?? "")
+        } else if afterParent == nil {
+            desc = "Delete routine " + undoTitle(beforeRoutineSnap?.title ?? "")
+        } else {
+            desc = "Edit routine " + undoTitle(afterParent?.title ?? "")
+        }
+        Undo.recordContainer(desc,
+            beforeParent: beforeRoutineSnap, beforeChildren: beforeItemSnaps,
+            afterParent: afterParent, afterChildren: afterChildren)
+    }
+
+    private func sessionChanged(afterParent: RoutineSnapshot?, afterChildren: [RoutineItemSnapshot]) -> Bool {
+        if (beforeRoutineSnap == nil) != (afterParent == nil) { return true }
+        if let b = beforeRoutineSnap, let a = afterParent,
+           b.title != a.title || b.emoji != a.emoji || b.notes != a.notes { return true }
+        let key: (RoutineItemSnapshot) -> String = { "\($0.id)|\($0.text)|\($0.sortOrder)" }
+        return beforeItemSnaps.sorted { $0.sortOrder < $1.sortOrder }.map(key)
+            != afterChildren.sorted { $0.sortOrder < $1.sortOrder }.map(key)
     }
 }
 

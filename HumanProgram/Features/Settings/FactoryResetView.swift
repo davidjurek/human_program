@@ -162,6 +162,10 @@ struct FactoryResetView: View {
         do {
             try AppDataRepository(context: context).deleteEverything()
 
+            // All data is gone — drop any undo history so a shake-undo can't resurrect
+            // deleted objects by id.
+            UndoStore.shared.clear()
+
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
 
             clearUserDefaults()

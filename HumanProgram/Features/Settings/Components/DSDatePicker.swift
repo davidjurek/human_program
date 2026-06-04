@@ -180,10 +180,12 @@ struct DSDateField: View {
     @Binding var date: Date
     var minDate: Date? = nil
     var fontSize: CGFloat = 17
+    /// Override the displayed value format (defaults to "Jun 1, 2026").
+    var format: (Date) -> String = { AppDateFormat.monthDayYear($0) }
     @State private var show = false
 
     private var label: String {
-        AppDateFormat.monthDayYear(date)
+        format(date)
     }
 
     var body: some View {

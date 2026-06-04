@@ -31,7 +31,6 @@ Human Program is a personal daily planning iOS app. Each day gets one generated 
 **Steps:**
 1. Generate the Xcode project: `make setup` (or run `xcodegen generate` in the project root)
 2. Open `HumanProgram.xcodeproj` in Xcode
-3. Build and run on a simulator or device (iOS 17+)
 
 **Run tests:**
 ```
@@ -168,6 +167,16 @@ The Schedule editor is the reference implementation. The hold-to-reorder + swipe
 - **Swipe-to-delete behaviour:** swiping a row reveals a red circular trash that **slides in from the trailing edge** (content + trash move together, clipped — never flash in over the row). It **stays open**; drag back to close; **tap the trash to delete** (there is NO full-swipe-to-delete and no expand-to-fill). Opening one row's trash, or interacting with anything else (editing, a control), **auto-closes** an open one — but **scrolling does not** close it.
 - **Popups are sized to their content, never full-width.** The anchored popups use a fixed/intrinsic width and drop under the tapped value (right-aligned for trailing values), not a full-width sheet.
 - **Tapping out of an open keypad/keyboard/popup just dismisses it** — it does not also open whatever was tapped. Any value/title tap first checks "is something open? if so close it and return" (`dismissOpenInputIfAny`), so an accidental tap on a `##h ##m` value while the keypad is up only closes the keypad.
+
+## Undo/redo (shake-triggered)
+
+A **phone shake** opens a DSKit popup (`Features/Undo/UndoRedoPopup.swift`) with three fixed-size rows: **Undo**, **Redo**, and **Close**. The Undo/Redo rows are each labelled with the pithy, specific action they'd act on, **including the item's title** ("Add task “poop”", "Delete project “Home”" — built via the `undoTitle(_:)` helper, which quotes the name and falls back to "Untitled"); the side with nothing to do is greyed/disabled. The popup is fixed size and fixed-centred (never shifts with content — every row is a fixed 72pt height with single-line labels), stays open after a press so you can chain, and closes **only via the Close button** (outside taps are absorbed, never dismiss). Shake is caught app-wide by `ShakeDetector` (a first-responder VC posting `.humanProgramShake`); `ContentView` shows the popup only during normal use (never over the lock/onboarding/interstitial covers).
+
+The engine (`Core/Undo/`) is **snapshot-based, in-memory, ONE global stack**, cleared on every cold launch (never persisted) and on factory-reset / `.hprgm` restore (`UndoStore.shared.clear()` — else a shake-undo would resurrect deleted objects by id). `UndoStore` is an `@Observable @MainActor` singleton (depth cap 50; `redo` stack cleared on any new action; same-key bursts like one drag-reorder coalesce within 0.6s). Each action is two op lists (`undoOps`/`redoOps`) of `upsert(snapshot)` / `remove(type,id)` primitives that re-resolve objects by their stable String `id`, so they survive delete→recreate cycles. Per-type value snapshots live in `UndoSnapshots.swift` (capture ALL fields incl. `createdAt`/`updatedAt` and relationships as ids, so a recreate is faithful and keeps its list position).
+
+**To make a new mutation undoable**, record at the user-commit call site (NOT deep in the repo — granularity is "an edit + its Save = 1 action; a delete = 1 action; a create = 1 action"): `Undo.created/deleted/edited(...)` for single objects, `Undo.record(undoOps:redoOps:)` for multi-object (multi-delete, move, delete-project-and-its-tasks), or `Undo.recordContainer(...)` for a lazy-create/commit-on-leave editor that's best recorded once per visit (Routines). Capture the *before* snapshot **before** the entity is mutated. Pass `post: .pageRefresh` when the original action refreshed today/future pages (recurring, schedule, exercise) or `post: .rescheduleReminders` for reminders.
+
+**In scope:** Today tasks, Backlog (items + projects + move + multi-select), Recurring, Reminders, Schedule, Exercise, Routines — create/edit/delete/toggle/reorder. **Out of scope (never recorded):** anything calendar (EventKit events, calendar-sourced Today tasks, reconciliation, calendar settings), all Settings categories (customization/format/accessibility/security/import/export/reset/restore), view switches, sort-mode changes, past-page lock/unlock, and any automatic/system refresh.
 
 ## Navigation model (post-DSKit rebuild)
 

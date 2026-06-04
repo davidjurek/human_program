@@ -90,8 +90,19 @@ public final class TodayViewModel {
     /// same animation transaction as the drag release (no snap-back flash).
     public func reorderTasks(_ ordered: [DailyPageTask]) {
         guard let p = page else { return }
+        let before = p.tasks.map { TaskSnapshot($0) }
         do {
             page = try pageRepo.reorderTasks(ordered, on: p)
+            let after = (page?.tasks ?? []).map { TaskSnapshot($0) }
+            // Only an actual order change is undoable (dropping in the same spot isn't).
+            let beforeOrder = before.map { [$0.id: $0.sortOrder] }
+            let afterOrder = after.map { [$0.id: $0.sortOrder] }
+            if beforeOrder != afterOrder {
+                Undo.record("Reorder tasks",
+                            undoOps: before.map { .upsert($0) },
+                            redoOps: after.map { .upsert($0) },
+                            coalesceKey: "reorder-today")
+            }
         } catch {
             logError("reorderTasks", error)
         }
@@ -145,8 +156,16 @@ public final class TodayViewModel {
 
     public func toggleTask(_ task: DailyPageTask) async {
         guard let p = page else { return }
+        // Calendar-sourced tasks are out of undo scope (calendar stays untouched).
+        let record = task.sourceType != .calendar
+        let before = record ? TaskSnapshot(task) : nil
         do {
             page = try pageRepo.toggleTask(task, on: p)
+            if let before {
+                let after = TaskSnapshot(task)
+                Undo.edited((after.completed ? "Complete task " : "Uncomplete task ") + undoTitle(after.title),
+                            before: before, after: after)
+            }
         } catch {
             logError("toggleTask", error)
         }
@@ -157,10 +176,14 @@ public final class TodayViewModel {
     public func addManualTask() async {
         guard !newTaskTitle.trimmingCharacters(in: .whitespaces).isEmpty,
               let p = page else { return }
+        let beforeIds = Set(p.tasks.map { $0.id })
         do {
             try pageRepo.addManualTask(title: newTaskTitle, to: p)
             newTaskTitle = ""
             await loadPage()
+            if let created = page?.tasks.first(where: { !beforeIds.contains($0.id) }) {
+                Undo.created("Add task " + undoTitle(created.title), TaskSnapshot(created))
+            }
         } catch {
             logError("addManualTask", error)
         }
@@ -175,8 +198,11 @@ public final class TodayViewModel {
            p.date >= Calendar.current.startOfDay(for: Date()) {
             try? calendarStateRepo.setHidden(true, eventId: eventId, date: p.date)
         }
+        // Calendar-sourced deletes touch calendar-local state (hidden) — out of scope.
+        let before = task.sourceType != .calendar ? TaskSnapshot(task) : nil
         do {
             try pageRepo.deleteTask(task, from: p)
+            if let before { Undo.deleted("Delete task " + undoTitle(before.title), before) }
         } catch {
             logError("deleteTask", error)
         }
@@ -202,12 +228,33 @@ public final class TodayViewModel {
 
     public func updateTask(_ task: DailyPageTask, title: String?, notes: String?) async {
         guard let p = page else { return }
+        let before = task.sourceType != .calendar ? TaskSnapshot(task) : nil
         do {
             try pageRepo.updateTask(task, title: title, notes: notes, on: p)
+            if let before {
+                Undo.edited(Self.taskEditDescription(before: before, after: TaskSnapshot(task)),
+                            before: before, after: TaskSnapshot(task))
+            }
             await loadPage()
         } catch {
             logError("updateTask", error)
         }
+    }
+
+    /// A specific undo label for a Today task edit: states whether it was a rename
+    /// or a note add/edit/remove (or both).
+    private static func taskEditDescription(before: TaskSnapshot, after: TaskSnapshot) -> String {
+        let name = undoTitle(after.title)
+        let titleChanged = before.title != after.title
+        let noteChanged = before.notes != after.notes
+        if titleChanged && noteChanged { return "Edit task " + name }
+        if titleChanged { return "Rename " + undoTitle(before.title) + " to " + name }
+        if noteChanged {
+            if before.notes.isEmpty { return "Add note to " + name }
+            if after.notes.isEmpty { return "Remove note from " + name }
+            return "Edit note of " + name
+        }
+        return "Edit task " + name
     }
 
     /// Human-readable source label for a task.

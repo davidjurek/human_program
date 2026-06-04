@@ -786,19 +786,13 @@ struct CalendarView: View {
 
 // MARK: - Shared multi-day timeline (Calendar Week + Day)
 
-/// Reports the y of a scroll content's top edge within its ScrollView (0 at rest,
-/// negative once scrolled down). Used to track the grid so the 00:00 label follows it.
-private struct TimelineScrollTopKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
 /// One scrollable hour grid: 1 day = Calendar Day view, 7 days = Calendar Week view.
-/// Extracted into its own view so each Week page / Day page owns its own scroll-offset
-/// state. The 00:00 gutter label is drawn as a non-clipped OVERLAY that tracks the
-/// scroll position, so it crosses up over the all-day divider instead of being cut off
-/// at the pane edge, and fades out as the grid scrolls past it (so it never collides
-/// with the other hour labels). [owner]
+/// Extracted into its own view so each Week page / Day page owns its own scroll state.
+/// The 00:00 gutter label rides INSIDE the scroll (so a pull-down carries it down with the
+/// grid) and a small top content inset keeps it centred on its line and uncut. The
+/// day-column lines extend up past 00:00 and the scroll clip reveals them on a pull so the
+/// columns stay connected to the day-header (clip-based — survives the rubber-band bounce,
+/// which SwiftUI scroll-offset tracking does not). [owner]
 private struct MultiDayTimeline: View {
     let days: [Date]
     let colW: CGFloat
@@ -808,11 +802,6 @@ private struct MultiDayTimeline: View {
     let bandHeight: CGFloat
     let timedEvents: (Date) -> [EKEvent]
     let onTap: (Date, EKEvent) -> Void
-
-    /// Y of the scroll content's top edge within the ScrollView (0 at rest, negative
-    /// once scrolled down). Drives the overlaid 00:00 label so it tracks the grid.
-    @State private var contentTop: CGFloat = 0
-    private let scrollSpace = "multiDayTimelineScroll"
 
     private func minute(_ date: Date) -> Int {
         let c = Calendar.current.dateComponents([.hour, .minute], from: date)
@@ -825,20 +814,19 @@ private struct MultiDayTimeline: View {
         let nDays = days.count
         let nowMin = minute(Date())
         let totalH = hourHeight * 24
-        // How far the verticals extend ABOVE the 12:00 AM line — clipped at rest
-        // (hidden under the all-day band), slides into view when the grid is pulled. [owner]
-        let aboveExtent = bandHeight + 120
+        // How far the day-column lines extend ABOVE 00:00. Generous so they always reach the
+        // day-header through the largest rubber-band pull. Kept ≤ totalH so it adds no extra
+        // scrollable slack below the grid.
+        let aboveExtent: CGFloat = totalH
 
         return ScrollView {
             ZStack(alignment: .topLeading) {
-                // Scroll-offset probe: a zero-height marker pinned to the content top.
-                GeometryReader { g in
-                    Color.clear.preference(key: TimelineScrollTopKey.self,
-                                           value: g.frame(in: .named(scrollSpace)).minY)
-                }
-                .frame(height: 0)
-
                 // Vertical day-column gridlines (Week only; Day passes showVerticals=false).
+                // Each line extends UP past 00:00 by `aboveExtent`. The scroll clips it at
+                // rest (the extension is hidden above the pane edge / under the day-header);
+                // a rubber-band pull slides the extension into the exposed gap so the columns
+                // stay connected to the header. The clip-based reveal is the only approach
+                // that survives the bounce (SwiftUI scroll-offset tracking does not). [owner]
                 if showVerticals {
                     ForEach(0...nDays, id: \.self) { i in
                         Rectangle().fill(Color.primary.opacity(0.06))
@@ -846,16 +834,15 @@ private struct MultiDayTimeline: View {
                             .offset(x: gutterW + CGFloat(i) * colW, y: -aboveExtent)
                     }
                 }
-                // Hour lines + labels (0...24). The 00:00 label is drawn separately as a
-                // non-clipped overlay below, so skip it here to avoid a double label.
+                // Hour lines + labels (0...24), 00:00 included. The small top content inset
+                // (see .contentMargins below) keeps the 00:00 label clear of the pane edge so
+                // it's centred on its line and never cut.
                 ForEach(0...24, id: \.self) { hour in
                     let y = CGFloat(hour) * hourHeight
                     Rectangle().fill(Color.primary.opacity(0.08))
                         .frame(width: colW * CGFloat(nDays), height: 1).offset(x: gutterW, y: y)
-                    if hour != 0 {
-                        TimelineGutterLabel(minutesOfDay: hour * 60)
-                            .offset(x: 0, y: y - 7)
-                    }
+                    TimelineGutterLabel(minutesOfDay: hour * 60)
+                        .offset(x: 0, y: y - 7)
                 }
                 // All-day ↔ timeline divider: rides with the grid on a pull, pins at the
                 // pane edge once scrolled. visualEffect reads the live scroll position. [owner]
@@ -895,18 +882,11 @@ private struct MultiDayTimeline: View {
             }
             .frame(maxWidth: .infinity, minHeight: totalH + 1, alignment: .topLeading)
         }
-        .coordinateSpace(.named(scrollSpace))
-        .onPreferenceChange(TimelineScrollTopKey.self) { contentTop = $0 }
-        // The 00:00 label lives OUTSIDE the scroll clip so it can cross up over the
-        // all-day divider instead of being cut off. It tracks the scroll position
-        // (centred on the 00:00 line wherever it is) and fades out as the grid scrolls
-        // up past it, so it never collides with the other hour labels. [owner]
-        .overlay(alignment: .topLeading) {
-            TimelineGutterLabel(minutesOfDay: 0)
-                .offset(y: contentTop - 7)
-                .opacity(contentTop >= 0 ? 1 : max(0, 1 + contentTop / 12))
-                .allowsHitTesting(false)
-        }
+        // Small top inset so the grid rests with 00:00 a few points below the pane edge —
+        // enough that the centred 00:00 label clears the clip and isn't cut. The gap it
+        // leaves above 00:00 is filled by the day-column line extensions, so it reads as the
+        // grid continuing up to the day-header rather than an empty gap.
+        .contentMargins(.top, 10, for: .scrollContent)
         .padding(.leading, TimelineMetrics.leadingInset)   // align gutter with Today [owner]
     }
 }

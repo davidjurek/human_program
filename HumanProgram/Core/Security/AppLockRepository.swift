@@ -61,6 +61,30 @@ public final class AppLockRepository {
         keychainLoad() != nil
     }
 
+    /// Purge an orphaned PIN left in the Keychain by a previous install.
+    ///
+    /// iOS wipes UserDefaults on uninstall but KEEPS the Keychain, so a PIN set in a
+    /// prior install survives a fresh reinstall — the app would relaunch already
+    /// locked (or refuse to set up a new PIN) with no way to clear it. On the first
+    /// launch of an install (detected by the absence of `DefaultsKey.installMarker`,
+    /// which uninstall clears) we wipe any leftover PIN so a fresh install is a clean
+    /// slate. An EXISTING user updating to a new build also lacks the marker on their
+    /// first run, but their UserDefaults are intact — `hp.onboarded` is true — so we
+    /// only purge when NOT onboarded (a genuine fresh install). A PIN can only be set
+    /// after onboarding, so a real existing PIN always has `onboarded == true` and is
+    /// never touched. Call this before any lock decision. Idempotent.
+    public func purgeOrphanedPINOnFreshInstall() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: DefaultsKey.installMarker) else { return }
+        let isExistingInstall = defaults.bool(forKey: DefaultsKey.onboarded)
+        if !isExistingInstall {
+            try? keychainDelete()
+            isLockEnabled = false
+            isBiometricEnabled = false
+        }
+        defaults.set(true, forKey: DefaultsKey.installMarker)
+    }
+
     // ── UserDefaults settings ──────────────────────────────────────────────────
 
     public var isLockEnabled: Bool {

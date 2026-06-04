@@ -35,7 +35,10 @@ struct RemindersView: View {
 
     private func toggle(_ reminder: NotificationReminder) {
         do {
+            let before = ReminderSnapshotModel(reminder)
             try NotificationReminderRepository(context: context).toggleEnabled(reminder)
+            Undo.edited((reminder.isEnabled ? "Enable reminder " : "Disable reminder ") + undoTitle(reminder.title),
+                        before: before, after: ReminderSnapshotModel(reminder), post: .rescheduleReminders)
             rescheduleAll()
         } catch { print("[Reminders] toggle error: \(error)") }
     }
@@ -43,8 +46,10 @@ struct RemindersView: View {
     private func delete(_ reminder: NotificationReminder) {
         let id = reminder.id
         do {
+            let before = ReminderSnapshotModel(reminder)
             try NotificationReminderRepository(context: context).delete(reminder)
             scheduler.cancel(reminderId: id)
+            Undo.deleted("Delete reminder " + undoTitle(before.title), before, post: .rescheduleReminders)
         } catch { print("[Reminders] delete error: \(error)") }
     }
 

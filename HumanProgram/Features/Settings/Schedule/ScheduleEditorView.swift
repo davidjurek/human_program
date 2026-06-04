@@ -670,6 +670,8 @@ struct ScheduleEditorView: View {
         // A duplicated-in-place draft creates a NEW template (never touches the
         // original it was copied from).
         let isNew = template == nil || forceNew
+        // Capture the pre-edit state before any field is mutated below.
+        let beforeSnap = isNew ? nil : template.map { ScheduleSnapshotModel($0) }
         let t = isNew ? ScheduleTemplate(name: trimmed) : template!
         if isNew { repo.insert(t) }
 
@@ -690,6 +692,12 @@ struct ScheduleEditorView: View {
                 conflictMessage = conflict.reason
                 if isNew { try? repo.delete(t) }
                 return
+            }
+            if isNew {
+                Undo.created("Add schedule " + undoTitle(trimmed), ScheduleSnapshotModel(t), post: .pageRefresh)
+            } else if let beforeSnap {
+                Undo.edited("Edit schedule " + undoTitle(trimmed), before: beforeSnap,
+                            after: ScheduleSnapshotModel(t), post: .pageRefresh)
             }
             try PageRefreshService.refresh(context: context)
         } catch {
@@ -716,7 +724,9 @@ struct ScheduleEditorView: View {
         showDeleteConfirm = false
         guard let template else { return }
         do {
+            let before = ScheduleSnapshotModel(template)
             try ScheduleRepository(context: context).delete(template)
+            Undo.deleted("Delete schedule " + undoTitle(before.name), before, post: .pageRefresh)
             try PageRefreshService.refresh(context: context)
         } catch {
             print("[ScheduleEditor] delete error: \(error)")

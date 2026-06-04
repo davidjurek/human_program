@@ -199,9 +199,13 @@ struct RecurringTaskEditorView: View {
         do {
             if let existing = template {
                 // Leave `active` unchanged (controlled from the list toggle).
+                let before = RecurringSnapshot(existing)
                 try repo.update(existing, title: trimmed, notes: notes, rule: makeRule())
+                Undo.edited("Edit recurring task " + undoTitle(trimmed), before: before,
+                            after: RecurringSnapshot(existing), post: .pageRefresh)
             } else {
-                try repo.create(title: trimmed, rule: makeRule(), notes: notes, active: true)
+                let created = try repo.create(title: trimmed, rule: makeRule(), notes: notes, active: true)
+                Undo.created("Add recurring task " + undoTitle(trimmed), RecurringSnapshot(created), post: .pageRefresh)
             }
             try PageRefreshService.refresh(context: context)
         } catch {
@@ -214,7 +218,9 @@ struct RecurringTaskEditorView: View {
         showDeleteConfirm = false
         guard let template else { return }
         do {
+            let before = RecurringSnapshot(template)
             try RecurringTaskRepository(context: context).delete(template)
+            Undo.deleted("Delete recurring task " + undoTitle(before.title), before, post: .pageRefresh)
             try PageRefreshService.refresh(context: context)
         } catch {
             print("[RecurringTaskEditor] delete error: \(error)")

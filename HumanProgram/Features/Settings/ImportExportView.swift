@@ -345,6 +345,9 @@ struct HprgmRestoreConfirmView: View {
             let service = HprgmImportService()
             let bundle = try service.preview(fileURL: url)
             try service.importData(bundle, context: context)
+            // A restore replaces ALL data — drop undo history so a shake-undo can't
+            // resurrect or clobber the restored state via stale snapshots.
+            UndoStore.shared.clear()
             // Full-screen "backup restored" interstitial → Today.
             appState.pendingInterstitial = .restored
         } catch {

@@ -413,8 +413,10 @@ struct ReminderEditorView: View {
         guard let reminder else { return }
         let id = reminder.id
         do {
+            let before = ReminderSnapshotModel(reminder)
             try NotificationReminderRepository(context: context).delete(reminder)
             scheduler.cancel(reminderId: id)
+            Undo.deleted("Delete reminder " + undoTitle(before.title), before, post: .rescheduleReminders)
         } catch {
             print("[ReminderEditor] delete error: \(error)")
         }
@@ -426,6 +428,9 @@ struct ReminderEditorView: View {
         let mode: NotificationRecurrenceMode = repeatMode == "multiple" ? .everyNMinutes : .selectedWeekdays
         let fh = (repeatMode == "multiple" ? startMinutes : onceMinutes) / 60
         let fm = (repeatMode == "multiple" ? startMinutes : onceMinutes) % 60
+        // Capture the pre-edit state before any field is mutated below (the entity
+        // is only touched here in save(), so it still holds its old values).
+        let beforeSnap = reminder.map { ReminderSnapshotModel($0) }
 
         do {
             // One write path for both new and edit: get-or-create the object, set every
@@ -445,6 +450,13 @@ struct ReminderEditorView: View {
             target.soundMode = soundMode
             target.imageFilename = imageFilename
             try repo.update(target)
+
+            if let beforeSnap {
+                Undo.edited("Edit reminder " + undoTitle(target.title), before: beforeSnap,
+                            after: ReminderSnapshotModel(target), post: .rescheduleReminders)
+            } else {
+                Undo.created("Add reminder " + undoTitle(target.title), ReminderSnapshotModel(target), post: .rescheduleReminders)
+            }
 
             let all = (try? repo.fetchAll()) ?? []
             Task { await scheduler.reschedule(reminders: all) }

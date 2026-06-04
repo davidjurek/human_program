@@ -36,6 +36,7 @@ struct ScheduleListView: View {
     }
 
     private func toggle(_ template: ScheduleTemplate, to newValue: Bool) {
+        let before = ScheduleSnapshotModel(template)   // before the isEnabled change
         template.isEnabled = newValue
         do {
             if let conflict = try ScheduleRepository(context: context).save(template) {
@@ -43,6 +44,8 @@ struct ScheduleListView: View {
                 conflictMessage = conflict.reason
             } else {
                 conflictMessage = nil
+                Undo.edited((newValue ? "Enable schedule " : "Disable schedule ") + undoTitle(template.name),
+                            before: before, after: ScheduleSnapshotModel(template), post: .pageRefresh)
                 try PageRefreshService.refresh(context: context)
             }
         } catch {

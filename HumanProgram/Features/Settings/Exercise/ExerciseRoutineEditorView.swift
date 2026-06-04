@@ -317,7 +317,10 @@ struct ExerciseRoutineEditorView: View {
     private func commitNameIfChanged() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard trimmed != routine.name else { return }
+        let before = ExerciseRoutineSnapshot(routine)
         try? ExerciseRepository(context: context).update(routine, name: trimmed)
+        Undo.edited("Edit exercise routine", before: before,
+                    after: ExerciseRoutineSnapshot(routine), post: .pageRefresh)
         try? PageRefreshService.refresh(context: context)
     }
 
@@ -330,7 +333,9 @@ struct ExerciseRoutineEditorView: View {
             return
         }
         guard ex.item.text != trimmed else { return }
+        let before = ExerciseItemSnapshot(ex.item)
         try? ExerciseRepository(context: context).updateItem(ex.item, text: trimmed)
+        Undo.edited("Edit exercise " + undoTitle(trimmed), before: before, after: ExerciseItemSnapshot(ex.item), post: .pageRefresh)
         if let i = items.firstIndex(where: { $0.id == id }) { items[i].text = trimmed }
         try? PageRefreshService.refresh(context: context)
     }
@@ -338,7 +343,9 @@ struct ExerciseRoutineEditorView: View {
     private func commitCounts(_ id: UUID) {
         guard let ex = items.first(where: { $0.id == id }) else { return }
         guard ex.item.sets != ex.sets || ex.item.reps != ex.reps else { return }
+        let before = ExerciseItemSnapshot(ex.item)
         try? ExerciseRepository(context: context).setItemCounts(ex.item, sets: ex.sets, reps: ex.reps)
+        Undo.edited("Edit exercise " + undoTitle(ex.item.text), before: before, after: ExerciseItemSnapshot(ex.item), post: .pageRefresh)
         try? PageRefreshService.refresh(context: context)
     }
 
@@ -348,22 +355,32 @@ struct ExerciseRoutineEditorView: View {
         let repo = ExerciseRepository(context: context)
         if let item = try? repo.addItem(to: routine, text: trimmed) {
             items.append(DraftExercise(item: item, text: trimmed, sets: nil, reps: nil))
+            Undo.created("Add exercise " + undoTitle(trimmed), ExerciseItemSnapshot(item), post: .pageRefresh)
             try? PageRefreshService.refresh(context: context)
         }
         newText = ""
     }
 
     private func persistOrder() {
+        let before = routine.items.map { ExerciseItemSnapshot($0) }
         try? ExerciseRepository(context: context).reorderItems(items.map { $0.item }, in: routine)
+        let after = routine.items.map { ExerciseItemSnapshot($0) }
+        if before.map({ [$0.id: $0.sortOrder] }) != after.map({ [$0.id: $0.sortOrder] }) {
+            Undo.record("Reorder exercises", undoOps: before.map { .upsert($0) },
+                        redoOps: after.map { .upsert($0) }, post: .pageRefresh,
+                        coalesceKey: "reorder-exercise-\(routine.id)")
+        }
         try? PageRefreshService.refresh(context: context)
     }
 
     private func deleteExercise(id: UUID) {
         guard let ex = items.first(where: { $0.id == id }) else { return }
+        let before = ExerciseItemSnapshot(ex.item)
         withAnimation(.snappy(duration: 0.2)) {
             items.removeAll { $0.id == id }
         }
         try? ExerciseRepository(context: context).deleteItem(ex.item, from: routine)
+        Undo.deleted("Delete exercise " + undoTitle(before.text), before, post: .pageRefresh)
         try? PageRefreshService.refresh(context: context)
     }
 }

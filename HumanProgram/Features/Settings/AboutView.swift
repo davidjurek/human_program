@@ -27,6 +27,10 @@ struct AboutView: View {
                     TermsOfServiceView(mode: .reference)
                 }
 
+                SettingsNavRow(label: "Privacy Policy", systemImage: "lock.doc") {
+                    PrivacyPolicyView(mode: .reference)
+                }
+
                 SettingsNavRow(label: "Tutorial", systemImage: "questionmark.circle") {
                     TutorialView(mode: .reference)
                 }

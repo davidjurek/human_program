@@ -18,6 +18,11 @@ public final class AppLockViewModel {
     public var autoBiometricArmed = false
 
     public init() {
+        // Fresh install: iOS keeps the Keychain across reinstalls, so a PIN from a
+        // previous install would still be present here even though every UserDefault
+        // was wiped. Purge it FIRST so a fresh install starts with no lock — before the
+        // hasPIN() check below could read a stale PIN. [owner: fresh install showed a PIN]
+        repo.purgeOrphanedPINOnFreshInstall()
         // Cold launch: if the lock is enabled, start LOCKED. A terminated app (e.g.
         // swiped away in the app switcher) relaunches fresh, so there's no background/
         // foreground pair to drive the timeout check — without this, a kill+reopen

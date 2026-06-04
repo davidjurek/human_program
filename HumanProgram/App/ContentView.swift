@@ -15,6 +15,8 @@ struct ContentView: View {
     // Fresh-install-only flag for the permissions step. A factory reset deliberately
     // SETS this true (FactoryResetView) so the re-run of onboarding skips permissions.
     @AppStorage(DefaultsKey.permissionsAsked) private var permissionsAsked = false
+    // Shake-triggered undo/redo popup (shown only during normal app use).
+    @State private var showUndoPopup = false
 
     /// The one full-screen gate (if any) to show over the app. Rendered as a single
     /// continuous overlay (see body) rather than a `.fullScreenCover`: covers never
@@ -66,6 +68,26 @@ struct ContentView: View {
                 .transition(.identity)
                 .zIndex(1)
             }
+
+            // Always-present shake listener (invisible, never intercepts touches).
+            ShakeDetector().allowsHitTesting(false).frame(width: 0, height: 0)
+
+            // Shake → undo/redo popup. Only during normal use (never over the lock
+            // screen / onboarding / interstitials).
+            if showUndoPopup && startupCover == nil {
+                UndoRedoPopup(
+                    onUndo: { UndoStore.shared.undo(context: context) },
+                    onRedo: { UndoStore.shared.redo(context: context) },
+                    onDismiss: { showUndoPopup = false }
+                )
+                .transition(.opacity)
+                .zIndex(2)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .humanProgramShake)) { _ in
+            guard startupCover == nil else { return }
+            Haptics.impact(.medium)
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showUndoPopup = true }
         }
         .onReceive(
             NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
@@ -141,15 +163,19 @@ private struct StartupCoverView: View {
 }
 
 // ── Onboarding flow ──────────────────────────────────────────────────────────────
-// Welcome → Terms of Service (must agree) → Tutorial → (fresh install only)
-// Permissions. The app cannot be reached until the Terms are confirmed. Owns its own
-// step state, which starts at `.welcome` every time the flow is presented.
+// Welcome → Terms of Service (must agree) → Privacy Policy (must agree) → Tutorial
+// → (fresh install only) Permissions. The app cannot be reached until both the Terms
+// and the Privacy Policy are confirmed. Owns its own step state, which starts at
+// `.welcome` every time the flow is presented (so it re-runs after a factory reset).
 private struct OnboardingFlowView: View {
     @Binding var permissionsAsked: Bool
     let onFinish: () -> Void
 
-    private enum Step { case welcome, terms, tutorial, permissions }
+    private enum Step { case welcome, terms, privacy, tutorial, permissions }
     @State private var step: Step = .welcome
+    /// When the Terms were confirmed this run — paired with the Privacy confirmation
+    /// to write one permanent acceptance record (see AcceptanceAuditLog).
+    @State private var tosAcceptedAt: Date?
 
     var body: some View {
         switch step {
@@ -159,6 +185,19 @@ private struct OnboardingFlowView: View {
             }
         case .terms:
             TermsOfServiceView(mode: .onboarding) {
+                tosAcceptedAt = Date()
+                withAnimation { step = .privacy }
+            }
+        case .privacy:
+            PrivacyPolicyView(mode: .onboarding) {
+                let now = Date()
+                // One permanent, on-device audit entry per acceptance cycle. Lives in
+                // the Keychain, so it survives factory reset, backup restore, and even
+                // reinstall — install logs 1, each later reset adds another.
+                AcceptanceAuditLog.recordAcceptance(
+                    tosAcceptedAt: tosAcceptedAt ?? now,
+                    privacyAcceptedAt: now
+                )
                 withAnimation { step = .tutorial }
             }
         case .tutorial:
