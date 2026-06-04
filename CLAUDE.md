@@ -247,4 +247,5 @@ The owner is a beginner iOS developer. When you finish a task or explain a chang
 
 - Make changes in chunks small enough to test. Keep the app buildable and usable after each significant chunk — don't pile up large unverified edits.
 - Commit only after the behavior actually works and the owner approves or asks.
+- **Commit messages must NEVER include a `Co-Authored-By: Claude ...` line** (or any AI-attribution trailer). Leave it out of every commit, always.
 - Fold durable lessons into the maintained docs (`CLAUDE.md`, `ADD.md`). Don't create separate long-lived handoff/notes files as a parallel source of truth.

@@ -271,9 +271,9 @@ struct BacklogView: View {
     /// is the same whichever option is selected. [owner]
     private var sortPopupWidth: CGFloat {
         let titles = mode == .tasks ? TaskSort.allCases.map(\.rawValue) : ProjectSort.allCases.map(\.rawValue)
-        let font = appUIFont(17)
+        let font = appUIFont(appScaledSize(17))   // .body renders at the user's font scale
         let textW = titles.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-        return ceil(textW) + 14 + 12 + 8 + 36   // checkmark + gap + trailing min + h-padding
+        return ceil(textW) + 14 + 12 + 8 + 36 + 4   // checkmark + gap + trailing min + h-padding + slack
     }
 
     @ViewBuilder
@@ -306,6 +306,7 @@ struct BacklogView: View {
                 Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary).opacity(selected ? 1 : 0).frame(width: 14)
                 DSText(title).dsTextStyle(.body)
+                    .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: 8)
             }
             .padding(.horizontal, 18)
