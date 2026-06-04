@@ -87,6 +87,10 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
 
     /// Menus use an asymmetric (right-shifted) inset; editor screens centered.
     var centered: Bool = false
+    /// Hides the leading back chevron — for editors presented as a modal sheet, where
+    /// a back arrow is wrong. The bar then matches the read-mode detail sheet: no
+    /// leading button, the action button on the right, pushed down from the top. [owner]
+    var showsBackButton: Bool = true
     /// Custom back action (e.g. a discard-changes guard). Defaults to dismiss().
     var onBack: (() -> Void)?
     /// Returns true when a leading-edge swipe-back should be intercepted instead
@@ -139,21 +143,26 @@ struct SettingsScreen<Content: View, Trailing: View>: View {
     // so the buttons stay legible when content scrolls up under them.
     private var topBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-                .a11yTapBorder(Rectangle())
-                .highPriorityGesture(TapGesture().onEnded {
-                    if let onBack { onBack() } else { dismiss() }
-                })
+            if showsBackButton {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .a11yTapBorder(Rectangle())
+                    .highPriorityGesture(TapGesture().onEnded {
+                        if let onBack { onBack() } else { dismiss() }
+                    })
+            }
             Spacer()
             trailing()
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
-        .padding(.bottom, 4)
+        // Sheet editors (no back chevron) drop the action button down to match the
+        // read-mode detail sheet's Edit/Done position; pushed screens keep their look.
+        .padding(.top, showsBackButton ? 0 : 18)
+        .padding(.bottom, showsBackButton ? 4 : 10)
         .topBarFrost()
     }
 }
@@ -283,12 +292,14 @@ struct SwipeBackEnabler: UIViewControllerRepresentable {
 
 extension SettingsScreen where Trailing == EmptyView {
     init(centered: Bool = false,
+         showsBackButton: Bool = true,
          onBack: (() -> Void)? = nil,
          swipeBackBlocked: @escaping () -> Bool = { false },
          scrollDisabled: Bool = false,
          manualKeyboardAvoidance: Bool = false,
          @ViewBuilder content: @escaping () -> Content) {
-        self.init(centered: centered, onBack: onBack, swipeBackBlocked: swipeBackBlocked,
+        self.init(centered: centered, showsBackButton: showsBackButton, onBack: onBack,
+                  swipeBackBlocked: swipeBackBlocked,
                   scrollDisabled: scrollDisabled, manualKeyboardAvoidance: manualKeyboardAvoidance,
                   trailing: { EmptyView() }, content: content)
     }

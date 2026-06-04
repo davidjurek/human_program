@@ -69,8 +69,9 @@ private struct BackgroundSwatch: View {
                 if let background {
                     background.view
                 } else {
-                    // Filled neutral placeholder slot (not selectable yet).
-                    Color.primary.opacity(0.08)
+                    // Empty slot: invisible but still occupies its grid cell, so removing
+                    // the placeholders doesn't shift the rows below (Dark Mode) up. [owner]
+                    Color.clear
                 }
             }
             .frame(height: 72)

@@ -462,26 +462,31 @@ private struct TodayDatePicker: View {
         self.onSelect = onSelect
     }
 
+    /// Upper bound for navigation/selection — the jump picker stops at year 2100. [owner]
+    private static let maxDate = Calendar.current.date(from: DateComponents(year: 2100, month: 12, day: 31))
+
     var body: some View {
         ZStack {
             SettingsBackground()
-            VStack(spacing: 16) {
-                DatePicker("", selection: $selected, displayedComponents: .date)
-                    .datePickerStyle(.graphical)
-                    .tint(weekdaySelectedColor)
-                    .padding()
+            VStack(spacing: 0) {
+                // Push the whole calendar down ~50pt, then nudge all popup content up
+                // 18pt (94 − 18 = 76); the gap below shrinks so Go tracks with it. [owner]
+                Color.clear.frame(height: 76)
+                // Shared DSKit month-grid picker (app font) — replaces the stock
+                // graphical DatePicker (wrong font, navigable to year 4000). [owner]
+                DSCalendarView(date: $selected, maxDate: Self.maxDate)
+                    .padding(.horizontal, 20)
+                Color.clear.frame(height: 10)
                 Button {
                     onSelect(selected); dismiss()
                 } label: {
                     DSText("Go").dsTextStyle(.headline)
                         .padding(.horizontal, 28).padding(.vertical, 12)
-                        .background(Color.primary.opacity(0.08), in: Capsule())
                         .contentShape(Capsule())
                         .a11yTapBorder(Capsule())
                 }.buttonStyle(.plain)
                 Spacer()
             }
-            .padding(.top, 20)
         }
         .presentationDetents([.medium])
     }

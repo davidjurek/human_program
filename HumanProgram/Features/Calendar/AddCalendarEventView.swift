@@ -113,7 +113,9 @@ struct AddCalendarEventView: View {
     private var isEditing: Bool { eventToEdit != nil }
 
     var body: some View {
-        SettingsScreen(centered: true, manualKeyboardAvoidance: true, trailing: {
+        // Editing is presented as a modal sheet → no back chevron, Save aligned with
+        // the read-mode detail sheet's Done. Adding is pushed → keep the back chevron.
+        SettingsScreen(centered: true, showsBackButton: !isEditing, manualKeyboardAvoidance: true, trailing: {
             Button { saveEvent() } label: {
                 DSText(isEditing ? "Save" : "Add").dsTextStyle(.body, canSave ? Color.primary : Color.secondary)
                     .frame(minWidth: 44, minHeight: 44).padding(.horizontal, 8)

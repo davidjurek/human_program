@@ -138,7 +138,7 @@ struct CalendarView: View {
 
     private var syncCenterButton: some View {
         Button { showReconciliation = true } label: {
-            Text("Sync: \(syncDiffCount) \(syncDiffCount == 1 ? "difference" : "differences")")
+            Text("\(syncDiffCount) \(syncDiffCount <= 1 ? "difference" : "differences")")
                 .font(appFont(19))
                 .foregroundStyle(syncDiffCount == 0 ? appOnboardingBlue : Color.orange)
                 .frame(height: 44)
@@ -361,11 +361,12 @@ struct CalendarView: View {
             TabView(selection: $weekPage) {
                 ForEach(0..<pageCount, id: \.self) { i in
                     let ws = weekStart(forPage: i)
+                    let days = weekDays(from: ws)
                     VStack(spacing: 0) {
                         weekNavHeader(weekStart: ws)
                         weekDayHeaderRow(weekStart: ws)
-                        weekAllDayBand(weekStart: ws, colW: colW)
-                        weekTimeline(weekStart: ws, colW: colW)
+                        multiDayAllDayBand(days: days, colW: colW, showVerticals: true)
+                        multiDayTimeline(days: days, colW: colW, showVerticals: true)
                             .frame(maxHeight: .infinity)
                     }
                     .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
@@ -427,111 +428,46 @@ struct CalendarView: View {
     private let weekTimeColW: CGFloat = TimelineMetrics.gutterW   // shared with Today + Day [owner]
     private let weekHourHeight: CGFloat = 44
 
-    // 7-day time grid: left time column, 24 hour lines, red now-bar, events placed
-    // in their day column by time. [#44]
-    private func weekTimeline(weekStart displayedWeekStart: Date, colW: CGFloat) -> some View {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let weekDays = weekDays(from: displayedWeekStart)
-        let nowMin = minuteOfDay(Date())
-        let totalH = weekHourHeight * 24
-        // How far the verticals extend ABOVE the 12:00 AM line. That section is off
-        // the top of the scroll content, so it's clipped (hidden under the all-day
-        // band) at rest and slides into view — staying connected to the grid below —
-        // when the grid is pulled down. [owner]
-        let aboveExtent = weekAllDayBandHeight + 120
-
-        return ScrollView {
-                ZStack(alignment: .topLeading) {
-                    // Vertical day-column gridlines (Google-style). One continuous run
-                    // from `aboveExtent` above the 12:00 AM line down to the bottom, so
-                    // the hidden upper part connects seamlessly to the visible grid
-                    // when pulled. [#2]
-                    ForEach(0...7, id: \.self) { i in
-                        Rectangle().fill(Color.primary.opacity(0.06))
-                            .frame(width: 1, height: totalH + aboveExtent)
-                            .offset(x: weekTimeColW + CGFloat(i) * colW, y: -aboveExtent)
-                    }
-                    // Hour lines + labels (0...24, incl. the closing midnight line).
-                    // The 12:00 AM line is part of the grid, so it moves with the grid
-                    // when pulled. The 12:00 AM label is clamped to stay fully visible
-                    // (it can't sit above the scroll content's top). [owner]
-                    ForEach(0...24, id: \.self) { hour in
-                        let y = CGFloat(hour) * weekHourHeight
-                        Rectangle().fill(Color.primary.opacity(0.08))
-                            .frame(width: colW * 7, height: 1).offset(x: weekTimeColW, y: y)
-                        TimelineGutterLabel(minutesOfDay: hour * 60)   // shared gutter [owner]
-                            .offset(x: 0, y: y - 7)   // centred on its line; the 00:00 line now sits flush at the pane edge [owner]
-                    }
-                    // All-day ↔ timeline divider, drawn AT the 00:00 line, which now sits
-                    // flush at the frozen all-day pane's bottom edge (no headroom gap). It
-                    // rides down with the grid during a pull (so the single line travels
-                    // down), but PINS at the pane edge (scroll-content top, y = 0) once
-                    // scrolled down — splitting from the 00:00 line, which moves away with
-                    // the grid. Same look/position as the 00:00 hour line → one line at
-                    // rest. visualEffect reads the live scroll position every frame. [owner]
-                    Rectangle().fill(Color.primary.opacity(0.08))
-                        .frame(width: colW * 7, height: 1).offset(x: weekTimeColW)
-                        .visualEffect { content, proxy in
-                            content.offset(y: max(0, -proxy.frame(in: .scrollView).minY))
-                        }
-                    // Timed events per day column (all-day events live in the band). [#cal-allday]
-                    ForEach(Array(weekDays.enumerated()), id: \.offset) { idx, day in
-                        ForEach(timedEventsForDay(day), id: \.eventIdentifier) { event in
-                            let s = minuteOfDay(event.startDate)
-                            let e = minuteOfDay(event.endDate)
-                            let h = max(weekHourHeight / 3, CGFloat(max(e - s, 20)) / 60 * weekHourHeight)
-                            Button {
-                                selectedDate = day; selectedEvent = event; showEventDetail = true
-                            } label: {
-                                Text(event.displayTitle)
-                                    .font(appFont(9)).foregroundStyle(.white)
-                                    .lineLimit(2).padding(.horizontal, 3).padding(.vertical, 1)
-                                    .frame(width: colW - 2, height: h, alignment: .topLeading)
-                                    .background(RoundedRectangle(cornerRadius: 3).fill(event.displayColor))
-                            }.buttonStyle(.plain)
-                            .a11yTapBorder(RoundedRectangle(cornerRadius: 3))
-                            .offset(x: weekTimeColW + CGFloat(idx) * colW + 1,
-                                    y: CGFloat(s) / 60 * weekHourHeight)
-                        }
-                    }
-                    // Red now-bar, if this week contains today: centred pill in the
-                    // time column + line that STARTS at the pill's right edge
-                    // (attached) and STOPS at Saturday's right edge. [#25/#27]
-                    if weekDays.contains(where: { cal.isDate($0, inSameDayAs: today) }) {
-                        let nowY = CGFloat(nowMin) / 60 * weekHourHeight
-                        let satRightEdge = weekTimeColW + colW * 7
-                        Rectangle().fill(Color.red)
-                            .frame(width: max(0, satRightEdge - TimelineMetrics.pillTrailingEdge), height: 1)
-                            .offset(x: TimelineMetrics.pillTrailingEdge, y: nowY)
-                        NowPill(minutesOfDay: nowMin, width: TimelineMetrics.dynamicPillW)
-                            .frame(width: weekTimeColW, alignment: .center)
-                            .offset(x: 0, y: nowY - TimelineMetrics.pillH / 2)
-                    }
-                }
-                .frame(maxWidth: .infinity, minHeight: totalH + 1, alignment: .topLeading)
-        }
-        .padding(.leading, TimelineMetrics.leadingInset)   // align gutter with Today [owner]
+    // Shared N-day time grid (1 day = Day view, 7 days = Week view). Rendered by the
+    // `MultiDayTimeline` view so each Week page / Day page owns its own scroll-offset
+    // state. The ONLY differences between Week and Day are `days.count` and
+    // `showVerticals` (Day hides the column gridlines) — one change updates both. [#44]
+    private func multiDayTimeline(days: [Date], colW: CGFloat, showVerticals: Bool) -> some View {
+        MultiDayTimeline(
+            days: days, colW: colW, showVerticals: showVerticals,
+            hourHeight: weekHourHeight, gutterW: weekTimeColW, bandHeight: weekAllDayBandHeight,
+            timedEvents: { timedEventsForDay($0) },
+            onTap: { day, event in
+                selectedDate = day; selectedEvent = event; showEventDetail = true
+            }
+        )
     }
 
     // MARK: - Day View
 
     private var dayView: some View {
-        // Finger-tracked flip between days (Photos-style paging). [#5]
-        TabView(selection: $dayPage) {
-            ForEach(0..<pageCount, id: \.self) { i in
-                let d = dayStart(forPage: i)
-                VStack(spacing: 0) {
-                    dayNavHeader(day: d)
-                    dayAllDayBand(day: d)
-                    dayTimeline(day: d)
+        // Same template as Week, rendered for ONE full-width day: no S M T W header
+        // row and no vertical column dividers (showVerticals: false). [owner]
+        GeometryReader { geo in
+            let colW = geo.size.width - TimelineMetrics.leadingInset - TimelineMetrics.trailingInset - weekTimeColW
+            // Finger-tracked flip between days (Photos-style paging). [#5]
+            TabView(selection: $dayPage) {
+                ForEach(0..<pageCount, id: \.self) { i in
+                    let d = dayStart(forPage: i)
+                    VStack(spacing: 0) {
+                        dayNavHeader(day: d)
+                        multiDayAllDayBand(days: [d], colW: colW, showVerticals: false)
+                        multiDayTimeline(days: [d], colW: colW, showVerticals: false)
+                            .frame(maxHeight: .infinity)
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                    .tag(i)
                 }
-                .tag(i)
             }
-        }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .onChange(of: dayPage) { _, i in
-            selectedDate = dayStart(forPage: i); loadEvents()
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .onChange(of: dayPage) { _, i in
+                selectedDate = dayStart(forPage: i); loadEvents()
+            }
         }
     }
 
@@ -548,105 +484,6 @@ struct CalendarView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-    }
-
-    private func dayTimeline(day selectedDate: Date) -> some View {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let isToday = cal.isDate(selectedDate, inSameDayAs: today)
-        let nowMinute: Int = {
-            let comps = cal.dateComponents([.hour, .minute], from: Date())
-            return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
-        }()
-        let dayEvents = timedEventsForDay(selectedDate).sorted { $0.startDate < $1.startDate }
-        let hourHeight: CGFloat = 56
-
-        return ScrollViewReader { proxy in
-            ScrollView {
-                ZStack(alignment: .topLeading) {
-                    // Hour grid: time label + full-width horizontal line per hour. [#43]
-                    VStack(spacing: 0) {
-                        ForEach(0..<24, id: \.self) { hour in
-                            HStack(alignment: .top, spacing: 8) {
-                                TimelineGutterLabel(minutesOfDay: hour * 60)   // shared gutter [owner]
-                                    .offset(y: -7)   // centre label on the hour line at the row top [owner]
-                                Rectangle().fill(Color.primary.opacity(0.08))
-                                    .frame(height: 1)
-                            }
-                            .frame(height: hourHeight, alignment: .top)
-                            .id(hour)
-                        }
-                        // Closing midnight mark at the very bottom (matches Today). [owner]
-                        HStack(alignment: .top, spacing: 8) {
-                            TimelineGutterLabel(minutesOfDay: 24 * 60)
-                                .offset(y: -7)   // centre on the closing midnight line [owner]
-                            Rectangle().fill(Color.primary.opacity(0.08))
-                                .frame(height: 1)
-                        }
-                    }
-
-                    // All-day ↔ timeline divider, drawn AT the 00:00 line, which now sits
-                    // flush at the frozen all-day pane's bottom edge (no headroom gap). It
-                    // rides down with the grid during a pull (single line travels down), but
-                    // PINS at the pane edge (scroll-content top, y = 0) once scrolled down —
-                    // splitting from the 00:00 line, which moves away with the grid. Same
-                    // look as the 00:00 hour line → one line at rest. [owner]
-                    HStack(spacing: 8) {
-                        Color.clear.frame(width: TimelineMetrics.gutterW, height: 1)
-                        Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .visualEffect { content, proxy in
-                        content.offset(y: max(0, -proxy.frame(in: .scrollView).minY))
-                    }
-
-                    // Event blocks
-                    ForEach(dayEvents, id: \.eventIdentifier) { event in
-                        let startMin = minuteOfDay(event.startDate)
-                        let endMin = minuteOfDay(event.endDate)
-                        let duration = max(endMin - startMin, 30)
-                        let topOffset = CGFloat(startMin) / 60.0 * hourHeight
-                        let height = CGFloat(duration) / 60.0 * hourHeight
-
-                        Button {
-                            selectedEvent = event
-                            showEventDetail = true
-                        } label: {
-                            DayEventBlock(event: event)
-                                .frame(height: height)
-                        }
-                        .buttonStyle(.plain)
-                        .a11yTapBorder(RoundedRectangle(cornerRadius: 4))
-                        .offset(x: TimelineMetrics.gutterW + 8, y: topOffset)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.trailing, 16)
-                    }
-
-                    // Current time: centred pill in the time column + line that
-                    // STARTS at the pill's right edge (attached) and ends at the
-                    // shared right edge (same x as Week's Saturday edge). [#26/#28]
-                    if isToday {
-                        let topOffset = CGFloat(nowMinute) / 60.0 * hourHeight
-                        Rectangle().fill(Color.red).frame(height: 1)
-                            .padding(.leading, TimelineMetrics.pillTrailingEdge)
-                            .frame(maxWidth: .infinity)
-                            .offset(y: topOffset)
-                            .id("currentTime")
-                        NowPill(minutesOfDay: nowMinute, width: TimelineMetrics.dynamicPillW)
-                            .frame(width: TimelineMetrics.gutterW, alignment: .center)
-                            .offset(y: topOffset - TimelineMetrics.pillH / 2)
-                    }
-                }
-            }
-            .padding(.leading, TimelineMetrics.leadingInset)    // left margin [owner]
-            .padding(.trailing, TimelineMetrics.trailingInset)  // shared right gap [owner]
-            .onAppear {
-                if isToday {
-                    let scrollHour = max(0, (nowMinute / 60) - 1)
-                    proxy.scrollTo(scrollHour, anchor: .top)
-                }
-            }
-        }
     }
 
     // MARK: - Agenda View
@@ -791,16 +628,15 @@ struct CalendarView: View {
 
     /// Fixed band height: ~1.4× the gap between two hour lines.
     private var weekAllDayBandHeight: CGFloat { weekHourHeight * 1.4 }
-    private var dayAllDayBandHeight: CGFloat { 40 }
 
-    /// Week all-day band: a fixed-height row with one column per day. ALWAYS shown at
-    /// its fixed height (even when empty) so the timeline below doesn't jump as events
-    /// come and go. [owner: all-day section stays even if empty]
-    private func weekAllDayBand(weekStart displayedWeekStart: Date, colW: CGFloat) -> some View {
-        let weekDays = weekDays(from: displayedWeekStart)
-        return HStack(spacing: 0) {
+    /// Shared all-day band (1 day = Day view, 7 days = Week view): a fixed-height row
+    /// with one column per day. ALWAYS shown at its fixed height (even when empty) so
+    /// the timeline below doesn't jump as events come and go. Day view passes
+    /// showVerticals=false (no column dividers). [owner: all-day section stays even if empty]
+    private func multiDayAllDayBand(days: [Date], colW: CGFloat, showVerticals: Bool) -> some View {
+        HStack(spacing: 0) {
             Color.clear.frame(width: weekTimeColW, height: weekAllDayBandHeight)
-            ForEach(Array(weekDays.enumerated()), id: \.offset) { _, day in
+            ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                 allDayColumn(allDayEventsForDay(day), height: weekAllDayBandHeight,
                              font: 9, chipHeight: 15) { allDayPopupDate = day }
                     .frame(width: colW)
@@ -808,36 +644,22 @@ struct CalendarView: View {
         }
         .frame(height: weekAllDayBandHeight)
         // Vertical day-column separators so the all-day section is divided into the
-        // 7 days. They line up with the grid's columns below and meet the grid
+        // day columns. They line up with the grid's columns below and meet the grid
         // verticals at the 12:00 AM line. No bottom line here — the grid's 12:00 AM
         // line is the section's bottom edge (it moves with the grid). [owner]
         .overlay(alignment: .topLeading) {
-            ForEach(0...7, id: \.self) { i in
-                Rectangle().fill(Color.primary.opacity(0.06))
-                    .frame(width: 1, height: weekAllDayBandHeight)
-                    .offset(x: weekTimeColW + CGFloat(i) * colW)
+            if showVerticals {
+                ForEach(0...days.count, id: \.self) { i in
+                    Rectangle().fill(Color.primary.opacity(0.06))
+                        .frame(width: 1, height: weekAllDayBandHeight)
+                        .offset(x: weekTimeColW + CGFloat(i) * colW)
+                }
             }
         }
         .padding(.leading, TimelineMetrics.leadingInset)
         // The band has a fixed width; without this the VStack CENTERS it, shifting
         // it ~8pt right of the header/timeline. Pin it leading so it lines up. [owner]
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Day all-day band: a single fixed-height column, aligned to the timeline's event
-    /// area. ALWAYS shown at its fixed height (even when empty). [owner]
-    private func dayAllDayBand(day: Date) -> some View {
-        let items = allDayEventsForDay(day)
-        return HStack(spacing: 8) {
-            Color.clear.frame(width: 48, height: dayAllDayBandHeight)
-            allDayColumn(items, height: dayAllDayBandHeight, font: 12, chipHeight: 22) {
-                allDayPopupDate = day
-            }
-            .padding(.trailing, 16)
-        }
-        .padding(.leading, TimelineMetrics.leadingInset)   // align with the shifted timeline [owner]
-        .padding(.trailing, 4)
-        .frame(height: dayAllDayBandHeight)
     }
 
     /// One day's stacked all-day chips (max 3), with a "+" badge at the bottom-right
@@ -959,5 +781,132 @@ struct CalendarView: View {
     private func weekDays(from weekStart: Date) -> [Date] {
         let cal = Calendar.current
         return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: weekStart) }
+    }
+}
+
+// MARK: - Shared multi-day timeline (Calendar Week + Day)
+
+/// Reports the y of a scroll content's top edge within its ScrollView (0 at rest,
+/// negative once scrolled down). Used to track the grid so the 00:00 label follows it.
+private struct TimelineScrollTopKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// One scrollable hour grid: 1 day = Calendar Day view, 7 days = Calendar Week view.
+/// Extracted into its own view so each Week page / Day page owns its own scroll-offset
+/// state. The 00:00 gutter label is drawn as a non-clipped OVERLAY that tracks the
+/// scroll position, so it crosses up over the all-day divider instead of being cut off
+/// at the pane edge, and fades out as the grid scrolls past it (so it never collides
+/// with the other hour labels). [owner]
+private struct MultiDayTimeline: View {
+    let days: [Date]
+    let colW: CGFloat
+    let showVerticals: Bool
+    let hourHeight: CGFloat
+    let gutterW: CGFloat
+    let bandHeight: CGFloat
+    let timedEvents: (Date) -> [EKEvent]
+    let onTap: (Date, EKEvent) -> Void
+
+    /// Y of the scroll content's top edge within the ScrollView (0 at rest, negative
+    /// once scrolled down). Drives the overlaid 00:00 label so it tracks the grid.
+    @State private var contentTop: CGFloat = 0
+    private let scrollSpace = "multiDayTimelineScroll"
+
+    private func minute(_ date: Date) -> Int {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (c.hour ?? 0) * 60 + (c.minute ?? 0)
+    }
+
+    var body: some View {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let nDays = days.count
+        let nowMin = minute(Date())
+        let totalH = hourHeight * 24
+        // How far the verticals extend ABOVE the 12:00 AM line — clipped at rest
+        // (hidden under the all-day band), slides into view when the grid is pulled. [owner]
+        let aboveExtent = bandHeight + 120
+
+        return ScrollView {
+            ZStack(alignment: .topLeading) {
+                // Scroll-offset probe: a zero-height marker pinned to the content top.
+                GeometryReader { g in
+                    Color.clear.preference(key: TimelineScrollTopKey.self,
+                                           value: g.frame(in: .named(scrollSpace)).minY)
+                }
+                .frame(height: 0)
+
+                // Vertical day-column gridlines (Week only; Day passes showVerticals=false).
+                if showVerticals {
+                    ForEach(0...nDays, id: \.self) { i in
+                        Rectangle().fill(Color.primary.opacity(0.06))
+                            .frame(width: 1, height: totalH + aboveExtent)
+                            .offset(x: gutterW + CGFloat(i) * colW, y: -aboveExtent)
+                    }
+                }
+                // Hour lines + labels (0...24). The 00:00 label is drawn separately as a
+                // non-clipped overlay below, so skip it here to avoid a double label.
+                ForEach(0...24, id: \.self) { hour in
+                    let y = CGFloat(hour) * hourHeight
+                    Rectangle().fill(Color.primary.opacity(0.08))
+                        .frame(width: colW * CGFloat(nDays), height: 1).offset(x: gutterW, y: y)
+                    if hour != 0 {
+                        TimelineGutterLabel(minutesOfDay: hour * 60)
+                            .offset(x: 0, y: y - 7)
+                    }
+                }
+                // All-day ↔ timeline divider: rides with the grid on a pull, pins at the
+                // pane edge once scrolled. visualEffect reads the live scroll position. [owner]
+                Rectangle().fill(Color.primary.opacity(0.08))
+                    .frame(width: colW * CGFloat(nDays), height: 1).offset(x: gutterW)
+                    .visualEffect { content, proxy in
+                        content.offset(y: max(0, -proxy.frame(in: .scrollView).minY))
+                    }
+                // Timed events per day column (all-day events live in the band).
+                ForEach(Array(days.enumerated()), id: \.offset) { idx, day in
+                    ForEach(timedEvents(day), id: \.eventIdentifier) { event in
+                        let s = minute(event.startDate)
+                        let e = minute(event.endDate)
+                        let h = max(hourHeight / 3, CGFloat(max(e - s, 20)) / 60 * hourHeight)
+                        Button { onTap(day, event) } label: {
+                            Text(event.displayTitle)
+                                .font(appFont(9)).foregroundStyle(.white)
+                                .lineLimit(2).padding(.horizontal, 3).padding(.vertical, 1)
+                                .frame(width: colW - 2, height: h, alignment: .topLeading)
+                                .background(RoundedRectangle(cornerRadius: 3).fill(event.displayColor))
+                        }.buttonStyle(.plain)
+                        .a11yTapBorder(RoundedRectangle(cornerRadius: 3))
+                        .offset(x: gutterW + CGFloat(idx) * colW + 1, y: CGFloat(s) / 60 * hourHeight)
+                    }
+                }
+                // Red now-bar, if the range contains today.
+                if days.contains(where: { cal.isDate($0, inSameDayAs: today) }) {
+                    let nowY = CGFloat(nowMin) / 60 * hourHeight
+                    let rightEdge = gutterW + colW * CGFloat(nDays)
+                    Rectangle().fill(Color.red)
+                        .frame(width: max(0, rightEdge - TimelineMetrics.pillTrailingEdge), height: 1)
+                        .offset(x: TimelineMetrics.pillTrailingEdge, y: nowY)
+                    NowPill(minutesOfDay: nowMin, width: TimelineMetrics.dynamicPillW)
+                        .frame(width: gutterW, alignment: .center)
+                        .offset(x: 0, y: nowY - TimelineMetrics.pillH / 2)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: totalH + 1, alignment: .topLeading)
+        }
+        .coordinateSpace(.named(scrollSpace))
+        .onPreferenceChange(TimelineScrollTopKey.self) { contentTop = $0 }
+        // The 00:00 label lives OUTSIDE the scroll clip so it can cross up over the
+        // all-day divider instead of being cut off. It tracks the scroll position
+        // (centred on the 00:00 line wherever it is) and fades out as the grid scrolls
+        // up past it, so it never collides with the other hour labels. [owner]
+        .overlay(alignment: .topLeading) {
+            TimelineGutterLabel(minutesOfDay: 0)
+                .offset(y: contentTop - 7)
+                .opacity(contentTop >= 0 ? 1 : max(0, 1 + contentTop / 12))
+                .allowsHitTesting(false)
+        }
+        .padding(.leading, TimelineMetrics.leadingInset)   // align gutter with Today [owner]
     }
 }

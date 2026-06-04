@@ -96,37 +96,3 @@ struct EventRowView: View {
         .a11yTapBorder(Rectangle())
     }
 }
-
-// MARK: - Day event block (timeline)
-
-struct DayEventBlock: View {
-    let event: EKEvent
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(event.displayColor)
-                .frame(width: 3)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(event.displayTitle)
-                    .font(appFont(12))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                if !event.isAllDay {
-                    Text(clockString(date: event.startDate))
-                        .font(appFont(11))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            Spacer(minLength: 0)
-        }
-        .background(event.displayColor.opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .overlay(
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(event.displayColor.opacity(0.3), lineWidth: 0.5)
-        )
-    }
-}

@@ -169,6 +169,15 @@ struct BacklogView: View {
 
     @ViewBuilder
     private func projectRows(unassignedCount: Int, counts: [PersistentIdentifier: Int]) -> some View {
+        // "Unorganized" sorts by its name among the real projects (not pinned first). [owner]
+        let isAZ = projectSort == .az
+        let before = sortedProjects.filter {
+            isAZ ? $0.name.lowercased() < "unorganized" : $0.name.lowercased() > "unorganized"
+        }
+        let after = sortedProjects.filter {
+            isAZ ? $0.name.lowercased() >= "unorganized" : $0.name.lowercased() <= "unorganized"
+        }
+        ForEach(before, id: \.id) { projectRow($0, counts: counts) }
         // "Unorganized" virtual bucket — always visible, never deletable, no select.
         Button { if !selecting { route = .folder(nil) } } label: {
             projectRowContent(name: "Unorganized", count: unassignedCount)
@@ -176,26 +185,40 @@ struct BacklogView: View {
         .buttonStyle(.plain)
         .a11yTapBorder(Rectangle())
         .disabled(selecting)
+        ForEach(after, id: \.id) { projectRow($0, counts: counts) }
+    }
 
-        ForEach(sortedProjects, id: \.id) { project in
-            BacklogRow(coordinator: rows, id: project.id, glyph: .folder,
-                       title: project.name,
-                       subtitle: "\(counts[project.persistentModelID] ?? 0) items",
-                       selecting: selecting, isSelected: selected.contains(project.id),
-                       onTap: { if selecting { toggleSelected(project.id) } else { route = .folder(project.id) } })
-        }
+    private func projectRow(_ project: ProjectBucket, counts: [PersistentIdentifier: Int]) -> some View {
+        BacklogRow(coordinator: rows, id: project.id, glyph: .folder,
+                   title: project.name,
+                   subtitle: "\(counts[project.persistentModelID] ?? 0) items",
+                   selecting: selecting, isSelected: selected.contains(project.id),
+                   onTap: { if selecting { toggleSelected(project.id) } else { route = .folder(project.id) } })
     }
 
     private func projectRowContent(name: String, count: Int) -> some View {
-        HStack(spacing: 12) {
-            DSImageView(systemName: "folder", size: .size(.custom(BacklogMetrics.glyphSize)), tint: .color(.secondary))
+        // Match BacklogRow: centre the folder icon on the title's FIRST line. [owner]
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            if selecting {
+                // Match the other rows' rightward shift (a circle-sized slot) but show
+                // nothing — Unorganized has no circle and isn't selectable. [owner]
+                Color.clear.frame(width: 28, height: 28)
+                    .alignmentGuide(.firstTextBaseline) { _ in BacklogMetrics.glyphSize / 2 + 7 }
+            } else {
+                DSImageView(systemName: "folder", size: .size(.custom(BacklogMetrics.glyphSize)), tint: .color(.secondary))
+                    .alignmentGuide(.firstTextBaseline) { d in d.height / 2 + 7 }
+            }
             VStack(alignment: .leading, spacing: 2) {
                 DSText(name).dsTextStyle(.title3).longTitle()
                 DSText("\(count) items").dsTextStyle(.subheadline)
             }
             Spacer(minLength: 8)
         }
-        .frame(height: BacklogMetrics.rowHeight)           // [#43/#133] tighter row
+        // Match BacklogRow's sizing exactly so the gap below Unorganized equals the
+        // gaps between the other project rows. [owner]
+        .padding(.vertical, 8)
+        .frame(minHeight: BacklogMetrics.rowHeight)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
 

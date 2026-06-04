@@ -88,11 +88,21 @@ struct BacklogRow: View {
     @ViewBuilder
     private var leadingGlyph: some View {
         if selecting {
+            // Align the circle's top to where the read-mode folder/bullet glyph sits so
+            // the row height is identical in both modes — entering select mode shifts the
+            // content RIGHT (room for the circle) but never DOWN. [owner]
             SelectionCircle(isOn: isSelected)
+                .alignmentGuide(.firstTextBaseline) { _ in BacklogMetrics.glyphSize / 2 + 7 }
         } else {
             switch glyph {
             case .bullet: DSText("•").dsTextStyle(.title3)
-            case .folder: DSImageView(systemName: "folder", size: .size(.custom(BacklogMetrics.glyphSize)), tint: .color(.secondary))
+            case .folder:
+                // Centre the folder icon on the title's FIRST line: with the HStack's
+                // .firstTextBaseline, place the icon's baseline guide at its centre +
+                // ~half the title cap-height (≈7) so the icon's centre sits on the first
+                // line's centre — holds even when the title wraps to 2–3 lines. [owner]
+                DSImageView(systemName: "folder", size: .size(.custom(BacklogMetrics.glyphSize)), tint: .color(.secondary))
+                    .alignmentGuide(.firstTextBaseline) { d in d.height / 2 + 7 }
             }
         }
     }

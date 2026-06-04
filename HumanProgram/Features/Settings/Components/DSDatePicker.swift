@@ -10,31 +10,55 @@ import DSKit
 struct DSCalendarView: View {
     @Binding var date: Date
     var minDate: Date? = nil
+    /// Optional upper bound: days after it are disabled and month-forward nav stops at
+    /// its month (e.g. the Today jump picker caps navigation at year 2100). [owner]
+    var maxDate: Date? = nil
     @State private var month: Date = Date()
+    /// Tapping the month/year title opens the scroll-wheel month+year jump popup. [owner]
+    @State private var showMonthYear = false
 
     private let cal = Calendar.current
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     private let weekdays = Weekday.shortLetters   // canonical S M T W T F S (1=Sun) [#148][#193]
+    private static let monthAbbrevs = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
     var body: some View {
         VStack(spacing: 12) {
-            // Month nav.
-            HStack {
-                DSText(monthTitle).dsTextStyle(.headline)
-                Spacer()
-                Button { step(-1) } label: { Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold)) }
-                    .buttonStyle(.plain).foregroundStyle(.primary).frame(width: 40, height: 36).contentShape(Rectangle())
-                    .a11yTapBorder(Rectangle())
-                Button { step(1) } label: { Image(systemName: "chevron.right").font(.system(size: 16, weight: .semibold)) }
-                    .buttonStyle(.plain).foregroundStyle(.primary).frame(width: 40, height: 36).contentShape(Rectangle())
-                    .a11yTapBorder(Rectangle())
+            // Month nav. The title is inset by colW/2 − half the "S" glyph — computed
+            // from the live width via GeometryReader (applies during layout, no state) —
+            // so its first letter aligns under the centred Sunday "S". Tapping it opens
+            // the month+year scroll wheels. Fixed 36-tall row so it can't nudge ‹ ›. [owner]
+            GeometryReader { geo in
+                HStack {
+                    Button { showMonthYear = true } label: {
+                        Text(monthTitle)
+                            .font(appFont(24, bold: true))
+                            .foregroundStyle(Color.blue)
+                            .underline()
+                            .frame(height: 36, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
+                    .padding(.leading, max(0, geo.size.width / 14 - 4))
+                    Spacer()
+                    Button { step(-1) } label: { Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold)) }
+                        .buttonStyle(.plain).foregroundStyle(.primary).frame(width: 40, height: 36).contentShape(Rectangle())
+                        .a11yTapBorder(Rectangle())
+                    Button { step(1) } label: { Image(systemName: "chevron.right").font(.system(size: 16, weight: .semibold)) }
+                        .buttonStyle(.plain).foregroundStyle(.primary).frame(width: 40, height: 36).contentShape(Rectangle())
+                        .a11yTapBorder(Rectangle())
+                }
             }
-            // Weekday header.
+            .frame(height: 36)
+            // Weekday header. The whole calendar block is pushed down so the gap from
+            // the title row triples (12→36). [owner]
             LazyVGrid(columns: cols, spacing: 4) {
                 ForEach(0..<7, id: \.self) { i in
                     DSText(weekdays[i]).dsTextStyle(.caption1).frame(maxWidth: .infinity)
                 }
             }
+            .padding(.top, 24)
             // Day grid.
             LazyVGrid(columns: cols, spacing: 2) {
                 ForEach(Array(gridDays.enumerated()), id: \.offset) { _, day in
@@ -43,12 +67,73 @@ struct DSCalendarView: View {
             }
         }
         .onAppear { month = cal.startOfDay(for: date) }
+        .overlay { monthYearPopup }
+    }
+
+    /// Month (Jan…Dec) + year (1900–2100) scroll wheels, app font, in our glass popup.
+    @ViewBuilder private var monthYearPopup: some View {
+        if showMonthYear {
+            ZStack {
+                // Fill the calendar's own bounds (no ignoresSafeArea) so the card
+                // doesn't re-centre after appearing — it stays in one place. [owner]
+                Color.black.opacity(0.001)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture { showMonthYear = false }
+                VStack(spacing: 8) {
+                    HStack(spacing: 0) {
+                        Picker("", selection: monthIndex) {
+                            ForEach(1...12, id: \.self) { m in
+                                Text(Self.monthAbbrevs[m - 1]).font(appFont(20)).tag(m)
+                            }
+                        }.pickerStyle(.wheel).frame(maxWidth: .infinity).clipped()
+                        Picker("", selection: yearValue) {
+                            ForEach(1900...2100, id: \.self) { y in
+                                Text(String(y)).font(appFont(20)).tag(y)
+                            }
+                        }.pickerStyle(.wheel).frame(maxWidth: .infinity).clipped()
+                    }
+                    .frame(height: 170)
+                    Button { showMonthYear = false } label: {
+                        DSText("Done").dsTextStyle(.headline)
+                            .padding(.horizontal, 24).padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
+                }
+                .padding(16)
+                .frame(width: 300)
+                .popupGlass(cornerRadius: 22)
+            }
+        }
+    }
+
+    private var monthIndex: Binding<Int> {
+        Binding(get: { cal.component(.month, from: month) },
+                set: { setMonthYear(month: $0, year: cal.component(.year, from: month)) })
+    }
+    private var yearValue: Binding<Int> {
+        Binding(get: { cal.component(.year, from: month) },
+                set: { setMonthYear(month: cal.component(.month, from: month), year: $0) })
+    }
+    /// Jump the displayed grid to a month/year, clamped to min/maxDate if present.
+    private func setMonthYear(month m: Int, year y: Int) {
+        var c = DateComponents(); c.year = y; c.month = m; c.day = 1
+        guard var d = cal.date(from: c) else { return }
+        if let maxDate, cal.compare(d, to: maxDate, toGranularity: .month) == .orderedDescending {
+            d = cal.dateInterval(of: .month, for: maxDate)?.start ?? d
+        }
+        if let minDate, cal.compare(d, to: minDate, toGranularity: .month) == .orderedAscending {
+            d = cal.dateInterval(of: .month, for: minDate)?.start ?? d
+        }
+        month = d
     }
 
     private func dayCell(_ day: Date) -> some View {
         let isSel = cal.isDate(day, inSameDayAs: date)
         let isToday = cal.isDateInToday(day)
-        let disabled = minDate.map { day < cal.startOfDay(for: $0) } ?? false
+        let belowMin = minDate.map { day < cal.startOfDay(for: $0) } ?? false
+        let aboveMax = maxDate.map { day > cal.startOfDay(for: $0) } ?? false
+        let disabled = belowMin || aboveMax
         return Button {
             if !disabled { date = day }
         } label: {
@@ -68,7 +153,11 @@ struct DSCalendarView: View {
         AppDateFormat.monthYear(month)
     }
     private func step(_ delta: Int) {
-        if let m = cal.date(byAdding: .month, value: delta, to: month) { month = m }
+        guard let m = cal.date(byAdding: .month, value: delta, to: month) else { return }
+        // Don't navigate past the capped month (forward only — minDate keeps existing
+        // behaviour where earlier months are reachable but their days are disabled).
+        if let maxDate, delta > 0, cal.compare(m, to: maxDate, toGranularity: .month) == .orderedDescending { return }
+        month = m
     }
     /// 42-slot grid (leading blanks + days of `month`).
     private var gridDays: [Date?] {
@@ -78,10 +167,13 @@ struct DSCalendarView: View {
         let layout = monthGridLayout(monthStart: first, calendar: cal)
         var out: [Date?] = Array(repeating: nil, count: layout.leadingBlanks)
         for d in 0..<layout.dayCount { out.append(cal.date(byAdding: .day, value: d, to: first)) }
-        out += Array(repeating: nil, count: layout.trailingBlanks)
+        // Always a full 6-week (42-cell) grid so the calendar height is FIXED — the
+        // weekday row, first week, and Go button don't shift as month row counts vary. [owner]
+        while out.count < 42 { out.append(nil) }
         return out
     }
 }
+
 
 /// Card-less date value (app font, no capsule) that opens the calendar popup. [#13]
 struct DSDateField: View {
