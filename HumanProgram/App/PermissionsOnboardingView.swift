@@ -67,24 +67,25 @@ struct PermissionsOnboardingView: View {
         .task { await refreshStatuses() }
     }
 
-    /// One row: label on the left, a fixed-width light-blue action button on the
-    /// right. Both rows use the SAME button width so the buttons line up. Tapping a
-    /// "Done!" button is a no-op (kept full-color rather than dimmed-disabled).
+    /// One row: label above a full-width light-blue action button. Stacking (rather
+    /// than label-left / button-right) keeps the longer labels from truncating at any
+    /// font scale and lines the buttons up. Tapping a "Done!" button is a no-op (kept
+    /// full-color rather than dimmed-disabled).
     private func permissionRow(label: String, done: Bool, action: @escaping () -> Void) -> some View {
-        HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(label).font(appFont(18)).foregroundStyle(.primary)
-                .lineLimit(1)
-            Spacer(minLength: 8)
+                .fixedSize(horizontal: false, vertical: true)
             Button(action: { if !done { action() } }) {
                 Text(done ? "Done!" : "Grant access")
                     .font(appFont(16)).foregroundStyle(.white)
-                    .frame(width: 140).padding(.vertical, 12)
+                    .frame(maxWidth: .infinity).padding(.vertical, 12)
                     .background(appOnboardingBlue, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain)
             .a11yTapBorder(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Permission requests
