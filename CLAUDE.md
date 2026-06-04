@@ -9,7 +9,9 @@ This file is instructions for AI coding agents (Claude Code) working on this pro
 These govern *when* you act. They override any inclination to be helpful by getting ahead of the owner.
 
 1. **Do not write or change code unless you receive an unmistakable, explicit command to do so.** Discussion, questions, screenshots, "do you see X?", or descriptions of a problem are NOT permission to edit. If it is at all unclear whether the owner wants you to make the change now, **do not** — ask or wait. When in doubt, don't.
-2. **Never use the simulator unless explicitly told to.** Do not boot, install, launch, or screenshot on a simulator on your own initiative — not even to "verify." Building/compiling the code (e.g. `xcodebuild build -destination 'generic/platform=iOS Simulator'`, which does not boot a simulator) is allowed; running anything on a simulator is not, unless the owner says so.
+2. **Compiling is ALWAYS allowed; RUNNING the simulator is NEVER allowed unless the owner explicitly asks in that moment.** These are two different things — keep them separate:
+   - **Compiling/building IS allowed and encouraged at any time** to check your work. `xcodebuild build -destination 'generic/platform=iOS Simulator'` compiles the code and does **NOT** boot, install, launch, or open a simulator — it is just a syntax/type check. You may run it freely after edits to confirm a green build, without asking. This is the right way to verify your changes compile.
+   - **Running/using the simulator is absolute-NEVER on your own initiative.** Do NOT boot, install, launch, run, screenshot, or otherwise interact with a running simulator — **not to "verify," not to "just check," not for any reason** — unless the owner explicitly and specifically says so in that moment. Past permission does not carry forward; each time needs a fresh "yes, use the simulator." When in doubt, compile (allowed) but do not run the sim (not allowed).
 3. **If (and only if) told to use the simulator, use iPhone 17 Pro, iOS 26.4** — not 26.5.
 
 ---

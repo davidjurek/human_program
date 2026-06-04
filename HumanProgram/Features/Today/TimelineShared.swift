@@ -61,8 +61,12 @@ struct TimelineGutterLabel: View {
     let minutesOfDay: Int
     var width: CGFloat = TimelineMetrics.gutterW
     var alignment: Alignment = .center
+    /// Optional literal label, bypassing `clockString`. Used for the Calendar
+    /// grids' bottom (end-of-day) row so 24h mode reads "24:00" instead of the
+    /// next-day "00:00" (12h mode still reads "12:00 AM"). [owner]
+    var textOverride: String? = nil
     var body: some View {
-        Text(clockString(minutesOfDay: minutesOfDay))
+        Text(textOverride ?? clockString(minutesOfDay: minutesOfDay))
             .font(appFont(13)).foregroundStyle(.secondary)
             .lineLimit(1).minimumScaleFactor(0.7)
             .frame(width: width, alignment: alignment)

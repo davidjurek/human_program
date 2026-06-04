@@ -56,7 +56,7 @@ struct SecuritySettingsView: View {
     }
 
     private var menu: some View {
-        SettingsScreen(centered: true) {   // symmetric 20-20 margins [owner]
+        SettingsScreen {   // menu screen → left-42 / right-20 margins
             SettingsGroup {
                 SettingsNavRow(label: "PIN", systemImage: "key") {
                     PINMenuView(vm: lockVM)

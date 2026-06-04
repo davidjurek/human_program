@@ -818,69 +818,32 @@ private struct MultiDayTimeline: View {
         // day-header through the largest rubber-band pull. Kept ≤ totalH so it adds no extra
         // scrollable slack below the grid.
         let aboveExtent: CGFloat = totalH
+        // The bottom gutter label is centred on the last line (top = line − 7 via the label's
+        // own offset), so its lower half sits below `totalH`. Reserve its half-height + a small
+        // margin so it isn't clipped at the content's bottom edge. [owner]
+        let bottomLabelPad: CGFloat = 14
 
+        // Split into per-layer @ViewBuilder methods below: the combined ZStack was one
+        // expression too large for the Swift type-checker ("unable to type-check in
+        // reasonable time"). Each layer now type-checks independently. [owner]
         return ScrollView {
             ZStack(alignment: .topLeading) {
-                // Vertical day-column gridlines (Week only; Day passes showVerticals=false).
-                // Each line extends UP past 00:00 by `aboveExtent`. The scroll clips it at
-                // rest (the extension is hidden above the pane edge / under the day-header);
-                // a rubber-band pull slides the extension into the exposed gap so the columns
-                // stay connected to the header. The clip-based reveal is the only approach
-                // that survives the bounce (SwiftUI scroll-offset tracking does not). [owner]
-                if showVerticals {
-                    ForEach(0...nDays, id: \.self) { i in
-                        Rectangle().fill(Color.primary.opacity(0.06))
-                            .frame(width: 1, height: totalH + aboveExtent)
-                            .offset(x: gutterW + CGFloat(i) * colW, y: -aboveExtent)
-                    }
-                }
-                // Hour lines + labels (0...24), 00:00 included. The small top content inset
-                // (see .contentMargins below) keeps the 00:00 label clear of the pane edge so
-                // it's centred on its line and never cut.
-                ForEach(0...24, id: \.self) { hour in
-                    let y = CGFloat(hour) * hourHeight
-                    Rectangle().fill(Color.primary.opacity(0.08))
-                        .frame(width: colW * CGFloat(nDays), height: 1).offset(x: gutterW, y: y)
-                    TimelineGutterLabel(minutesOfDay: hour * 60)
-                        .offset(x: 0, y: y - 7)
-                }
-                // All-day ↔ timeline divider: rides with the grid on a pull, pins at the
-                // pane edge once scrolled. visualEffect reads the live scroll position. [owner]
-                Rectangle().fill(Color.primary.opacity(0.08))
-                    .frame(width: colW * CGFloat(nDays), height: 1).offset(x: gutterW)
-                    .visualEffect { content, proxy in
-                        content.offset(y: max(0, -proxy.frame(in: .scrollView).minY))
-                    }
-                // Timed events per day column (all-day events live in the band).
-                ForEach(Array(days.enumerated()), id: \.offset) { idx, day in
-                    ForEach(timedEvents(day), id: \.eventIdentifier) { event in
-                        let s = minute(event.startDate)
-                        let e = minute(event.endDate)
-                        let h = max(hourHeight / 3, CGFloat(max(e - s, 20)) / 60 * hourHeight)
-                        Button { onTap(day, event) } label: {
-                            Text(event.displayTitle)
-                                .font(appFont(9)).foregroundStyle(.white)
-                                .lineLimit(2).padding(.horizontal, 3).padding(.vertical, 1)
-                                .frame(width: colW - 2, height: h, alignment: .topLeading)
-                                .background(RoundedRectangle(cornerRadius: 3).fill(event.displayColor))
-                        }.buttonStyle(.plain)
-                        .a11yTapBorder(RoundedRectangle(cornerRadius: 3))
-                        .offset(x: gutterW + CGFloat(idx) * colW + 1, y: CGFloat(s) / 60 * hourHeight)
-                    }
-                }
-                // Red now-bar, if the range contains today.
-                if days.contains(where: { cal.isDate($0, inSameDayAs: today) }) {
-                    let nowY = CGFloat(nowMin) / 60 * hourHeight
-                    let rightEdge = gutterW + colW * CGFloat(nDays)
-                    Rectangle().fill(Color.red)
-                        .frame(width: max(0, rightEdge - TimelineMetrics.pillTrailingEdge), height: 1)
-                        .offset(x: TimelineMetrics.pillTrailingEdge, y: nowY)
-                    NowPill(minutesOfDay: nowMin, width: TimelineMetrics.dynamicPillW)
-                        .frame(width: gutterW, alignment: .center)
-                        .offset(x: 0, y: nowY - TimelineMetrics.pillH / 2)
-                }
+                verticalGridlines(nDays: nDays, totalH: totalH, aboveExtent: aboveExtent)
+                hourLinesAndLabels(nDays: nDays)
+                allDayDivider(nDays: nDays)
+                timedEventsLayer()
+                nowBar(cal: cal, today: today, nowMin: nowMin, nDays: nDays)
             }
-            .frame(maxWidth: .infinity, minHeight: totalH + 1, alignment: .topLeading)
+            // FIXED height (min == max): the day-column lines are `totalH + aboveExtent` tall,
+            // and `.offset` is purely visual — it does NOT shrink their layout size — so a plain
+            // `minHeight` ZStack grew to ~2× a day, leaving a dead empty scroll zone BELOW the
+            // 00:00 row. Pinning the content to one day (+ `bottomLabelPad`) removes that slack so
+            // the last row rests at the pane bottom when fully scrolled; the lines still draw their
+            // upward extension (it overflows the frame, revealed by the rubber-band pull). The
+            // `bottomLabelPad` is just enough room for the bottom (24:00 / 12:00 AM) label — which
+            // is centred on the last line and would otherwise be clipped at the content edge — and
+            // is far too small to read as scrollable slack. [owner]
+            .frame(maxWidth: .infinity, minHeight: totalH + bottomLabelPad, maxHeight: totalH + bottomLabelPad, alignment: .topLeading)
         }
         // Small top inset so the grid rests with 00:00 a few points below the pane edge —
         // enough that the centred 00:00 label clears the clip and isn't cut. The gap it
@@ -888,5 +851,85 @@ private struct MultiDayTimeline: View {
         // grid continuing up to the day-header rather than an empty gap.
         .contentMargins(.top, 10, for: .scrollContent)
         .padding(.leading, TimelineMetrics.leadingInset)   // align gutter with Today [owner]
+    }
+
+    // Vertical day-column gridlines (Week only; Day passes showVerticals=false). Each line
+    // extends UP past 00:00 by `aboveExtent`. The scroll clips it at rest (the extension is
+    // hidden above the pane edge / under the day-header); a rubber-band pull slides the
+    // extension into the exposed gap so the columns stay connected to the header. The
+    // clip-based reveal is the only approach that survives the bounce (SwiftUI scroll-offset
+    // tracking does not). [owner]
+    @ViewBuilder
+    private func verticalGridlines(nDays: Int, totalH: CGFloat, aboveExtent: CGFloat) -> some View {
+        if showVerticals {
+            ForEach(0...nDays, id: \.self) { i in
+                Rectangle().fill(Color.primary.opacity(0.06))
+                    .frame(width: 1, height: totalH + aboveExtent)
+                    .offset(x: gutterW + CGFloat(i) * colW, y: -aboveExtent)
+            }
+        }
+    }
+
+    // Hour lines + labels (0...24), 00:00 included. The small top content inset (see
+    // .contentMargins) keeps the 00:00 label clear of the pane edge so it's centred on its
+    // line and never cut.
+    @ViewBuilder
+    private func hourLinesAndLabels(nDays: Int) -> some View {
+        ForEach(0...24, id: \.self) { hour in
+            let y = CGFloat(hour) * hourHeight
+            // Bottom (end-of-day) row reads "24:00" in 24h mode, "12:00 AM" in 12h. [owner]
+            let override: String? = (hour == 24 && TimeFormatSetting.is24Hour) ? "24:00" : nil
+            Rectangle().fill(Color.primary.opacity(0.08))
+                .frame(width: colW * CGFloat(nDays), height: 1).offset(x: gutterW, y: y)
+            TimelineGutterLabel(minutesOfDay: hour * 60, textOverride: override)
+                .offset(x: 0, y: y - 7)
+        }
+    }
+
+    // All-day ↔ timeline divider: rides with the grid on a pull, pins at the pane edge once
+    // scrolled. visualEffect reads the live scroll position. [owner]
+    private func allDayDivider(nDays: Int) -> some View {
+        Rectangle().fill(Color.primary.opacity(0.08))
+            .frame(width: colW * CGFloat(nDays), height: 1).offset(x: gutterW)
+            .visualEffect { content, proxy in
+                content.offset(y: max(0, -proxy.frame(in: .scrollView).minY))
+            }
+    }
+
+    // Timed events per day column (all-day events live in the band).
+    private func timedEventsLayer() -> some View {
+        ForEach(Array(days.enumerated()), id: \.offset) { idx, day in
+            ForEach(timedEvents(day), id: \.eventIdentifier) { event in
+                let s = minute(event.startDate)
+                let e = minute(event.endDate)
+                let minHeight = hourHeight / 3
+                let rawHeight = CGFloat(max(e - s, 20)) / 60 * hourHeight
+                let h = max(minHeight, rawHeight)
+                Button { onTap(day, event) } label: {
+                    Text(event.displayTitle)
+                        .font(appFont(9)).foregroundStyle(.white)
+                        .lineLimit(2).padding(.horizontal, 3).padding(.vertical, 1)
+                        .frame(width: colW - 2, height: h, alignment: .topLeading)
+                        .background(RoundedRectangle(cornerRadius: 3).fill(event.displayColor))
+                }.buttonStyle(.plain)
+                .a11yTapBorder(RoundedRectangle(cornerRadius: 3))
+                .offset(x: gutterW + CGFloat(idx) * colW + 1, y: CGFloat(s) / 60 * hourHeight)
+            }
+        }
+    }
+
+    // Red now-bar, if the range contains today.
+    @ViewBuilder
+    private func nowBar(cal: Calendar, today: Date, nowMin: Int, nDays: Int) -> some View {
+        if days.contains(where: { cal.isDate($0, inSameDayAs: today) }) {
+            let nowY = CGFloat(nowMin) / 60 * hourHeight
+            let rightEdge = gutterW + colW * CGFloat(nDays)
+            Rectangle().fill(Color.red)
+                .frame(width: max(0, rightEdge - TimelineMetrics.pillTrailingEdge), height: 1)
+                .offset(x: TimelineMetrics.pillTrailingEdge, y: nowY)
+            NowPill(minutesOfDay: nowMin, width: TimelineMetrics.dynamicPillW)
+                .frame(width: gutterW, alignment: .center)
+                .offset(x: 0, y: nowY - TimelineMetrics.pillH / 2)
+        }
     }
 }
