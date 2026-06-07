@@ -61,6 +61,9 @@ HumanProgram/
     Settings/       — settings menu + About page (Cat Corner, hidden UDHR doc)
     Stats/          — streak and completion stats
     Routines/       — simple routine lists
+HumanProgramWidget/ — WidgetKit extension (Today widgets). `WidgetShared.swift` is
+                      compiled into BOTH this target and the app; everything else here
+                      is widget-only. Reads a snapshot from the App Group, never SwiftData.
 HumanProgramTests/  — XCTest unit tests for all core services
 project.yml         — XcodeGen config (source of truth for project structure)
 Makefile            — build and test shortcuts
@@ -97,9 +100,9 @@ ADD.md              — full product spec (read this before changing behavior)
 
 ### Completion rule
 ```
-tasks.isNotEmpty && tasks.allSatisfy { $0.isCompleted }
+date <= today (NOT a future day)  &&  tasks.allSatisfy { $0.completed }
 ```
-That's it. An empty task list is NOT complete. Exercise is not in the task list (unless the user separately created a recurring task for it). Calendar-sourced tasks ARE included.
+A day is complete when it is **today or in the past** AND every task is checked off — and an **empty list counts as complete** ("nothing to do = done"), so an empty today/past page is complete. A **future day is NEVER complete**, even if it has tasks and they're all checked off: you can tick tasks ahead of time, but it isn't flagged done and doesn't feed streaks/stats until that day actually arrives (an empty future page that rolls into today flips to complete automatically on the next refresh). Exercise is not in the task list (unless the user separately created a recurring task for it). Calendar-sourced tasks ARE included. The "today vs future" gate lives in `CompletionService.isComplete(tasks:date:today:)`; `recalculate(page:today:)` is called by every mutator and by `getOrCreate`/refresh (which pass the page-generation `today`). *(Owner-approved 2026-06-06, reversing the old "empty = not complete, future days completable" rule.)*
 
 ### GameAccessService *(removed)*
 The game and its access service were deleted. `dayComplete` no longer gates anything.
@@ -192,6 +195,9 @@ The **hub** (`HubView` in `App/ContentView.swift`) is the navigation **root** �
 - Navigation: hub-root + Today launch (see Navigation model above), no tab bar; full-screen Welcome/reset/restore interstitials (`hp.hasLaunched` flag).
 - DSKit screens: Today (timeline + now-bar + past lock/unlock + task detail; the timeline supports **vertical pinch-zoom** — `DailyTimeline` — from the full 00:00–24:00 down to a 4-hour window, focal-point anchored, with 3-hour→hourly→half-hourly grid lines as it zooms and every visible line labelled; zoom is in-memory only, resetting when the screen is left and surviving backgrounding; tapping a **calendar** block opens its event card, schedule blocks are inert), full Backlog (Task/Project views, folders, swipe/select delete, move, task detail), Calendar tab (Month/Week/Day/List + EventKit create/edit), Routines (grid + emoji editor), Stats (streaks + week chart), Settings + every sub-screen (Customization, Format, Reminders + editor + sound, Recurring + editor, Schedule + editor, Exercise + editor, Calendar Sources, Security (PIN/App Lock/Face ID) + shared `PINEntryView` + unlock gate, About/Licenses, Factory Reset + PIN gate, Import (text/CSV/.hprgm restore) + Export).
 - Past-page ↔ backlog/calendar decoupling (`severPastTasks` at rollover).
+- **Today navigation floor:** an install date (`DefaultsKey.installDate`, set once at first launch in `AppStartup`) floors how far back the Today screen can go — `TodayViewModel.minNavigableDate` = `min(installDate, earliest existing page)`. Navigation/jump are clamped to it (left arrow disables at the floor; the jump picker passes it as `minDate`). The `min` with the earliest page is what keeps a **.hprgm restore's** older pages reachable; clamping navigation is what stops back-stepping from endlessly creating ever-earlier pages. `installDate` is in `allKeys` (factory reset re-anchors it) but is NOT a `.hprgm` user-preference (restore handles older pages via the `min`).
+- **Home-screen widgets** (`HumanProgramWidget/` — a WidgetKit `app-extension` target): a small ("Today Count" — completed/total) and a medium ("Today Tasks" — outstanding list + count); both deep-link `humanprogram://today` to the Today screen (handled by `onOpenURL` in `ContentView`). When the day is complete they show "All done" but still show the count. They DON'T open the SwiftData store — the app publishes a tiny `WidgetSnapshot` to a shared **App Group** (`group.app.humanprogram`) via `WidgetSync.refresh(context:)` (called from `AppStartup` and every Today mutation), and the widget reads it. The App Group is a new entitlement on BOTH targets (`*.entitlements`); `WidgetShared.swift` is the only file compiled into both. The widget snapshot is not a `@Model` and is not in `.hprgm`.
+- **Unified text selection color:** a soft lavender (`appSelectionLavender`) set once on `UITextField.appearance().tintColor` + `UITextView.appearance().tintColor` in `HumanProgramApp.init()`, so every caret/selection (SwiftUI `TextField` is UITextField-backed; `AppTextField` is a UITextView) matches instead of a per-field default that could render invisibly.
 - Calendar ↔ Today reconciliation (`CalendarReconciliationView`, reached from the Calendar top-bar sync button): deleting/hiding a calendar event removes it from Today and persists (via `CalendarEventLocalState.hidden`); the page lists today/future discrepancies and restores them.
 - Tests: recurrence, generation, completion, streaks, exercise repo, past-page decoupling, backup round-trip (71 passing). Note: the test target is **host-based** (loads symbols + DSKit from the app); don't revert that in `project.yml`.
 

@@ -74,11 +74,16 @@ struct BacklogRow: View {
         // sits next to line 1 of a multi-line item, not centered against the whole row.
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             leadingGlyph
+            // Fill the remaining width (instead of a trailing Spacer) so a long title
+            // WRAPS within the row rather than sizing to its natural width and pushing
+            // the row wider than the screen. An over-wide row was what made the list
+            // pan sideways (the "360° scroll"), clipped titles on the right, and stole
+            // the left-edge swipe-back. [owner: backlog scroll]
             VStack(alignment: .leading, spacing: 2) {
                 DSText(title).dsTextStyle(.title3).longTitle(lineLimit: 3)
                 if let subtitle { DSText(subtitle).dsTextStyle(.subheadline) }
             }
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 8)
         .frame(minHeight: rowMinHeight)

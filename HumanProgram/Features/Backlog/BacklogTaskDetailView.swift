@@ -90,8 +90,8 @@ struct BacklogTaskDetailView: View {
                 SettingsRowContent(label: "Assigned Date", hasTrailingAccessory: true) {
                     if hasDate {
                         if editing {
-                            // custom DSKit calendar [#13]; value shown as 06/03/2026
-                            DSDateField(date: $date, format: { AppDateFormat.numericMDY($0) })
+                            // custom DSKit calendar [#13]; value honors the Date Format setting
+                            DSDateField(date: $date, format: { AppDateFormat.userPreferred($0) })
                         } else {
                             DSText(dateString).dsTextStyle(.subheadline)
                         }
@@ -194,6 +194,8 @@ struct BacklogTaskDetailView: View {
         if let existing = effectiveItem {
             let before = BacklogItemSnapshot(existing)
             try? repo.setDetails(existing, title: trimmed, notes: notes, project: project, assignedDate: assigned)
+            // Keep any linked today/future page-task's note in sync with this edit. [owner]
+            try? DailyPageRepository(context: context).syncBacklogNoteToTasks(itemId: existing.id, notes: notes)
             let desc = Self.editDescription(before: before, newTitle: trimmed, newNotes: notes,
                                             newProject: project, newDate: assigned)
             Undo.edited(desc, before: before, after: BacklogItemSnapshot(existing))

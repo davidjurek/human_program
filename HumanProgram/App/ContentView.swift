@@ -89,6 +89,15 @@ struct ContentView: View {
             Haptics.impact(.medium)
             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { showUndoPopup = true }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .humanProgramExitToHub)) { _ in
+            // Pop everything back to the hub (e.g. after first-time PIN creation).
+            path = []
+        }
+        .onOpenURL { url in
+            // A home-screen widget tap opens humanprogram://today → show Today.
+            guard url.scheme == "humanprogram" else { return }
+            path = [.today]
+        }
         .onReceive(
             NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)
         ) { _ in

@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import DSKit
+import UIKit
 
 @main
 struct HumanProgramApp: App {
@@ -11,6 +12,14 @@ struct HumanProgramApp: App {
     private let container: ModelContainer
 
     init() {
+        // Unify text selection app-wide: every caret + selection highlight uses the app
+        // lavender, instead of a per-field system default that could render invisibly
+        // (and hide the copy/paste menu with it). SwiftUI TextField is UITextField-backed
+        // and AppTextField is a UITextView, so these two proxies cover the whole app. [owner]
+        let selection = UIColor(appSelectionLavender)
+        UITextField.appearance().tintColor = selection
+        UITextView.appearance().tintColor = selection
+
         do {
             container = try makeModelContainer()
         } catch {

@@ -171,8 +171,14 @@ private struct CreateOrChangePINView: View {
             if pin == firstEntry {
                 do {
                     try vm.repo.setupPIN(pin)
-                    if !isChange { vm.repo.isLockEnabled = true }
-                    dismiss()
+                    if !isChange {
+                        vm.repo.isLockEnabled = true
+                        // First-time PIN: exit straight to the hub instead of popping
+                        // back onto the now-PIN-gated Security screen. [owner]
+                        NotificationCenter.default.post(name: .humanProgramExitToHub, object: nil)
+                    } else {
+                        dismiss()
+                    }
                 } catch {
                     self.error = "Could not save PIN. Try again."
                     shake += 1

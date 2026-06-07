@@ -4,6 +4,10 @@ import UIKit
 extension Notification.Name {
     /// Posted when the device is shaken anywhere in the app.
     static let humanProgramShake = Notification.Name("HumanProgramShake")
+    /// Posted to pop the navigation stack all the way back to the hub (top-level menu).
+    /// Used after first-time PIN creation so the user exits to the hub instead of
+    /// landing on the now-PIN-gated Security screen.
+    static let humanProgramExitToHub = Notification.Name("HumanProgramExitToHub")
 }
 
 /// Invisible host that catches the device-shake motion event anywhere in the app

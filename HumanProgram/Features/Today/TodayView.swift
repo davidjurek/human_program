@@ -131,7 +131,7 @@ struct TodayView: View {
         .onChange(of: vm.viewingDate) { _, _ in Task { await loadCalendarItems() } }
         .onDisappear { vm.relockOnLeave() }
         .sheet(isPresented: $showDatePicker) {
-            TodayDatePicker(date: vm.viewingDate) { vm.jumpTo(date: $0) }
+            TodayDatePicker(date: vm.viewingDate, minDate: vm.minNavigableDate) { vm.jumpTo(date: $0) }
         }
         // Tapping a calendar block in the timeline opens its event card; "Edit"
         // there opens the same editor the Calendar screen uses.
@@ -235,6 +235,8 @@ struct TodayView: View {
             Spacer()
             HStack(spacing: 26) {                                 // [#44] spread out
                 navButton("arrow.left") { vm.goToPreviousDay() }
+                    .disabled(!vm.canGoToPreviousDay)
+                    .opacity(vm.canGoToPreviousDay ? 1 : 0.3)
                 navButton("arrow.right") { vm.goToNextDay() }
                 Button { if dismissAddIfOpen() { return }; vm.goToToday() } label: {
                     DSText("Today").dsTextStyle(.subheadline)
@@ -455,10 +457,12 @@ struct PastLockButton: View {
 private struct TodayDatePicker: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selected: Date
+    let minDate: Date?
     let onSelect: (Date) -> Void
 
-    init(date: Date, onSelect: @escaping (Date) -> Void) {
+    init(date: Date, minDate: Date? = nil, onSelect: @escaping (Date) -> Void) {
         _selected = State(initialValue: date)
+        self.minDate = minDate
         self.onSelect = onSelect
     }
 
@@ -474,7 +478,7 @@ private struct TodayDatePicker: View {
                 Color.clear.frame(height: 76)
                 // Shared DSKit month-grid picker (app font) — replaces the stock
                 // graphical DatePicker (wrong font, navigable to year 4000). [owner]
-                DSCalendarView(date: $selected, maxDate: Self.maxDate)
+                DSCalendarView(date: $selected, minDate: minDate, maxDate: Self.maxDate)
                     .padding(.horizontal, 20)
                 Color.clear.frame(height: 10)
                 Button {

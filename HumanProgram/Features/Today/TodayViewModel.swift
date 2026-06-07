@@ -120,6 +120,7 @@ public final class TodayViewModel {
                 scheduleTemplates: inputs.schedule
             )
             exerciseRoutine = try exerciseRepo.fetchRoutine(for: viewingDate)
+            WidgetSync.refresh(context: context)
         } catch {
             logError("loadPage", error)
         }
@@ -138,8 +139,32 @@ public final class TodayViewModel {
         }
     }
 
+    /// Earliest day the user may navigate to: the install date, or the earliest stored
+    /// page if a restored backup reaches further back. This floors backward navigation
+    /// so you can't scroll into days before the app existed — and because navigation is
+    /// clamped, back-stepping can never keep creating ever-earlier pages. [owner]
+    public var minNavigableDate: Date {
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: Date())
+        let install = (UserDefaults.standard.object(forKey: DefaultsKey.installDate) as? Date)
+            .map { cal.startOfDay(for: $0) } ?? todayStart
+        if let earliest = (try? pageRepo.earliestPageDate()).flatMap({ $0 }) {
+            return min(install, cal.startOfDay(for: earliest))
+        }
+        return install
+    }
+
+    /// False when the viewing day is already at the floor (left arrow should disable).
+    public var canGoToPreviousDay: Bool {
+        Calendar.current.startOfDay(for: viewingDate) > minNavigableDate
+    }
+
     public func goToPreviousDay() {
-        viewingDate = Calendar.current.date(byAdding: .day, value: -1, to: viewingDate) ?? viewingDate
+        let cal = Calendar.current
+        guard let prev = cal.date(byAdding: .day, value: -1, to: viewingDate) else { return }
+        // Floor: never navigate before the install date (or the earliest restored page).
+        if cal.startOfDay(for: prev) < minNavigableDate { return }
+        viewingDate = prev
     }
 
     public func goToNextDay() {
@@ -151,7 +176,9 @@ public final class TodayViewModel {
     }
 
     public func jumpTo(date: Date) {
-        viewingDate = Calendar.current.startOfDay(for: date)
+        // Clamp to the floor so the date picker can't jump before the install date.
+        let target = Calendar.current.startOfDay(for: date)
+        viewingDate = max(target, minNavigableDate)
     }
 
     public func toggleTask(_ task: DailyPageTask) async {
@@ -166,6 +193,7 @@ public final class TodayViewModel {
                 Undo.edited((after.completed ? "Complete task " : "Uncomplete task ") + undoTitle(after.title),
                             before: before, after: after)
             }
+            WidgetSync.refresh(context: context)
         } catch {
             logError("toggleTask", error)
         }
@@ -203,6 +231,7 @@ public final class TodayViewModel {
         do {
             try pageRepo.deleteTask(task, from: p)
             if let before { Undo.deleted("Delete task " + undoTitle(before.title), before) }
+            WidgetSync.refresh(context: context)
         } catch {
             logError("deleteTask", error)
         }

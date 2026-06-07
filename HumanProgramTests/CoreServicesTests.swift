@@ -50,7 +50,17 @@ final class CoreServicesTests: XCTestCase {
     // MARK: - CompletionService Tests
     // ──────────────────────────────────────────────────────────────
 
-    // Test 1: All tasks complete + non-empty → isComplete = true
+    // Completion rule (current rule): a day is complete when it is NOT a future day
+    // AND all its tasks are done; an empty today/past day counts as complete, and a
+    // future day is never complete regardless of its tasks.
+    let completionToday = TestCalendars.utc.startOfDay(for: TestCalendars.utc.date(from: DateComponents(year: 2026, month: 6, day: 6))!)
+
+    @MainActor
+    func isComplete(_ tasks: [DailyPageTask], date: Date) -> Bool {
+        CompletionService().isComplete(tasks: tasks, date: date, today: completionToday, calendar: gregorianUTC)
+    }
+
+    // Test 1: Today, all tasks complete + non-empty → isComplete = true
     @MainActor
     func test_allComplete_nonEmpty_isComplete() throws {
         let container = try makeTestModelContainer()
@@ -59,12 +69,11 @@ final class CoreServicesTests: XCTestCase {
             makeTask(in: context, completed: true, title: "A"),
             makeTask(in: context, completed: true, title: "B")
         ]
-        let service = CompletionService()
-        XCTAssertTrue(service.isComplete(tasks: tasks),
-                      "All completed tasks should result in isComplete=true")
+        XCTAssertTrue(isComplete(tasks, date: completionToday),
+                      "All completed tasks (today) should result in isComplete=true")
     }
 
-    // Test 2: One task incomplete → isComplete = false
+    // Test 2: Today, one task incomplete → isComplete = false
     @MainActor
     func test_oneIncomplete_isNotComplete() throws {
         let container = try makeTestModelContainer()
@@ -73,21 +82,46 @@ final class CoreServicesTests: XCTestCase {
             makeTask(in: context, completed: true,  title: "A"),
             makeTask(in: context, completed: false, title: "B")
         ]
-        let service = CompletionService()
-        XCTAssertFalse(service.isComplete(tasks: tasks),
+        XCTAssertFalse(isComplete(tasks, date: completionToday),
                        "One incomplete task should result in isComplete=false")
     }
 
-    // Test 3: Empty task list → isComplete = false
+    // Test 3: Empty TODAY page → isComplete = true (nothing to do = done)
     @MainActor
-    func test_emptyTasks_isNotComplete() throws {
-        let service = CompletionService()
-        XCTAssertFalse(service.isComplete(tasks: []),
-                       "Empty task list should return false")
+    func test_emptyTasksToday_isComplete() throws {
+        XCTAssertTrue(isComplete([], date: completionToday),
+                      "An empty today page should be complete")
     }
 
-    // (Removed redundant empty-list test — Test 3 already covers
-    //  isComplete(tasks: []) == false. [#182])
+    // Test 3b: Empty PAST page → isComplete = true
+    @MainActor
+    func test_emptyTasksPast_isComplete() throws {
+        let yesterday = gregorianUTC.date(byAdding: .day, value: -1, to: completionToday)!
+        XCTAssertTrue(isComplete([], date: yesterday),
+                      "An empty past page should be complete")
+    }
+
+    // Test 3c: Empty FUTURE page → isComplete = false (could still add tasks)
+    @MainActor
+    func test_emptyTasksFuture_isNotComplete() throws {
+        let tomorrow = gregorianUTC.date(byAdding: .day, value: 1, to: completionToday)!
+        XCTAssertFalse(isComplete([], date: tomorrow),
+                       "An empty future page should NOT be complete")
+    }
+
+    // Test 3d: FUTURE page with every task checked → STILL not complete
+    @MainActor
+    func test_allCompleteFuture_isNotComplete() throws {
+        let container = try makeTestModelContainer()
+        let context = container.mainContext
+        let tomorrow = gregorianUTC.date(byAdding: .day, value: 1, to: completionToday)!
+        let tasks = [
+            makeTask(in: context, completed: true, title: "A"),
+            makeTask(in: context, completed: true, title: "B")
+        ]
+        XCTAssertFalse(isComplete(tasks, date: tomorrow),
+                       "A future day is never complete, even with all tasks checked off")
+    }
 
     // ──────────────────────────────────────────────────────────────
     // MARK: - BacklogMaintenanceService Tests

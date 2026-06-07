@@ -32,7 +32,7 @@ struct TemplateInputs {
 
     static func fetchBacklog(context: ModelContext) throws -> [BacklogTaskInput] {
         try context.fetch(FetchDescriptor<BacklogItem>()).map {
-            BacklogTaskInput(id: $0.id, title: $0.title, assignedDate: $0.assignedDate, status: $0.status)
+            BacklogTaskInput(id: $0.id, title: $0.title, notes: $0.notes, assignedDate: $0.assignedDate, status: $0.status)
         }
     }
 

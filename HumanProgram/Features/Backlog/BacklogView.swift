@@ -158,7 +158,7 @@ struct BacklogView: View {
         var parts: [String] = []
         if let p = item.project?.name { parts.append(p) }
         if let d = item.assignedDate {
-            parts.append(AppDateFormat.monthDay(d))
+            parts.append(AppDateFormat.monthDayYear(d))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -217,7 +217,7 @@ struct BacklogView: View {
                 DSText(name).dsTextStyle(.title3).longTitle()
                 DSText("\(count) items").dsTextStyle(.subheadline)
             }
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)   // wrap, don't overflow [owner]
         }
         // Match BacklogRow's sizing exactly so the gap below Unorganized equals the
         // gaps between the other project rows. [owner]
@@ -534,7 +534,7 @@ struct BacklogFolderView: View {
                         ForEach(items, id: \.id) { item in
                             BacklogRow(coordinator: rows, id: item.id, glyph: .bullet,
                                        title: item.title,
-                                       subtitle: item.assignedDate.map { AppDateFormat.monthDay($0) },
+                                       subtitle: item.assignedDate.map { AppDateFormat.monthDayYear($0) },
                                        selecting: selecting, isSelected: selected.contains(item.id),
                                        onTap: { if selecting { toggleSelected(item.id) } else { taskRoute = TaskRoute(id: item.id) } })
                         }

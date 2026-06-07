@@ -521,7 +521,7 @@ struct CalendarView: View {
                                 .padding(.bottom, 8)
                             } header: {
                                 HStack {
-                                    DSText(day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                                    DSText(day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))
                                         .dsTextStyle(.headline, cal.isDateInToday(day) ? Color.accentColor : Color.primary)
                                     Spacer()
                                 }
@@ -572,9 +572,12 @@ struct CalendarView: View {
             start = cal.startOfDay(for: selectedDate)
             end = cal.date(byAdding: .day, value: 1, to: start) ?? start
         case .list:
-            // Wide window so the agenda scrolls across years (today centred). [#list]
+            // Agenda starts at TODAY and runs forward 2 years, so first open shows the
+            // current period (not 2 years in the past). A wider window that began years
+            // back opened scrolled to its top — i.e. ~2 years ago — because the
+            // scroll-to-today on a LazyVStack didn't reliably fire. [#list][owner]
             let today = cal.startOfDay(for: Date())
-            start = cal.date(byAdding: .year, value: -2, to: today) ?? today
+            start = today
             end = cal.date(byAdding: .year, value: 2, to: today) ?? today
         }
 

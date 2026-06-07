@@ -572,11 +572,12 @@ Implemented in `CompletionService`.
 ### What Makes a Day Complete
 
 ```
-dayComplete = tasks.isNotEmpty && tasks.allSatisfy { $0.completed }
+dayComplete = (date <= today) && tasks.allSatisfy { $0.completed }
 ```
 
-- The task list must be non-empty. An empty task list is never complete.
-- Every task in the list must be checked.
+- The day must be **today or in the past**. A **future day is never complete**, even if it has tasks and they are all checked off — completion only counts once the day is actually the present day (or past). Ticking tasks ahead of time does not flag the future day done and does not feed streaks/stats; an empty future page that rolls into today flips to complete automatically on the next refresh.
+- For today/past, every task in the list must be checked.
+- An **empty list counts as complete** ("nothing to do = done"), so an empty today/past page is complete. *(Owner-approved 2026-06-06, reversing the old "empty = not complete" rule.)*
 
 ### What Counts Toward Completion
 
@@ -1206,10 +1207,12 @@ All tests use an in-memory `ModelContainer` from `makeTestModelContainer()`. Ser
 
 ### CompletionService Tests (`CoreServicesTests.swift`)
 
-- All tasks complete, non-empty list: `isComplete == true`
-- All tasks complete, single task: `isComplete == true`
-- One task incomplete: `isComplete == false`
-- Empty task list: `isComplete == false`
+- Today, all tasks complete, non-empty list: `isComplete == true`
+- Today, one task incomplete: `isComplete == false`
+- Empty today page: `isComplete == true` (nothing to do = done)
+- Empty past page: `isComplete == true`
+- Empty future page: `isComplete == false`
+- Future page with all tasks checked: `isComplete == false` (future is never complete)
 - `recalculate()` updates `page.dayComplete` correctly
 
 ### StreakCalculator Tests (`CoreServicesTests.swift`)

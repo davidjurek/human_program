@@ -285,6 +285,12 @@ let appCalendarLaneBlue = Color(red: 0.46, green: 0.67, blue: 0.96)
 /// permissions). One token instead of the same Color(red:) repeated per screen. [#29/#101]
 let appOnboardingBlue = Color(red: 0.42, green: 0.69, blue: 0.99)
 
+/// App-wide text SELECTION / caret tint — a soft lavender purple. Applied to every text
+/// caret and selection highlight via the UITextField/UITextView appearance proxies (set
+/// once at launch), so selection looks the same everywhere instead of a per-field system
+/// default that could render invisibly (taking the copy/paste menu with it). [owner: "lavender purp"]
+let appSelectionLavender = Color(red: 0.56, green: 0.46, blue: 0.86)
+
 /// Six fixed font-size steps for the size slider. Index 0…5; the value is a
 /// global scale multiplier applied to all typography.
 enum FontSizeStep {

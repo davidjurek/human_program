@@ -55,6 +55,7 @@ public final class DailyPageRepository {
                     recurringTemplates: recurringTemplates,
                     backlogItems: backlogItems,
                     scheduleTemplates: scheduleTemplates,
+                    today: normalizedToday,
                     calendar: calendar
                 )
                 // applyRefresh mutates tasks/blocks/completion but does NOT save — persist
@@ -81,7 +82,7 @@ public final class DailyPageRepository {
         )
         populatePage(page, from: generated)
 
-        completionService.recalculate(page: page)
+        completionService.recalculate(page: page, today: normalizedToday)
         try context.save()
         return page
     }
@@ -114,6 +115,7 @@ public final class DailyPageRepository {
                 recurringTemplates: recurringTemplates,
                 backlogItems: backlogItems,
                 scheduleTemplates: scheduleTemplates,
+                today: normalizedToday,
                 calendar: calendar
             )
         }
@@ -269,9 +271,44 @@ public final class DailyPageRepository {
     /// task-detail editor.
     public func updateTask(_ task: DailyPageTask, title: String? = nil, notes: String? = nil, on page: DailyPage) throws {
         if let title { task.title = title }
-        if let notes { task.notes = notes }
+        if let notes {
+            task.notes = notes
+            // Two-way note sync: a backlog-linked page-task keeps its source backlog
+            // item's note in step. Past page-tasks are severed to .manual at rollover,
+            // so they never match here — the link (and the sync) ends when the day
+            // becomes a frozen snapshot, exactly as intended. [owner]
+            if task.sourceType == .backlog, let sid = task.sourceId,
+               let item = fetchBacklogItem(sid), item.notes != notes {
+                item.notes = notes
+                item.updatedAt = Date()
+            }
+        }
         page.updatedAt = Date()
         try context.save()
+    }
+
+    /// Propagate a backlog item's edited note to its linked page-tasks (the backlog →
+    /// page-task half of the two-way note sync). Past page-tasks are severed to
+    /// `.manual` at rollover, so a frozen snapshot's note is never matched or changed
+    /// here. [owner]
+    public func syncBacklogNoteToTasks(itemId: String, notes: String) throws {
+        let tasks = try context.fetch(
+            FetchDescriptor<DailyPageTask>(predicate: #Predicate { $0.sourceId == itemId })
+        )
+        var changed = false
+        for task in tasks where task.sourceType == .backlog && task.notes != notes {
+            task.notes = notes
+            task.page?.updatedAt = Date()
+            changed = true
+        }
+        if changed { try context.save() }
+    }
+
+    /// Fetch a backlog item by id (for the note-sync hop).
+    private func fetchBacklogItem(_ id: String) -> BacklogItem? {
+        var d = FetchDescriptor<BacklogItem>(predicate: #Predicate { $0.id == id })
+        d.fetchLimit = 1
+        return (try? context.fetch(d))?.first
     }
 
     // MARK: - unlockPastPage
@@ -312,6 +349,15 @@ public final class DailyPageRepository {
         try context.fetchSorted(by: [SortDescriptor(\.date, order: .forward)])
     }
 
+    /// The earliest stored page date (nil if none). Used to floor Today navigation: a
+    /// .hprgm restore can insert pages older than the install date, and those must stay
+    /// reachable.
+    public func earliestPageDate() throws -> Date? {
+        var d = FetchDescriptor<DailyPage>(sortBy: [SortDescriptor(\.date, order: .forward)])
+        d.fetchLimit = 1
+        return try context.fetch(d).first?.date
+    }
+
     // MARK: - Private Helpers
 
     /// Populate a freshly created DailyPage from a GeneratedPage (no save).
@@ -338,6 +384,7 @@ public final class DailyPageRepository {
         recurringTemplates: [RecurringTaskInput],
         backlogItems: [BacklogTaskInput],
         scheduleTemplates: [ScheduleBlockInput],
+        today: Date,
         calendar: Calendar
     ) throws {
         let diff = generator.refresh(
@@ -374,6 +421,6 @@ public final class DailyPageRepository {
         page.scheduleBlocks = diff.newScheduleBlocks
         page.updatedAt = Date()
 
-        completionService.recalculate(page: page)
+        completionService.recalculate(page: page, today: today)
     }
 }

@@ -41,6 +41,13 @@ enum DefaultsKey {
     /// deliberately NOT in `allKeys` — a factory reset must not clear it (a reset is not
     /// an uninstall, and the reset clears the PIN inline). [owner: fresh install showed a PIN]
     static let installMarker       = "hp.installMarker"
+    /// The date (start-of-day) this install was first launched. The Today screen floors
+    /// backward navigation at this date — you can't scroll into days before the app
+    /// existed (which also stops back-navigation from endlessly creating ever-earlier
+    /// pages). A .hprgm restore can bring in OLDER pages; those stay reachable because the
+    /// floor is min(installDate, earliest existing page). In `allKeys` so a factory reset
+    /// re-anchors it to the reset day. [owner: no more year-1950]
+    static let installDate         = "hp.installDate"
 
     // MARK: Shared color-preset library
 
@@ -59,6 +66,6 @@ enum DefaultsKey {
     /// app to a clean factory state — not just the lock/onboarding keys. [#11]
     static let allKeys: [String] = userPreferenceKeys + [
         onboarded, permissionsAsked, lockEnabled, lockBiometric, lockTimeout,
-        blockColorPresets, backlogViewMode, backlogTaskSort
+        blockColorPresets, backlogViewMode, backlogTaskSort, installDate
     ]
 }

@@ -102,6 +102,11 @@ struct ExportView: View {
                     exportBackup()
                 }
             }
+            SettingsGroup(title: "Backlog") {
+                SettingsButtonRow(label: "Export Backlog (CSV)", systemImage: "tablecells") {
+                    exportBacklogCSV()
+                }
+            }
             if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
         }
         .sheet(item: $shareURL) { url in ShareSheet(items: [url]) }
@@ -112,6 +117,21 @@ struct ExportView: View {
             shareURL = try HprgmExportService().export(context: context)
         } catch {
             self.error = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Export ALL backlog items as one combined CSV (project is a column; every field
+    /// included). Backlog items have no "done" state, so nothing is filtered. [owner]
+    private func exportBacklogCSV() {
+        do {
+            let items = try context.fetch(FetchDescriptor<BacklogItem>())
+            let exporter = BacklogCSVExporter()
+            let csv = exporter.export(items: items)
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(exporter.suggestedFilename())
+            try csv.data(using: .utf8)?.write(to: url, options: .atomic)
+            shareURL = url
+        } catch {
+            self.error = "CSV export failed: \(error.localizedDescription)"
         }
     }
 }

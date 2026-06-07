@@ -12,6 +12,13 @@ public struct AppStartup {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
 
+        // Record the install date once (start-of-day). The Today screen floors backward
+        // navigation at this date so you can't scroll into days before the app existed.
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: DefaultsKey.installDate) == nil {
+            defaults.set(today, forKey: DefaultsKey.installDate)
+        }
+
         let backlogRepo = BacklogRepository(context: context)
         let exerciseRepo = ExerciseRepository(context: context)
         let pageRepo = DailyPageRepository(context: context)
@@ -53,5 +60,8 @@ public struct AppStartup {
             DailyCompletionSnapshot(date: $0.date, dayComplete: $0.dayComplete)
         }
         appState.streakStats = streakCalc.calculate(snapshots: snapshots, today: today)
+
+        // 7. Publish today's summary for the home-screen widgets.
+        WidgetSync.refresh(context: context)
     }
 }

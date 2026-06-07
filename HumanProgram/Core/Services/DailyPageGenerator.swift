@@ -57,12 +57,14 @@ public struct RecurringTaskInput: Sendable {
 public struct BacklogTaskInput: Sendable {
     public let id: String
     public let title: String
+    public let notes: String
     public let assignedDate: Date?
     public let status: BacklogStatus
 
-    public init(id: String, title: String, assignedDate: Date?, status: BacklogStatus) {
+    public init(id: String, title: String, notes: String = "", assignedDate: Date?, status: BacklogStatus) {
         self.id = id
         self.title = title
+        self.notes = notes
         self.assignedDate = assignedDate
         self.status = status
     }
@@ -250,7 +252,7 @@ public struct DailyPageGenerator: Sendable {
         for (index, item) in matchingBacklog.enumerated() {
             tasks.append(GeneratedTask(
                 title: item.title,
-                notes: "",
+                notes: item.notes,   // carry the backlog note onto the page-task [owner]
                 sourceType: .backlog,
                 sourceId: item.id,
                 sortOrder: recurringCount + index
