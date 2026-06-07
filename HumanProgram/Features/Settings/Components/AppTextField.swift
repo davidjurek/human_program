@@ -24,6 +24,11 @@ struct AppTextField: UIViewRepresentable {
 
     func makeUIView(context: Context) -> VCenterTextView {
         let tv = VCenterTextView()
+        // Pin TextKit 1 at creation. VCenterTextView.layoutSubviews touches
+        // `layoutManager` (TextKit 1), which otherwise downgrades the view from
+        // TextKit 2 AFTER it has rendered — a known trigger for the selection
+        // highlight and copy/paste menu failing to draw. [owner: selection/menu]
+        _ = tv.layoutManager
         tv.verticallyCenter = verticallyCentered
         tv.backgroundColor = .clear
         tv.delegate = context.coordinator
@@ -66,15 +71,23 @@ struct AppTextField: UIViewRepresentable {
 
     func updateUIView(_ uiView: VCenterTextView, context: Context) {
         context.coordinator.parent = self   // keep the latest binding/text
-        uiView.verticallyCenter = verticallyCentered
-        uiView.isEditable = editable
-        uiView.isSelectable = editable
-        uiView.isUserInteractionEnabled = editable
-        uiView.font = appUIFont(fontSize)
-        context.coordinator.placeholderLabel?.font = appUIFont(fontSize)
-        context.coordinator.placeholderLabel?.text = placeholder
+        // Only assign properties that ACTUALLY changed. Re-setting `font` (or other
+        // layout-affecting properties) on every SwiftUI re-render forces the text view
+        // to re-lay-out, which wipes the active selection highlight and dismisses the
+        // copy/paste menu mid-interaction — leaving the selection handles but no
+        // highlight and no menu. Idempotent updates keep a live selection intact. [owner]
+        if uiView.verticallyCenter != verticallyCentered { uiView.verticallyCenter = verticallyCentered }
+        if uiView.isEditable != editable { uiView.isEditable = editable }
+        if uiView.isSelectable != editable { uiView.isSelectable = editable }
+        if uiView.isUserInteractionEnabled != editable { uiView.isUserInteractionEnabled = editable }
+        let newFont = appUIFont(fontSize)
+        if uiView.font != newFont { uiView.font = newFont }
+        let ph = context.coordinator.placeholderLabel
+        if ph?.font != newFont { ph?.font = newFont }
+        if ph?.text != placeholder { ph?.text = placeholder }
         if uiView.text != text { uiView.text = text }
-        context.coordinator.placeholderLabel?.isHidden = !uiView.text.isEmpty
+        let shouldHide = !uiView.text.isEmpty
+        if ph?.isHidden != shouldHide { ph?.isHidden = shouldHide }
     }
 
     /// Constrain to the proposed width so the text wraps and the field reports
