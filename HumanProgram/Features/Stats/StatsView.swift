@@ -31,9 +31,19 @@ struct StatsView: View {
     @State private var confirmDay: Date? = nil                              // day pending open-confirm
     @State private var openedDay: Date? = nil                               // archived day pushed within Stats
     @State private var showMonthYear = false                                // month/year jump popup
+    @State private var showWeekPicker = false                               // chart week scroll-wheel
+    @State private var pendingWeekPage = 0                                   // wheel selection, applied on Done
 
     private var cal: Calendar { Calendar.current }
     private var today: Date { cal.startOfDay(for: Date()) }
+    private var yesterday: Date { cal.date(byAdding: .day, value: -1, to: today) ?? today }
+
+    /// The live streak run: one ending today, or failing that one ending yesterday — so
+    /// an unfinished but still-in-progress today doesn't zero out a streak you kept
+    /// through yesterday. It resets only once a day fully passes incomplete. [owner]
+    private func currentRun(_ runs: [StreakRun]) -> StreakRun? {
+        runs.first { $0.end == today } ?? runs.first { $0.end == yesterday }
+    }
 
     private var pageByDate: [Date: DailyPage] {
         Dictionary(allPages.map { (cal.startOfDay(for: $0.date), $0) }, uniquingKeysWith: { a, _ in a })
@@ -59,6 +69,7 @@ struct StatsView: View {
         .navigationDestination(item: $openedDay) { day in
             TodayView(context: modelContext, initialDate: day)
         }
+        .sheet(isPresented: $showWeekPicker) { weekPickerSheet }
     }
 
     private func chartContent(_ pageIndex: [Date: DailyPage]) -> some View {
@@ -105,7 +116,7 @@ struct StatsView: View {
     // MARK: - Streak cards
 
     private func streakRow(title: String, runs: [StreakRun]) -> some View {
-        let current = runs.first(where: { $0.end == today })
+        let current = currentRun(runs)
         let longest = runs.max(by: { $0.length < $1.length })
         return VStack(alignment: .leading, spacing: 10) {
             SettingsSectionLabel(title: title)
@@ -130,7 +141,7 @@ struct StatsView: View {
         VStack(alignment: .leading, spacing: 6) {
             DSText(label).dsTextStyle(.caption1)
             HStack(alignment: .lastTextBaseline, spacing: 4) {
-                Text("\(value)").font(.system(size: 34, weight: .bold).monospacedDigit())
+                Text("\(value)").font(appFont(34, bold: true).monospacedDigit())
                     .foregroundStyle(.primary)
                 DSText(value == 1 ? "day" : "days").dsTextStyle(.caption1)
             }
@@ -193,10 +204,15 @@ struct StatsView: View {
         }
     }
 
-    private var weekLabel: String {
-        let end = cal.date(byAdding: .day, value: 6, to: weekStart)!
-        return AppDateFormat.monthDayRange(weekStart, end)
+    /// Week range in the user's chosen date format, with year (e.g. "Jun 7, 2026 –
+    /// Jun 13, 2026" or "06/07/2026 – 06/13/2026"). Used for both the header label and
+    /// the scroll-wheel rows.
+    private func weekRangeLabel(forStatsPage i: Int) -> String {
+        let ws = weekStart(offset: offset(forStatsPage: i))
+        let end = cal.date(byAdding: .day, value: 6, to: ws) ?? ws
+        return "\(AppDateFormat.userPreferred(ws)) – \(AppDateFormat.userPreferred(end))"
     }
+    private var weekLabel: String { weekRangeLabel(forStatsPage: statsPage) }
 
     // Flip-paging: page index 0…(statsPageCount-1) maps to weekOffset (… -2,-1,0). [#5/#38]
     private let statsPageCount = statsWeekPageCount
@@ -205,12 +221,53 @@ struct StatsView: View {
         min(max(0, o + (statsPageCount - 1)), statsPageCount - 1)
     }
 
+    /// Page indices for the scroll-wheel: the floor week (earliest reachable / data) up
+    /// to the current week. Floor = min(install, earliest page) via `navFloor`.
+    private var weekPageRange: [Int] {
+        let floorWeek = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: navFloor)) ?? navFloor
+        let currentWeek = weekStart(offset: 0)
+        let back = min(0, cal.dateComponents([.weekOfYear], from: currentWeek, to: floorWeek).weekOfYear ?? 0)
+        return Array(statsPageIndex(forOffset: back)...(statsPageCount - 1))
+    }
+
+    /// Bottom scroll-wheel sheet listing every week from the floor to the current week;
+    /// selecting one navigates the chart (it's bound straight to `statsPage`).
+    private var weekPickerSheet: some View {
+        ZStack {
+            SettingsBackground().ignoresSafeArea()
+            VStack(spacing: 12) {
+                Picker("", selection: $pendingWeekPage) {
+                    ForEach(weekPageRange, id: \.self) { i in
+                        Text(weekRangeLabel(forStatsPage: i)).font(appFont(18)).tag(i)
+                    }
+                }.pickerStyle(.wheel).frame(height: 160)
+                Spacer(minLength: 0)
+                // Navigate only on Go (bottom center). Spinning then tapping out leaves
+                // the chart where it was.
+                Button { statsPage = pendingWeekPage; showWeekPicker = false } label: {
+                    DSText("Go").dsTextStyle(.headline)
+                        .padding(.horizontal, 40).padding(.vertical, 12)
+                        .background(Color.primary.opacity(0.08), in: Capsule())
+                        .contentShape(Capsule()).a11yTapBorder(Capsule())
+                }.buttonStyle(.plain)
+            }
+            .padding(20)
+        }
+        .presentationDetents([.height(300)])
+        .onAppear { pendingWeekPage = statsPage }
+    }
+
     private func weekSection(_ pageIndex: [Date: DailyPage]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 SettingsSectionLabel(title: "Tasks Done")
-                Spacer()
-                DSText(weekLabel).dsTextStyle(.caption1)
+                Spacer(minLength: 8)
+                // Tap → bottom scroll-wheel to jump to another week.
+                Button { showWeekPicker = true } label: {
+                    Text(weekLabel)
+                        .font(appFont(15, bold: true)).foregroundStyle(Color.blue).underline()
+                        .lineLimit(1).contentShape(Rectangle())
+                }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
             }
 
             // Finger-tracked flip between weeks (Photos-style paging). [#5/#38]
@@ -241,6 +298,37 @@ struct StatsView: View {
         }
         .chartXScale(domain: bars.map { $0.shortDay })
         .chartYAxis(.hidden)
+        // Weekday label (Sun…Sat) + that day's date number underneath, app font. [owner]
+        .chartXAxis {
+            AxisMarks { value in
+                AxisGridLine()
+                AxisValueLabel {
+                    if let day = value.as(String.self),
+                       let bar = bars.first(where: { $0.shortDay == day }) {
+                        VStack(spacing: 1) {
+                            Text(day).font(appFont(14))
+                            Text("\(cal.component(.day, from: bar.date))")
+                                .font(appFont(12)).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        // Tap a bar → open that day's archived page (past, in-range days only). Reuses
+        // the same confirm popup + in-Stats Today push as the calendar. [owner]
+        .chartOverlay { proxy in
+            GeometryReader { geo in
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .gesture(SpatialTapGesture().onEnded { value in
+                        guard let plotFrame = proxy.plotFrame else { return }
+                        let x = value.location.x - geo[plotFrame].origin.x
+                        guard let day: String = proxy.value(atX: x),
+                              let bar = bars.first(where: { $0.shortDay == day }) else { return }
+                        let d = cal.startOfDay(for: bar.date)
+                        if d >= navFloor && d < today { confirmDay = d }
+                    })
+            }
+        }
         .padding(.vertical, 8)   // [#37] no card around the chart
     }
 
@@ -262,8 +350,8 @@ struct StatsView: View {
         return install
     }
 
-    private var completionCurrent: Int { completionRuns.first(where: { $0.end == today })?.length ?? 0 }
-    private var exerciseCurrent: Int { exerciseRuns.first(where: { $0.end == today })?.length ?? 0 }
+    private var completionCurrent: Int { currentRun(completionRuns)?.length ?? 0 }
+    private var exerciseCurrent: Int { currentRun(exerciseRuns)?.length ?? 0 }
 
     // ── Month-pager range + math ─────────────────────────────────────────────────
     private func monthStart(_ date: Date) -> Date { cal.dateInterval(of: .month, for: date)?.start ?? date }
@@ -296,12 +384,12 @@ struct StatsView: View {
             HStack(spacing: 16) {
                 NavigationLink {
                     CurrentStreakDetailView(title: "Completion Streak",
-                                            run: completionRuns.first(where: { $0.end == today }))
+                                            run: currentRun(completionRuns))
                 } label: { statCard("Completion", completionCurrent) }
                     .buttonStyle(.plain).a11yTapBorder(RoundedRectangle(cornerRadius: 16))
                 NavigationLink {
                     CurrentStreakDetailView(title: "Exercise Streak",
-                                            run: exerciseRuns.first(where: { $0.end == today }))
+                                            run: currentRun(exerciseRuns))
                 } label: { statCard("Exercise", exerciseCurrent) }
                     .buttonStyle(.plain).a11yTapBorder(RoundedRectangle(cornerRadius: 16))
             }

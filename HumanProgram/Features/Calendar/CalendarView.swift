@@ -47,9 +47,11 @@ struct CalendarView: View {
     @State private var authStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
     @State private var listScrollTick = 0   // bump to scroll the List back to today [#list]
     // Finger-tracked flip paging (Photos-style) for Month/Week/Day. [#5]
-    private let monthBase = CalendarView.monthStart(for: Date())
-    private let weekBase = CalendarView.weekStart(for: Date())
-    private let dayBase = Calendar.current.startOfDay(for: Date())
+    // Re-anchorable so the date-title scroll-wheel can jump to ANY date (past/future,
+    // beyond the ±120-page swipe window). Reset to today by the Today button. [owner]
+    @State private var monthBase = CalendarView.monthStart(for: Date())
+    @State private var weekBase = CalendarView.weekStart(for: Date())
+    @State private var dayBase = Calendar.current.startOfDay(for: Date())
     private let pageMid = 120
     private var pageCount: Int { 240 }
     @State private var monthPage = 120
@@ -57,6 +59,9 @@ struct CalendarView: View {
     @State private var dayPage = 120
     // The day whose all-day list popup is open (nil = closed). [#cal-allday]
     @State private var allDayPopupDate: Date?
+    // Date-title scroll-wheel (month / day / year), shared by Month/Week/Day views.
+    @State private var showDatePicker = false
+    @State private var pickerDate = Calendar.current.startOfDay(for: Date())
 
     private var selectedCalendarIds: [String] {
         UserDefaults.standard.stringArray(forKey: DefaultsKey.selectedCalendarIds) ?? []
@@ -110,6 +115,7 @@ struct CalendarView: View {
         }
         // All-day events list popup (Week/Day band tap). [#cal-allday]
         .overlay { allDayListPopup }
+        .sheet(isPresented: $showDatePicker) { datePickerSheet }
         .task { await checkAuthAndLoad(); refreshSyncCount() }
     }
 
@@ -157,12 +163,105 @@ struct CalendarView: View {
 
     private func goToday() {
         let today = Calendar.current.startOfDay(for: Date())
+        // If a wheel-jump re-anchored the bases, snap them back to today (instantly, so
+        // the pages don't scroll across the re-anchor); otherwise keep the smooth flip.
+        let baseChanged = monthBase != CalendarView.monthStart(for: today)
+        monthBase = CalendarView.monthStart(for: today)
+        weekBase = CalendarView.weekStart(for: today)
+        dayBase = today
         selectedDate = today
         displayedMonthStart = CalendarView.monthStart(for: today)
         displayedWeekStart = CalendarView.weekStart(for: today)
         loadEvents()
         listScrollTick += 1   // scroll the List agenda back to today [#list]
-        withAnimation { monthPage = pageMid; weekPage = pageMid; dayPage = pageMid }   // flip back to today [#5]
+        if baseChanged {
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { monthPage = pageMid; weekPage = pageMid; dayPage = pageMid }
+        } else {
+            withAnimation { monthPage = pageMid; weekPage = pageMid; dayPage = pageMid }   // flip back to today [#5]
+        }
+    }
+
+    /// Jump every view to `date` by re-anchoring the paging bases to it (so the title
+    /// scroll-wheel can reach any date, not just within the ±120-page window).
+    private func jumpToDate(_ date: Date) {
+        let cal = Calendar.current
+        let d = cal.startOfDay(for: date)
+        monthBase = CalendarView.monthStart(for: d)
+        weekBase = CalendarView.weekStart(for: d)
+        dayBase = d
+        selectedDate = d
+        displayedMonthStart = CalendarView.monthStart(for: d)
+        displayedWeekStart = CalendarView.weekStart(for: d)
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { monthPage = pageMid; weekPage = pageMid; dayPage = pageMid }
+        loadEvents()
+    }
+
+    // MARK: - Date-title scroll wheel (month / day / year)
+
+    private var datePickerSheet: some View {
+        ZStack {
+            SettingsBackground().ignoresSafeArea()
+            VStack(spacing: 12) {
+                HStack(spacing: 0) {
+                    Picker("", selection: pickerMonth) {
+                        ForEach(1...12, id: \.self) { m in
+                            Text(Self.monthAbbrevs[m - 1]).font(appFont(18)).tag(m)
+                        }
+                    }.pickerStyle(.wheel).frame(maxWidth: .infinity).clipped()
+                    Picker("", selection: pickerDay) {
+                        ForEach(1...pickerDaysInMonth, id: \.self) { d in
+                            Text("\(d)").font(appFont(18)).tag(d)
+                        }
+                    }.pickerStyle(.wheel).frame(maxWidth: .infinity).clipped()
+                    Picker("", selection: pickerYear) {
+                        ForEach(1970...2100, id: \.self) { y in
+                            Text(String(y)).font(appFont(18)).tag(y)
+                        }
+                    }.pickerStyle(.wheel).frame(maxWidth: .infinity).clipped()
+                }
+                .frame(height: 180)
+                Spacer(minLength: 0)
+                Button { jumpToDate(pickerDate); showDatePicker = false } label: {
+                    DSText("Go").dsTextStyle(.headline)
+                        .padding(.horizontal, 40).padding(.vertical, 12)
+                        .background(Color.primary.opacity(0.08), in: Capsule())
+                        .contentShape(Capsule()).a11yTapBorder(Capsule())
+                }.buttonStyle(.plain)
+            }
+            .padding(20)
+        }
+        .presentationDetents([.height(320)])
+    }
+
+    private static let monthAbbrevs = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    private var pickerDaysInMonth: Int {
+        Calendar.current.range(of: .day, in: .month, for: pickerDate)?.count ?? 31
+    }
+    private var pickerMonth: Binding<Int> {
+        Binding(get: { Calendar.current.component(.month, from: pickerDate) }, set: { setPicker(month: $0) })
+    }
+    private var pickerDay: Binding<Int> {
+        Binding(get: { Calendar.current.component(.day, from: pickerDate) }, set: { setPicker(day: $0) })
+    }
+    private var pickerYear: Binding<Int> {
+        Binding(get: { Calendar.current.component(.year, from: pickerDate) }, set: { setPicker(year: $0) })
+    }
+    /// Rebuild `pickerDate` from one changed component, clamping the day to the month's
+    /// length (e.g. picking Feb pulls 31 → 28).
+    private func setPicker(month: Int? = nil, day: Int? = nil, year: Int? = nil) {
+        let cal = Calendar.current
+        var c = cal.dateComponents([.year, .month, .day], from: pickerDate)
+        if let month { c.month = month }
+        if let day { c.day = day }
+        if let year { c.year = year }
+        if let first = cal.date(from: DateComponents(year: c.year, month: c.month, day: 1)),
+           let days = cal.range(of: .day, in: .month, for: first)?.count {
+            c.day = min(c.day ?? 1, days)
+        }
+        if let d = cal.date(from: c) { pickerDate = cal.startOfDay(for: d) }
     }
 
     // MARK: - Mode picker
@@ -263,8 +362,10 @@ struct CalendarView: View {
     private var monthNavHeader: some View {
         HStack {
             Spacer()
-            DSText(displayedMonthStart.formatted(.dateTime.month(.wide).year()))
-                .dsTextStyle(.title3)
+            Button { pickerDate = displayedMonthStart; showDatePicker = true } label: {
+                DSText(displayedMonthStart.formatted(.dateTime.month(.wide).year()))
+                    .dsTextStyle(.title3).contentShape(Rectangle())
+            }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -388,8 +489,10 @@ struct CalendarView: View {
         let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: displayedWeekStart) ?? displayedWeekStart
         return HStack {
             Spacer()
-            DSText("\(displayedWeekStart.formatted(.dateTime.month(.abbreviated).day())) – \(weekEnd.formatted(.dateTime.month(.abbreviated).day().year()))")
-                .dsTextStyle(.title3)
+            Button { pickerDate = displayedWeekStart; showDatePicker = true } label: {
+                DSText("\(displayedWeekStart.formatted(.dateTime.month(.abbreviated).day())) – \(weekEnd.formatted(.dateTime.month(.abbreviated).day().year()))")
+                    .dsTextStyle(.title3).contentShape(Rectangle())
+            }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -478,8 +581,10 @@ struct CalendarView: View {
     private func dayNavHeader(day selectedDate: Date) -> some View {
         HStack {
             Spacer()
-            DSText(selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))
-                .dsTextStyle(.title3)
+            Button { pickerDate = selectedDate; showDatePicker = true } label: {
+                DSText(selectedDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))
+                    .dsTextStyle(.title3).contentShape(Rectangle())
+            }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
             Spacer()
         }
         .padding(.horizontal, 16)
