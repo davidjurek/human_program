@@ -35,6 +35,7 @@ enum DefaultsKey {
     static let lockTimeout         = "hp.lock.timeout"
     static let backlogViewMode     = "hp.backlog.viewMode"   // persisted Task/Project view
     static let backlogTaskSort     = "hp.backlog.taskSort"   // persisted backlog sort
+    static let statsViewMode       = "hp.stats.viewMode"     // persisted Chart/Calendar view
     /// Set true on the first launch of an install. iOS wipes UserDefaults on uninstall
     /// but KEEPS the Keychain, so a PIN from a prior install survives a fresh install.
     /// Its ABSENCE marks a fresh install, which lets us purge that orphaned PIN. It is
@@ -66,6 +67,6 @@ enum DefaultsKey {
     /// app to a clean factory state — not just the lock/onboarding keys. [#11]
     static let allKeys: [String] = userPreferenceKeys + [
         onboarded, permissionsAsked, lockEnabled, lockBiometric, lockTimeout,
-        blockColorPresets, backlogViewMode, backlogTaskSort, installDate
+        blockColorPresets, backlogViewMode, backlogTaskSort, statsViewMode, installDate
     ]
 }

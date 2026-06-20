@@ -49,8 +49,8 @@ struct TodayView: View {
         UserDefaults.standard.stringArray(forKey: DefaultsKey.selectedCalendarIds) ?? []
     }
 
-    init(context: ModelContext) {
-        _vm = State(initialValue: TodayViewModel(context: context))
+    init(context: ModelContext, initialDate: Date? = nil) {
+        _vm = State(initialValue: TodayViewModel(context: context, initialDate: initialDate))
     }
 
     var body: some View {

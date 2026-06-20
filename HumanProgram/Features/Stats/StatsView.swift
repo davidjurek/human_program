@@ -14,12 +14,23 @@ private let statsWeekPageCount = 260
 struct StatsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \DailyPage.date, order: .forward) private var allPages: [DailyPage]
 
     @State private var weekOffset = 0   // 0 = current week, -1 = last week …
     // Current-week page index, derived from the page count so the two can't drift. [#175]
     @State private var statsPage = statsWeekPageCount - 1
-    @State private var showWeekPicker = false
+
+    // Chart (default) ⇄ Calendar view, persisted across launches; cleared by a factory
+    // reset (it's in DefaultsKey.allKeys, NOT in .hprgm backups), so a fresh install
+    // and a reset both land on the chart view.
+    @AppStorage(DefaultsKey.statsViewMode) private var viewMode = "chart"   // "chart" | "calendar"
+    @State private var monthPage = 0                                        // selected month page (horizontal pager)
+    @State private var pickerMonth = Calendar.current.startOfDay(for: Date()) // month/year wheel binding
+    @State private var months: [Date] = []                                  // every month-start in range
+    @State private var confirmDay: Date? = nil                              // day pending open-confirm
+    @State private var openedDay: Date? = nil                               // archived day pushed within Stats
+    @State private var showMonthYear = false                                // month/year jump popup
 
     private var cal: Calendar { Calendar.current }
     private var today: Date { cal.startOfDay(for: Date()) }
@@ -32,22 +43,33 @@ struct StatsView: View {
         let pageIndex = pageByDate          // build the date→page index ONCE per render
         return ZStack {
             SettingsBackground()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    weekSection(pageIndex)                         // [#36] Tasks Done on top
-                    streakRow(title: "Completion Streak", runs: completionRuns)
-                    streakRow(title: "Exercise Streak", runs: exerciseRuns)
-                    Color.clear.frame(height: 40)
-                }
-                .padding(.horizontal, 20).padding(.top, 28)   // [#39] small top gap
+            if viewMode == "calendar" {
+                calendarContent(pageIndex)
+            } else {
+                chartContent(pageIndex)
             }
+            if let day = confirmDay { confirmPopup(day) }   // open-day confirmation
         }
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .enableSwipeBack()
-        .sheet(isPresented: $showWeekPicker) {
-            StatsWeekPicker(date: cal.date(byAdding: .day, value: 3, to: weekStart) ?? today) { setWeek(containing: $0) }
+        // Tapping a day pushes that archived day as the Today page, but WITHIN Stats —
+        // its own back button pops right back here to the calendar.
+        .navigationDestination(item: $openedDay) { day in
+            TodayView(context: modelContext, initialDate: day)
+        }
+    }
+
+    private func chartContent(_ pageIndex: [Date: DailyPage]) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                weekSection(pageIndex)                         // [#36] Tasks Done on top
+                streakRow(title: "Completion Streak", runs: completionRuns)
+                streakRow(title: "Exercise Streak", runs: exerciseRuns)
+                Color.clear.frame(height: 40)
+            }
+            .padding(.horizontal, 20).padding(.top, 28)   // [#39] small top gap
         }
     }
 
@@ -55,25 +77,29 @@ struct StatsView: View {
         HStack {
             BackChevronButton { dismiss() }
             Spacer()
-            Button { withAnimation { statsPage = statsPageIndex(forOffset: 0) } } label: {  // jump to current week
+            Button { jumpToCurrent() } label: {  // jump to current week / month
                 DSText("Today").dsTextStyle(.subheadline)
-                    .frame(height: 44)   // full top-bar height, matches the calendar button
+                    .frame(height: 44)   // full top-bar height, matches the icon button
                     .contentShape(Rectangle())
             }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4).padding(.trailing, 18)
-            DSImageView(systemName: "calendar", size: 18, tint: .color(.primary))   // [#199]
+            // Toggles the view: calendar icon → calendar view; chart icon → back to chart.
+            DSImageView(systemName: viewMode == "calendar" ? "chart.bar" : "calendar",
+                        size: 18, tint: .color(.primary))   // [#199]
                 .frame(width: 44, height: 44).contentShape(Rectangle())
                 .a11yTapBorder(Rectangle())
-                .onTapGesture { showWeekPicker = true }
+                .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) {
+                    viewMode = (viewMode == "calendar") ? "chart" : "calendar"
+                } }
         }
         .padding(.horizontal, 12).padding(.bottom, 4)
         .topBarFrost()                                       // [#47]
     }
 
-    private func setWeek(containing date: Date) {
-        let base = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
-        let target = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date))!
-        let weeks = cal.dateComponents([.weekOfYear], from: base, to: target).weekOfYear ?? 0
-        statsPage = statsPageIndex(forOffset: min(0, weeks))   // onChange syncs weekOffset [#5]
+    /// The top-bar "Today" button: chart view jumps to the current week; calendar view
+    /// pages to the current month.
+    private func jumpToCurrent() {
+        if viewMode == "calendar" { withAnimation { monthPage = monthIndex(of: today) } }
+        else { withAnimation { statsPage = statsPageIndex(forOffset: 0) } }
     }
 
     // MARK: - Streak cards
@@ -162,7 +188,8 @@ struct StatsView: View {
             let day = cal.date(byAdding: .day, value: off, to: ws)!
             let page = pageIndex[cal.startOfDay(for: day)]
             let done = page?.tasks.filter { $0.completed }.count ?? 0
-            return WeekBar(date: day, count: done, future: day > today)
+            return WeekBar(date: day, count: done, future: day > today,
+                           complete: page?.dayComplete ?? false)
         }
     }
 
@@ -202,7 +229,9 @@ struct StatsView: View {
         let bars = weekDays(offset: offset, pageIndex: pageIndex)
         return Chart(bars) { bar in
             BarMark(x: .value("Day", bar.shortDay), y: .value("Done", bar.count))
-                .foregroundStyle(bar.future ? Color.secondary.opacity(0.25) : weekdaySelectedColor)
+                // Green when the day is fully complete, blue when not (future days faded).
+                .foregroundStyle(bar.future ? Color.secondary.opacity(0.25)
+                                 : (bar.complete ? weekdayCompleteColor : weekdaySelectedColor))
                 .cornerRadius(4)
                 .annotation(position: .top) {
                     if bar.count > 0 {
@@ -214,12 +243,230 @@ struct StatsView: View {
         .chartYAxis(.hidden)
         .padding(.vertical, 8)   // [#37] no card around the chart
     }
+
+    // MARK: - Calendar view (continuous week-snapping scroll; circles on past days)
+
+    private let calCols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
+
+    /// Floor for the CIRCLES: the earliest day with data, or the install date if that's
+    /// earlier — i.e. `min(install, earliest page)`, matching the Today screen's floor.
+    /// Circles begin at your oldest saved day; days before it (and the future) are blank.
+    /// (Relies on stray junk pages having been purged, else circles would reach back to
+    /// them — see the one-time cleanup in AppStartup.)
+    private var navFloor: Date {
+        let install = (UserDefaults.standard.object(forKey: DefaultsKey.installDate) as? Date)
+            .map { cal.startOfDay(for: $0) } ?? today
+        if let earliest = allPages.first.map({ cal.startOfDay(for: $0.date) }) {
+            return min(install, earliest)
+        }
+        return install
+    }
+
+    private var completionCurrent: Int { completionRuns.first(where: { $0.end == today })?.length ?? 0 }
+    private var exerciseCurrent: Int { exerciseRuns.first(where: { $0.end == today })?.length ?? 0 }
+
+    // ── Month-pager range + math ─────────────────────────────────────────────────
+    private func monthStart(_ date: Date) -> Date { cal.dateInterval(of: .month, for: date)?.start ?? date }
+    /// Every month-start from ~5 years back to ~5 years ahead of today.
+    private func buildMonths() -> [Date] {
+        let first = monthStart(cal.date(byAdding: .year, value: -5, to: today) ?? today)
+        let last = monthStart(cal.date(byAdding: .year, value: 5, to: today) ?? today)
+        var out: [Date] = []
+        var d = first
+        while d <= last {
+            out.append(d)
+            guard let next = cal.date(byAdding: .month, value: 1, to: d) else { break }
+            d = next
+        }
+        return out
+    }
+    /// Index of `date`'s month within `months` (fallback: the middle of the range).
+    private func monthIndex(of date: Date) -> Int {
+        months.firstIndex(of: monthStart(date)) ?? max(0, months.count / 2)
+    }
+    /// The month the pager is currently showing.
+    private var displayedMonth: Date {
+        months.indices.contains(monthPage) ? months[monthPage] : monthStart(today)
+    }
+
+    private func calendarContent(_ pageIndex: [Date: DailyPage]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Current streaks only (no longest), pinned above the calendar — each card
+            // taps through to its current-streak detail, like the chart view.
+            HStack(spacing: 16) {
+                NavigationLink {
+                    CurrentStreakDetailView(title: "Completion Streak",
+                                            run: completionRuns.first(where: { $0.end == today }))
+                } label: { statCard("Completion", completionCurrent) }
+                    .buttonStyle(.plain).a11yTapBorder(RoundedRectangle(cornerRadius: 16))
+                NavigationLink {
+                    CurrentStreakDetailView(title: "Exercise Streak",
+                                            run: exerciseRuns.first(where: { $0.end == today }))
+                } label: { statCard("Exercise", exerciseCurrent) }
+                    .buttonStyle(.plain).a11yTapBorder(RoundedRectangle(cornerRadius: 16))
+            }
+            .padding(.top, 28).padding(.bottom, 88)   // big gap before the calendar
+            calHeader
+            weekdayHeader.padding(.top, 16)           // doubled title → calendar gap
+            monthPager(pageIndex).padding(.top, 14)   // gap between S M T W T F S and week 1
+        }
+        .padding(.horizontal, 20)
+        .frame(maxHeight: .infinity, alignment: .top)   // pin to top (calendar is fixed-height)
+        .overlay {
+            if showMonthYear {
+                // Unbounded — jump to any month/year, past or future.
+                MonthYearWheelPopup(month: $pickerMonth, minDate: nil, maxDate: nil) {
+                    showMonthYear = false
+                    withAnimation { monthPage = monthIndex(of: pickerMonth) }
+                }
+            }
+        }
+        .onAppear {
+            if months.isEmpty {
+                months = buildMonths()
+                monthPage = monthIndex(of: today)   // start on the current month
+            }
+        }
+    }
+
+    /// Month label (tap → month/year wheel). No ‹ › buttons — you swipe the calendar
+    /// left/right to change months. The title's left edge is inset to the first
+    /// day-circle's left edge. [#1]
+    private var calHeader: some View {
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                Button {
+                    pickerMonth = displayedMonth
+                    showMonthYear = true
+                } label: {
+                    Text(AppDateFormat.monthYear(displayedMonth))
+                        .font(appFont(24, bold: true)).foregroundStyle(Color.blue).underline()
+                        .frame(height: 36, alignment: .leading).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
+                // Circle centre = colW/2, radius 18 → its left edge = geo.width/14 − 18.
+                .padding(.leading, max(0, geo.size.width / 14 - 18))
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(height: 36)
+    }
+
+    private var weekdayHeader: some View {
+        LazyVGrid(columns: calCols, spacing: 4) {
+            ForEach(0..<7, id: \.self) { i in
+                DSText(Weekday.shortLetters[i]).dsTextStyle(.caption1).frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    /// Horizontal pager of month grids — swipe left/right to change months, snapping
+    /// one month per page. The shown page drives the header month. [#4]
+    private func monthPager(_ pageIndex: [Date: DailyPage]) -> some View {
+        // 6 rows of 44 + 5 gaps of 6 = a fixed-height month grid (no jump between
+        // 5- and 6-week months).
+        let rowH: CGFloat = 44, gap: CGFloat = 6
+        return TabView(selection: $monthPage) {
+            ForEach(months.indices, id: \.self) { i in
+                monthGrid(months[i], pageIndex).tag(i)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .frame(height: rowH * 6 + gap * 5)
+    }
+
+    /// One month's 6-row grid (leading/trailing days outside the month are blank).
+    private func monthGrid(_ monthStartDate: Date, _ pageIndex: [Date: DailyPage]) -> some View {
+        LazyVGrid(columns: calCols, spacing: 6) {
+            ForEach(Array(gridDays(for: monthStartDate).enumerated()), id: \.offset) { _, day in
+                if let day { calDayCell(day, pageIndex) } else { Color.clear.frame(height: 44) }
+            }
+        }
+    }
+
+    /// 42-slot grid (leading blanks + the month's days), reusing the shared
+    /// `monthGridLayout` so it matches the app's other calendars. [#196]
+    private func gridDays(for monthStartDate: Date) -> [Date?] {
+        let layout = monthGridLayout(monthStart: monthStartDate, calendar: cal)
+        var out: [Date?] = Array(repeating: nil, count: layout.leadingBlanks)
+        for d in 0..<layout.dayCount { out.append(cal.date(byAdding: .day, value: d, to: monthStartDate)) }
+        while out.count < 42 { out.append(nil) }
+        return out
+    }
+
+    private func calDayCell(_ day: Date, _ pageIndex: [Date: DailyPage]) -> some View {
+        let d = cal.startOfDay(for: day)
+        // Only past days at/after the install floor are tappable and get a circle.
+        let clickable = d >= navFloor && d < today
+        let complete = pageIndex[d]?.dayComplete ?? true   // empty past day counts as done → green
+        let isToday = d == today
+        // Number is black only for past days that have a saved page; today, empty past
+        // days, and the future are grey.
+        let black = d < today && pageIndex[d] != nil
+        return Button {
+            if clickable { confirmDay = d }   // today is never clickable (not a past day)
+        } label: {
+            ZStack {
+                if clickable {
+                    Circle().fill(complete ? weekdayCompleteColor : weekdaySelectedColor)
+                        .frame(width: 36, height: 36)
+                } else if isToday {
+                    // Hollow grey ring marks today (not filled, not tappable).
+                    Circle().strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1.5)
+                        .frame(width: 36, height: 36)
+                }
+                Text("\(cal.component(.day, from: day))")
+                    .font(appFont(15))
+                    .foregroundStyle(black ? Color.primary : Color.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).disabled(!clickable)
+        .a11yTapBorder(Rectangle())
+    }
+
+    private func confirmPopup(_ day: Date) -> some View {
+        ZStack {
+            Color.black.opacity(0.2).ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { confirmDay = nil }
+            VStack(spacing: 20) {
+                DSText(AppDateFormat.weekdayMonthDayYear(day)).dsTextStyle(.headline)
+                HStack(spacing: 14) {
+                    Button { confirmDay = nil } label: {
+                        DSText("Back").dsTextStyle(.headline)
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(Color.primary.opacity(0.06), in: Capsule())
+                            .contentShape(Capsule()).a11yTapBorder(Capsule())
+                    }.buttonStyle(.plain)
+                    Button { openDay(day) } label: {
+                        DSText("Go").dsTextStyle(.headline)
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(Color.primary.opacity(0.10), in: Capsule())
+                            .contentShape(Capsule()).a11yTapBorder(Capsule())
+                    }.buttonStyle(.plain)
+                }
+            }
+            .padding(24)
+            .frame(width: 300)
+            .popupGlass(cornerRadius: 22)
+        }
+    }
+
+    /// Push the chosen archived day WITHIN Stats — the same Today page (lock pill,
+    /// schedule, tasks), but its back button returns here to the calendar, not the hub.
+    private func openDay(_ day: Date) {
+        confirmDay = nil
+        openedDay = day
+    }
 }
 
 private struct WeekBar: Identifiable {
     let date: Date
     let count: Int
     let future: Bool
+    let complete: Bool
     var id: Date { date }
     var shortDay: String {
         AppDateFormat.weekdayShort(date)   // Sun…Sat (unique within a week)
@@ -285,36 +532,3 @@ struct LongestStreakListView: View {
     }
 }
 
-/// Week jump picker — tapping a date jumps to the week containing it.
-private struct StatsWeekPicker: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var selected: Date
-    let onSelect: (Date) -> Void
-
-    init(date: Date, onSelect: @escaping (Date) -> Void) {
-        _selected = State(initialValue: date)
-        self.onSelect = onSelect
-    }
-
-    var body: some View {
-        ZStack {
-            SettingsBackground()
-            VStack(spacing: 16) {
-                DSCalendarView(date: $selected)            // [#13/#40] custom DSKit calendar
-                    .padding()
-                Button {
-                    onSelect(selected); dismiss()
-                } label: {
-                    DSText("Go").dsTextStyle(.headline)
-                        .padding(.horizontal, 28).padding(.vertical, 12)
-                        .background(Color.primary.opacity(0.08), in: Capsule())
-                        .contentShape(Capsule())
-                        .a11yTapBorder(Capsule())
-                }.buttonStyle(.plain)
-                Spacer()
-            }
-            .padding(.top, 20)
-        }
-        .presentationDetents([.medium])
-    }
-}

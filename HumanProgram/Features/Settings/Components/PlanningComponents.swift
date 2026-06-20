@@ -12,6 +12,10 @@ import DSKit
 
 struct WeekdayCircleSelector: View {
     @Binding var selected: Set<Int>
+    /// Greyed-out + non-interactive (e.g. Schedule's Custom range, where the day
+    /// is chosen by From/To dates and the weekday circles are irrelevant). The
+    /// circles stay visible for layout, just dimmed and untappable. [owner: custom range]
+    var disabled: Bool = false
 
     // Letters come from the canonical Weekday.shortLetters table (1=Sun…7=Sat). [#148][#193]
     private let days: [(day: Int, letter: String)] =
@@ -25,7 +29,9 @@ struct WeekdayCircleSelector: View {
                     if isOn { selected.remove(item.day) } else { selected.insert(item.day) }
                 } label: {
                     ZStack {
-                        Circle().fill(isOn ? weekdaySelectedColor : Color.clear)
+                        // No blue fill while disabled — a selection has no meaning in
+                        // Custom range, so every day reads as a plain greyed letter.
+                        Circle().fill(isOn && !disabled ? weekdaySelectedColor : Color.clear)
                         Text(item.letter)
                             .font(appFont(16, bold: true))
                             .foregroundStyle(Color.primary)
@@ -39,6 +45,8 @@ struct WeekdayCircleSelector: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
+        .opacity(disabled ? 0.35 : 1)
+        .allowsHitTesting(!disabled)
     }
 }
 

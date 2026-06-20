@@ -20,8 +20,6 @@ struct DSCalendarView: View {
     private let cal = Calendar.current
     private let cols = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     private let weekdays = Weekday.shortLetters   // canonical S M T W T F S (1=Sun) [#148][#193]
-    private static let monthAbbrevs = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
     var body: some View {
         VStack(spacing: 12) {
@@ -70,62 +68,13 @@ struct DSCalendarView: View {
         .overlay { monthYearPopup }
     }
 
-    /// Month (Jan…Dec) + year (1900–2100) scroll wheels, app font, in our glass popup.
+    /// Month + year scroll wheels — the shared popup, bounded to this picker's range.
     @ViewBuilder private var monthYearPopup: some View {
         if showMonthYear {
-            ZStack {
-                // Fill the calendar's own bounds (no ignoresSafeArea) so the card
-                // doesn't re-centre after appearing — it stays in one place. [owner]
-                Color.black.opacity(0.001)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .onTapGesture { showMonthYear = false }
-                VStack(spacing: 8) {
-                    HStack(spacing: 0) {
-                        Picker("", selection: monthIndex) {
-                            ForEach(1...12, id: \.self) { m in
-                                Text(Self.monthAbbrevs[m - 1]).font(appFont(20)).tag(m)
-                            }
-                        }.pickerStyle(.wheel).frame(maxWidth: .infinity).clipped()
-                        Picker("", selection: yearValue) {
-                            ForEach(1900...2100, id: \.self) { y in
-                                Text(String(y)).font(appFont(20)).tag(y)
-                            }
-                        }.pickerStyle(.wheel).frame(maxWidth: .infinity).clipped()
-                    }
-                    .frame(height: 170)
-                    Button { showMonthYear = false } label: {
-                        DSText("Done").dsTextStyle(.headline)
-                            .padding(.horizontal, 24).padding(.vertical, 8)
-                            .contentShape(Rectangle())
-                    }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
-                }
-                .padding(16)
-                .frame(width: 300)
-                .popupGlass(cornerRadius: 22)
+            MonthYearWheelPopup(month: $month, minDate: minDate, maxDate: maxDate) {
+                showMonthYear = false
             }
         }
-    }
-
-    private var monthIndex: Binding<Int> {
-        Binding(get: { cal.component(.month, from: month) },
-                set: { setMonthYear(month: $0, year: cal.component(.year, from: month)) })
-    }
-    private var yearValue: Binding<Int> {
-        Binding(get: { cal.component(.year, from: month) },
-                set: { setMonthYear(month: cal.component(.month, from: month), year: $0) })
-    }
-    /// Jump the displayed grid to a month/year, clamped to min/maxDate if present.
-    private func setMonthYear(month m: Int, year y: Int) {
-        var c = DateComponents(); c.year = y; c.month = m; c.day = 1
-        guard var d = cal.date(from: c) else { return }
-        if let maxDate, cal.compare(d, to: maxDate, toGranularity: .month) == .orderedDescending {
-            d = cal.dateInterval(of: .month, for: maxDate)?.start ?? d
-        }
-        if let minDate, cal.compare(d, to: minDate, toGranularity: .month) == .orderedAscending {
-            d = cal.dateInterval(of: .month, for: minDate)?.start ?? d
-        }
-        month = d
     }
 
     private func dayCell(_ day: Date) -> some View {
@@ -171,6 +120,76 @@ struct DSCalendarView: View {
         // weekday row, first week, and Go button don't shift as month row counts vary. [owner]
         while out.count < 42 { out.append(nil) }
         return out
+    }
+}
+
+/// Month (Jan…Dec) + year scroll wheels in the app glass popup — taps the calendar
+/// title to jump to any month/year. Bound to a `month` date; clamped to the optional
+/// min/max bounds. Shared by `DSCalendarView` and the Stats calendar so the jump UI
+/// lives in exactly one place. [reuse]
+struct MonthYearWheelPopup: View {
+    @Binding var month: Date
+    var minDate: Date? = nil
+    var maxDate: Date? = nil
+    let onClose: () -> Void
+
+    private let cal = Calendar.current
+    private static let monthAbbrevs = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    private var monthIndex: Binding<Int> {
+        Binding(get: { cal.component(.month, from: month) },
+                set: { setMonthYear(month: $0, year: cal.component(.year, from: month)) })
+    }
+    private var yearValue: Binding<Int> {
+        Binding(get: { cal.component(.year, from: month) },
+                set: { setMonthYear(month: cal.component(.month, from: month), year: $0) })
+    }
+    /// Jump to a month/year, clamped to min/maxDate if present.
+    private func setMonthYear(month m: Int, year y: Int) {
+        var c = DateComponents(); c.year = y; c.month = m; c.day = 1
+        guard var d = cal.date(from: c) else { return }
+        if let maxDate, cal.compare(d, to: maxDate, toGranularity: .month) == .orderedDescending {
+            d = cal.dateInterval(of: .month, for: maxDate)?.start ?? d
+        }
+        if let minDate, cal.compare(d, to: minDate, toGranularity: .month) == .orderedAscending {
+            d = cal.dateInterval(of: .month, for: minDate)?.start ?? d
+        }
+        month = d
+    }
+
+    var body: some View {
+        ZStack {
+            // Fill the host's bounds (no ignoresSafeArea) so the card doesn't re-centre
+            // after appearing — it stays in one place. [owner]
+            Color.black.opacity(0.001)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture { onClose() }
+            VStack(spacing: 8) {
+                HStack(spacing: 0) {
+                    Picker("", selection: monthIndex) {
+                        ForEach(1...12, id: \.self) { m in
+                            Text(Self.monthAbbrevs[m - 1]).font(appFont(20)).tag(m)
+                        }
+                    }.pickerStyle(.wheel).frame(maxWidth: .infinity).clipped()
+                    Picker("", selection: yearValue) {
+                        ForEach(1900...2100, id: \.self) { y in
+                            Text(String(y)).font(appFont(20)).tag(y)
+                        }
+                    }.pickerStyle(.wheel).frame(maxWidth: .infinity).clipped()
+                }
+                .frame(height: 170)
+                Button { onClose() } label: {
+                    DSText("Done").dsTextStyle(.headline)
+                        .padding(.horizontal, 24).padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                }.buttonStyle(.plain).a11yTapBorder(cornerRadius: 4)
+            }
+            .padding(16)
+            .frame(width: 300)
+            .popupGlass(cornerRadius: 22)
+        }
     }
 }
 

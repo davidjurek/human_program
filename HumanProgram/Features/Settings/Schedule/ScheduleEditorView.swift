@@ -117,7 +117,9 @@ struct ScheduleEditorView: View {
     private var remaining: Int { max(0, 1440 - usedMinutes) }
 
     private var canSave: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty && !weekdays.isEmpty
+        // Custom range picks its days via From/To, so a weekday isn't required there.
+        let weekdaysOK = repeatMode == "custom" || !weekdays.isEmpty
+        return !name.trimmingCharacters(in: .whitespaces).isEmpty && weekdaysOK
     }
     private var canAddBlock: Bool {
         !newTitle.trimmingCharacters(in: .whitespaces).isEmpty
@@ -178,7 +180,7 @@ struct ScheduleEditorView: View {
 
             repeatRow
 
-            WeekdayCircleSelector(selected: $weekdays)
+            WeekdayCircleSelector(selected: $weekdays, disabled: repeatMode == "custom")
 
             if repeatMode == "custom" {
                 DateFieldRow(label: "From", date: $fromDate)
@@ -300,22 +302,22 @@ struct ScheduleEditorView: View {
             case .sleepFrom:
                 AnchoredPopup(anchor: rect, width: timePopupWidth, estimatedHeight: 185,
                               alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
-                    SteppedWheel(minutes: $sleepStart, mode: .time, onRequestKeypad: showKeypad)
+                    SteppedWheel(minutes: $sleepStart, mode: .time, typed: typedDigits, isTyping: keypadVisible, onRequestKeypad: showKeypad)
                 }
             case .sleepTo:
                 AnchoredPopup(anchor: rect, width: timePopupWidth, estimatedHeight: 185,
                               alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
-                    SteppedWheel(minutes: $sleepEnd, mode: .time, onRequestKeypad: showKeypad)
+                    SteppedWheel(minutes: $sleepEnd, mode: .time, typed: typedDigits, isTyping: keypadVisible, onRequestKeypad: showKeypad)
                 }
             case .newDuration:
                 AnchoredPopup(anchor: rect, width: 210, estimatedHeight: 185,
                               alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
-                    SteppedWheel(minutes: $newDuration, mode: .duration, onRequestKeypad: showKeypad)
+                    SteppedWheel(minutes: $newDuration, mode: .duration, typed: typedDigits, isTyping: keypadVisible, onRequestKeypad: showKeypad)
                 }
             case .blockDuration(let id):
                 AnchoredPopup(anchor: rect, width: 210, estimatedHeight: 185,
                               alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
-                    SteppedWheel(minutes: durationBinding(for: id), mode: .duration, onRequestKeypad: showKeypad)
+                    SteppedWheel(minutes: durationBinding(for: id), mode: .duration, typed: typedDigits, isTyping: keypadVisible, onRequestKeypad: showKeypad)
                 }
             }
         }
@@ -657,7 +659,7 @@ struct ScheduleEditorView: View {
 
     private func save() {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, !weekdays.isEmpty else { return }
+        guard !trimmed.isEmpty, repeatMode == "custom" || !weekdays.isEmpty else { return }
 
         // A schedule can't be longer than a day. Sleep + all block durations must
         // fit in 24h. Show the error in the same slot as the day-conflict message.

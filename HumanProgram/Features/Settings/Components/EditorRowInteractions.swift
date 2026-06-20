@@ -402,6 +402,12 @@ struct SteppedWheel: View {
     @Binding var minutes: Int
     enum Mode { case time, duration }
     let mode: Mode
+    /// The keypad's HHMM buffer, and whether the keypad is currently up. When
+    /// typing, the spinning wheel is swapped for a big `HH : MM` read-out whose
+    /// active field (hour vs minute) is drawn in primary and the other in grey,
+    /// so it's clear which field a digit lands in. [owner: typing highlight]
+    var typed: String = ""
+    var isTyping: Bool = false
     let onRequestKeypad: () -> Void
 
     private let step = 5
@@ -450,25 +456,27 @@ struct SteppedWheel: View {
 
     private var colon: some View { Text(":").font(.system(size: 20, weight: .semibold)) }
 
+    /// While typing on the keypad, the field being entered (the hour for the first
+    /// two digits, then the minute) stays full-strength while the others dim to
+    /// grey — so it's clear which column a digit lands in. No effect when just
+    /// scrolling the wheel. [owner: typing highlight]
+    private var hourActive: Bool { typed.count < 2 }
+    private func dim(_ active: Bool) -> Double { isTyping && !active ? 0.3 : 1 }
+
     var body: some View {
         Group {
-            if mode == .duration {
-                HStack(spacing: 0) {
-                    Picker("", selection: hourBinding) {
-                        ForEach(0..<24, id: \.self) { Text("\($0)h").tag($0) }
-                    }
-                    .pickerStyle(.wheel)
-                    minuteWheel(label: { "\($0)m" }, expand: false)
-                }
-                .frame(width: 180, height: 150)
-            } else if is24 {
+            if mode == .duration || is24 {
+                // Duration is always HH : MM; time honours the 24h setting. Same
+                // colon layout for both so there's only one "with-a-colon" wheel.
                 HStack(spacing: 0) {
                     Picker("", selection: hourBinding) {
                         ForEach(0..<24, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
                     }
                     .pickerStyle(.wheel)
+                    .opacity(dim(hourActive))
                     colon
                     minuteWheel(label: { String(format: "%02d", $0) }, expand: false)
+                        .opacity(dim(!hourActive))
                 }
                 .frame(width: 180, height: 150)
             } else {
@@ -478,13 +486,16 @@ struct SteppedWheel: View {
                         ForEach(1...12, id: \.self) { Text("\($0)").tag($0) }
                     }
                     .pickerStyle(.wheel).frame(maxWidth: .infinity)
+                    .opacity(dim(hourActive))
                     colon
                     minuteWheel(label: { String(format: "%02d", $0) }, expand: true)
+                        .opacity(dim(!hourActive))
                     Picker("", selection: isPMBinding) {
                         Text("AM").tag(false)
                         Text("PM").tag(true)
                     }
                     .pickerStyle(.wheel).frame(maxWidth: .infinity)
+                    .opacity(dim(false))
                 }
                 .frame(width: 230, height: 150)
             }

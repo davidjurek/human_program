@@ -278,6 +278,11 @@ let weekdaySelectedColor = Color(red: 163.0/255, green: 213.0/255, blue: 255.0/2
 /// Day-complete accent (the Today date turns this green when the day is done). [#31]
 let appCompleteGreen = Color(red: 0.18, green: 0.62, blue: 0.32)
 
+/// Light pastel green for the Stats "Tasks Done" bars on a fully-complete day —
+/// same pastel weight as `weekdaySelectedColor` (the blue bars), leaning a touch
+/// minty but kept clearly green (green channel stays dominant, not full mint).
+let weekdayCompleteColor = Color(red: 150.0/255, green: 222.0/255, blue: 180.0/255)
+
 /// Fixed light blue for the calendar (right) lane on the Today/timeline gutter. [#31]
 let appCalendarLaneBlue = Color(red: 0.46, green: 0.67, blue: 0.96)
 

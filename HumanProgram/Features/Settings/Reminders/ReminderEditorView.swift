@@ -234,17 +234,17 @@ struct ReminderEditorView: View {
             case .time:
                 AnchoredPopup(anchor: rect, width: timePopupWidth, estimatedHeight: 185,
                               alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
-                    SteppedWheel(minutes: $onceMinutes, mode: .time, onRequestKeypad: showKeypad)
+                    SteppedWheel(minutes: $onceMinutes, mode: .time, typed: typedDigits, isTyping: keypadVisible, onRequestKeypad: showKeypad)
                 }
             case .start:
                 AnchoredPopup(anchor: rect, width: timePopupWidth, estimatedHeight: 185,
                               alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
-                    SteppedWheel(minutes: $startMinutes, mode: .time, onRequestKeypad: showKeypad)
+                    SteppedWheel(minutes: $startMinutes, mode: .time, typed: typedDigits, isTyping: keypadVisible, onRequestKeypad: showKeypad)
                 }
             case .end:
                 AnchoredPopup(anchor: rect, width: timePopupWidth, estimatedHeight: 185,
                               alignment: .trailing, space: space, bottomInset: inset, onClose: close) {
-                    SteppedWheel(minutes: $endMinutes, mode: .time, onRequestKeypad: showKeypad)
+                    SteppedWheel(minutes: $endMinutes, mode: .time, typed: typedDigits, isTyping: keypadVisible, onRequestKeypad: showKeypad)
                 }
             case .interval:
                 // No keypad here — the interval wheel scrolls only.

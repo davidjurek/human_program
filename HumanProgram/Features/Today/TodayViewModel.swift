@@ -46,9 +46,11 @@ public final class TodayViewModel {
     private let calendarStateRepo: CalendarLocalStateRepository
     private let context: ModelContext
 
-    public init(context: ModelContext) {
+    /// `initialDate` opens the view on a specific day (e.g. the Stats calendar pushing
+    /// an archived day within Stats); nil starts on today.
+    public init(context: ModelContext, initialDate: Date? = nil) {
         self.context = context
-        self._viewingDate = Calendar.current.startOfDay(for: Date())
+        self._viewingDate = Calendar.current.startOfDay(for: initialDate ?? Date())
         self.pageRepo = DailyPageRepository(context: context)
         self.backlogRepo = BacklogRepository(context: context)
         self.exerciseRepo = ExerciseRepository(context: context)   // held, not rebuilt per load [#113]
