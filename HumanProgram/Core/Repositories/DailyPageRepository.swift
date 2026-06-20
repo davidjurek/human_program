@@ -358,24 +358,6 @@ public final class DailyPageRepository {
         return try context.fetch(d).first?.date
     }
 
-    /// Permanently delete every page OUTSIDE the inclusive [keepFrom, keepThrough]
-    /// day-range; tasks cascade automatically (DailyPage.tasks is .cascade). A
-    /// deliberate, owner-requested purge of stray pages (old ones and bogus far-future
-    /// ones a restore planted) — NOT an automatic refresh. Returns the count removed.
-    @discardableResult
-    public func deletePages(keepFrom: Date, keepThrough: Date) throws -> Int {
-        let cal = Calendar.current
-        let lo = cal.startOfDay(for: keepFrom)
-        let hi = cal.startOfDay(for: keepThrough)
-        // Filter in memory (small dataset) rather than a #Predicate — SwiftData's Date
-        // predicate translation can trap at runtime on-device. [owner: crash on launch]
-        let stale = try context.fetch(FetchDescriptor<DailyPage>())
-            .filter { let d = cal.startOfDay(for: $0.date); return d < lo || d > hi }
-        for page in stale { context.delete(page) }
-        if !stale.isEmpty { try context.save() }
-        return stale.count
-    }
-
     // MARK: - Private Helpers
 
     /// Populate a freshly created DailyPage from a GeneratedPage (no save).

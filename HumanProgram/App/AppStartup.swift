@@ -24,27 +24,6 @@ public struct AppStartup {
         let pageRepo = DailyPageRepository(context: context)
         let streakCalc = StreakCalculator()
 
-        // ── One-time maintenance (owner-requested, 2026-06-20): purge stray pages a
-        // restored backup planted — junk old days (a 1996 page) AND bogus far-future
-        // days (a 2030 + a year-4000 block). Keep only May 31, 2026 → today; delete
-        // everything outside that. Errors are LOGGED (not swallowed) and before/after
-        // counts printed so the result is verifiable. Fresh flag so it runs once now.
-        // TEMPORARY — remove after it has run on-device. Install date left untouched.
-        let trimFlag = "hp.maint.trim2"
-        if !defaults.bool(forKey: trimFlag) {
-            if let keepFrom = calendar.date(from: DateComponents(year: 2026, month: 5, day: 31)) {
-                do {
-                    let before = try pageRepo.fetchAll().count
-                    let removed = try pageRepo.deletePages(keepFrom: keepFrom, keepThrough: today)
-                    let after = try pageRepo.fetchAll().count
-                    print("[AppStartup] trim2: \(before) → \(after) pages (removed \(removed); kept 2026-05-31…today)")
-                } catch {
-                    print("[AppStartup] trim2 FAILED: \(error)")
-                }
-            }
-            defaults.set(true, forKey: trimFlag)
-        }
-
         // 1. Clear overdue backlog assignments
         try backlogRepo.clearOverdueAssignments(today: today)
 
