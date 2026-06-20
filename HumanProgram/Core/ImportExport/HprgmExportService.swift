@@ -388,7 +388,15 @@ struct HprgmExportService {
     private func fetchDailyPages(context: ModelContext) throws -> [DailyPageJSON] {
         let descriptor = FetchDescriptor<DailyPage>(sortBy: [SortDescriptor(\.date)])
         let pages = try context.fetch(descriptor)
-        return pages.map { page in
+        // A backup's history should begin at the first day the user actually completed
+        // something. Drop the LEADING pages until one has a checked-off task — earlier
+        // days (empty, or with tasks but nothing ticked) aren't worth restoring as
+        // history, and this is what sets the restored "earliest day" floor. Pages from
+        // that day onward are kept as-is (even ones with nothing checked). If no day has
+        // a completed task, no daily pages are exported. [owner]
+        let firstReal = pages.firstIndex { $0.tasks.contains { $0.completed } }
+        let kept = firstReal.map { Array(pages[$0...]) } ?? []
+        return kept.map { page in
             let tasks = sortedChildren(page.tasks, order: { $0.sortOrder }) { task in
                 DailyPageTaskJSON(
                     id: task.id,
