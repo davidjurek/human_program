@@ -70,9 +70,13 @@ struct RecurringTaskEditorView: View {
             // Days (always shown)
             WeekdayCircleSelector(selected: $weekdays)
 
-            // Custom range: From/To calendar popups
+            // Custom range: From/To calendar popups. "To" can never be before
+            // "From" — picking a later "From" snaps "To" up with it. [#range-clamp]
             if repeatMode == "custom" {
                 DateFieldRow(label: "From", date: $fromDate)
+                    .onChange(of: fromDate) { _, newFrom in
+                        if toDate < newFrom { toDate = newFrom }
+                    }
                 DateFieldRow(label: "To", date: $toDate, notBefore: fromDate)
             }
 
