@@ -24,8 +24,12 @@ public struct AppStartup {
         let pageRepo = DailyPageRepository(context: context)
         let streakCalc = StreakCalculator()
 
-        // 1. Clear overdue backlog assignments
-        try backlogRepo.clearOverdueAssignments(today: today)
+        // 1. Day-rollover reconciliation of overdue backlog assignments. Read which
+        //    backlog tasks were completed on a past page FIRST (before severPastTasks
+        //    clears the source links): items completed on their assigned day are deleted
+        //    from the backlog; the rest just lose their past date and stay.
+        let completedBacklogIds = pageRepo.completedBacklogTaskIds(before: today)
+        try backlogRepo.reconcileOverdueAssignments(today: today, completedBacklogIds: completedBacklogIds)
 
         // 1b. Sever past page-tasks from the backlog/calendar (day-rollover snapshot).
         try pageRepo.severPastTasks(today: today)

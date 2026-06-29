@@ -190,6 +190,73 @@ final class CoreServicesTests: XCTestCase {
         XCTAssertTrue(cleared.isEmpty, "Done items must not appear in the cleared list")
     }
 
+    // reconcileOverdueAssignments: overdue item COMPLETED on its day → returned for deletion
+    @MainActor
+    func test_reconcileOverdue_completedPastItem_markedForDeletion() throws {
+        let container = try makeTestModelContainer()
+        let context = container.mainContext
+        let today     = makeDate(year: 2025, month: 6, day: 15)
+        let yesterday = makeDate(year: 2025, month: 6, day: 14)
+
+        let item = makeBacklogItem(in: context, assignedDate: yesterday, status: .backlog)
+        let service = BacklogMaintenanceService()
+        let toDelete = service.reconcileOverdueAssignments(
+            items: [item], completedIds: [item.id], today: today, calendar: gregorianUTC)
+
+        XCTAssertEqual(toDelete, [item.id], "A completed past-due item should be returned for deletion")
+        XCTAssertNotNil(item.assignedDate, "A to-be-deleted item's date is left alone (caller deletes it)")
+    }
+
+    // reconcileOverdueAssignments: overdue item NOT completed → date cleared, not deleted
+    @MainActor
+    func test_reconcileOverdue_incompletePastItem_dateClearedNotDeleted() throws {
+        let container = try makeTestModelContainer()
+        let context = container.mainContext
+        let today     = makeDate(year: 2025, month: 6, day: 15)
+        let yesterday = makeDate(year: 2025, month: 6, day: 14)
+
+        let item = makeBacklogItem(in: context, assignedDate: yesterday, status: .backlog)
+        let service = BacklogMaintenanceService()
+        let toDelete = service.reconcileOverdueAssignments(
+            items: [item], completedIds: [], today: today, calendar: gregorianUTC)
+
+        XCTAssertTrue(toDelete.isEmpty, "An incomplete past-due item should NOT be deleted")
+        XCTAssertNil(item.assignedDate, "An incomplete past-due item should lose its date and stay")
+    }
+
+    // reconcileOverdueAssignments: completed but date is TODAY → untouched (not past yet)
+    @MainActor
+    func test_reconcileOverdue_completedTodayItem_untouched() throws {
+        let container = try makeTestModelContainer()
+        let context = container.mainContext
+        let today = makeDate(year: 2025, month: 6, day: 15)
+
+        let item = makeBacklogItem(in: context, assignedDate: today, status: .backlog)
+        let service = BacklogMaintenanceService()
+        let toDelete = service.reconcileOverdueAssignments(
+            items: [item], completedIds: [item.id], today: today, calendar: gregorianUTC)
+
+        XCTAssertTrue(toDelete.isEmpty, "Today's item is not overdue → never deleted at this rollover")
+        XCTAssertNotNil(item.assignedDate, "Today's item keeps its date")
+    }
+
+    // reconcileOverdueAssignments: completed but date is FUTURE → untouched
+    @MainActor
+    func test_reconcileOverdue_completedFutureItem_untouched() throws {
+        let container = try makeTestModelContainer()
+        let context = container.mainContext
+        let today    = makeDate(year: 2025, month: 6, day: 15)
+        let tomorrow = makeDate(year: 2025, month: 6, day: 16)
+
+        let item = makeBacklogItem(in: context, assignedDate: tomorrow, status: .backlog)
+        let service = BacklogMaintenanceService()
+        let toDelete = service.reconcileOverdueAssignments(
+            items: [item], completedIds: [item.id], today: today, calendar: gregorianUTC)
+
+        XCTAssertTrue(toDelete.isEmpty, "A future item is never deleted, even if pre-checked")
+        XCTAssertNotNil(item.assignedDate, "A future item keeps its date")
+    }
+
     // Test 9: syncCompletion: backlog item with matching date → returns (.done)
     @MainActor
     func test_syncCompletion_matchingDate_returnsDone() throws {

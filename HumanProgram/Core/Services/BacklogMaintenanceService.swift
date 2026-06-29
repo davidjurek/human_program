@@ -30,6 +30,37 @@ public struct BacklogMaintenanceService: Sendable {
         return clearedIds
     }
 
+    // At day-rollover, decide what to do with backlog items whose assignedDate is now in
+    // the past (status==.backlog, assignedDate < today):
+    //   - items COMPLETED on their assigned day (id in `completedIds`) are returned for
+    //     DELETION (the caller removes them from the backlog), and
+    //   - the rest have their assignedDate cleared in place — they return to the undated
+    //     backlog (the old `clearOverdueAssignments` behavior).
+    // Returns the ids that should be deleted.
+    @discardableResult
+    public func reconcileOverdueAssignments(
+        items: [BacklogItem],
+        completedIds: Set<String>,
+        today: Date,
+        calendar: Calendar = .current
+    ) -> [String] {
+        let todayStart = calendar.startOfDay(for: today)
+        var idsToDelete: [String] = []
+
+        for item in items {
+            guard item.status == .backlog else { continue }
+            guard let assigned = item.assignedDate else { continue }
+            guard calendar.startOfDay(for: assigned) < todayStart else { continue }
+            if completedIds.contains(item.id) {
+                idsToDelete.append(item.id)
+            } else {
+                item.assignedDate = nil
+            }
+        }
+
+        return idsToDelete
+    }
+
     // When a backlog-derived DailyPageTask is checked:
     //   - Find the source BacklogItem by sourceId
     //   - If it exists AND its assignedDate matches the page date AND the page is today or future:

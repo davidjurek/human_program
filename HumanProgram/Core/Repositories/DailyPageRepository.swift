@@ -265,6 +265,26 @@ public final class DailyPageRepository {
         if changed { try context.save() }
     }
 
+    // MARK: - completedBacklogTaskIds
+
+    /// The backlog-item ids that have a COMPLETED backlog-sourced task on a PAST page
+    /// (date < today). Used at day-rollover to decide which assigned-and-finished backlog
+    /// items to remove from the backlog. MUST be read BEFORE `severPastTasks` clears the
+    /// source tags, or the links are already gone.
+    public func completedBacklogTaskIds(before today: Date, calendar: Calendar = .current) -> Set<String> {
+        let normalizedToday = calendar.dayStart(today)
+        guard let pages = try? context.fetch(
+            FetchDescriptor<DailyPage>(predicate: #Predicate { $0.date < normalizedToday })
+        ) else { return [] }
+        var ids = Set<String>()
+        for page in pages {
+            for task in page.tasks where task.completed && task.sourceType == .backlog {
+                if let sourceId = task.sourceId { ids.insert(sourceId) }
+            }
+        }
+        return ids
+    }
+
     // MARK: - updateTask
 
     /// Update a task's title/notes (pass nil to leave unchanged). Used by the

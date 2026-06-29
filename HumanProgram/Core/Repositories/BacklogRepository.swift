@@ -126,6 +126,21 @@ public final class BacklogRepository {
         try context.save()
     }
 
+    /// Day-rollover reconciliation (call on app startup, BEFORE `severPastTasks` so the
+    /// backlog→page-task links are still intact). For backlog items whose assigned date is
+    /// now in the past: those COMPLETED on their assigned day (ids in `completedBacklogIds`,
+    /// from `DailyPageRepository.completedBacklogTaskIds`) are DELETED from the backlog; the
+    /// rest just lose their (past) date and stay. Automatic maintenance — not undoable.
+    public func reconcileOverdueAssignments(today: Date, completedBacklogIds: Set<String>) throws {
+        let allItems = try fetchAll()
+        let toDelete = Set(maintenance.reconcileOverdueAssignments(
+            items: allItems, completedIds: completedBacklogIds, today: today))
+        for item in allItems where toDelete.contains(item.id) {
+            context.delete(item)
+        }
+        try context.save()
+    }
+
     // MARK: - Status Sync
 
     /// Mark a backlog item as done.
