@@ -288,7 +288,7 @@ struct StatsView: View {
             BarMark(x: .value("Day", bar.shortDay), y: .value("Done", bar.count))
                 // Green when the day is fully complete, blue when not (future days faded).
                 .foregroundStyle(bar.future ? Color.secondary.opacity(0.25)
-                                 : (bar.complete ? weekdayCompleteColor : weekdaySelectedColor))
+                                 : (bar.complete ? calendarCircleGreen : calendarCircleBlue))
                 .cornerRadius(4)
                 .annotation(position: .top) {
                     if bar.count > 0 {
@@ -496,7 +496,7 @@ struct StatsView: View {
         } label: {
             ZStack {
                 if clickable {
-                    Circle().fill(complete ? weekdayCompleteColor : weekdaySelectedColor)
+                    Circle().fill(complete ? calendarCircleGreen : calendarCircleBlue)
                         .frame(width: 36, height: 36)
                 } else if isToday {
                     // Hollow grey ring marks today (not filled, not tappable).

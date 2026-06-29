@@ -283,6 +283,22 @@ let appCompleteGreen = Color(red: 0.18, green: 0.62, blue: 0.32)
 /// minty but kept clearly green (green channel stays dominant, not full mint).
 let weekdayCompleteColor = Color(red: 150.0/255, green: 222.0/255, blue: 180.0/255)
 
+/// Stats blue (incomplete) / green (complete) fills, used by BOTH the month-grid day
+/// circles and the "Tasks Done" bar chart. Light mode keeps the soft pastels above;
+/// dark mode uses deeper, more hue-separated tones so blue and green stay clearly
+/// distinct and easier on the eyes at night — the light pastels washed together in the
+/// dark and white day-numbers were low-contrast on them. [owner 2026-06-28]
+let calendarCircleBlue = Color(UIColor { tc in
+    tc.userInterfaceStyle == .dark
+        ? UIColor(red: 38.0/255, green: 92.0/255, blue: 150.0/255, alpha: 1)   // deep blue
+        : UIColor(red: 163.0/255, green: 213.0/255, blue: 255.0/255, alpha: 1) // #A3D5FF
+})
+let calendarCircleGreen = Color(UIColor { tc in
+    tc.userInterfaceStyle == .dark
+        ? UIColor(red: 34.0/255, green: 108.0/255, blue: 66.0/255, alpha: 1)   // deep green
+        : UIColor(red: 150.0/255, green: 222.0/255, blue: 180.0/255, alpha: 1) // #96DEB4
+})
+
 /// Fixed light blue for the calendar (right) lane on the Today/timeline gutter. [#31]
 let appCalendarLaneBlue = Color(red: 0.46, green: 0.67, blue: 0.96)
 

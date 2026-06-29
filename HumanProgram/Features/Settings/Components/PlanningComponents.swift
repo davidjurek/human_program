@@ -140,6 +140,16 @@ extension View {
 /// blur fallback. A translucent white tint sits over the glass so content behind
 /// is muted rather than bleeding through (the old `.clear`/ultra-thin look read
 /// as confusing). One place — every popup picks up the frost.
+/// Frost tint over the glass. Light mode: a soft white so content behind is muted.
+/// Dark mode: a dark tint instead of white — the bright white frost made every popup
+/// and the Stats stat-cards glow too bright and washed out their (white) text in the
+/// dark. A dark panel keeps `.primary` text legible. [owner 2026-06-28]
+private let popupGlassTint = Color(UIColor { tc in
+    tc.userInterfaceStyle == .dark
+        ? UIColor.black.withAlphaComponent(0.45)
+        : UIColor.white.withAlphaComponent(0.6)
+})
+
 struct PopupGlassBackground: View {
     let cornerRadius: CGFloat
     var body: some View {
@@ -151,7 +161,7 @@ struct PopupGlassBackground: View {
                 glassBlurFallback(style: .systemThinMaterial, in: shape)
             }
         }
-        .overlay(shape.fill(Color.white.opacity(0.6)))
+        .overlay(shape.fill(popupGlassTint))
         .overlay(shape.strokeBorder(Color.primary.opacity(0.08)))
     }
 }
