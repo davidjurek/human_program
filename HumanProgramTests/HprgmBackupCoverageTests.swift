@@ -65,7 +65,7 @@ final class HprgmBackupCoverageTests: XCTestCase {
                        except: ["routine"])
 
         assertBackedUp(Routine(title: ""),
-                       json: RoutineJSON(id: "", title: "", emoji: "", notes: "", createdAt: Date(),
+                       json: RoutineJSON(id: "", title: "", emoji: "", notes: "", body: "", createdAt: Date(),
                                          updatedAt: Date(), items: []))
 
         assertBackedUp(CalendarEventLocalState(date: Date(), eventId: ""),

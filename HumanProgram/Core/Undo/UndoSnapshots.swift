@@ -394,11 +394,12 @@ struct RoutineSnapshot: UndoSnapshot {
     let title: String
     let emoji: String
     let notes: String
+    let body: String
     let createdAt: Date
     let updatedAt: Date
 
     @MainActor init(_ r: Routine) {
-        id = r.id; title = r.title; emoji = r.emoji; notes = r.notes
+        id = r.id; title = r.title; emoji = r.emoji; notes = r.notes; body = r.body
         createdAt = r.createdAt; updatedAt = r.updatedAt
     }
 
@@ -406,7 +407,7 @@ struct RoutineSnapshot: UndoSnapshot {
         let r: Routine
         if let existing = fetchRoutine(id, c) { r = existing }
         else { r = Routine(title: title); r.id = id; c.insert(r) }
-        r.title = title; r.emoji = emoji; r.notes = notes
+        r.title = title; r.emoji = emoji; r.notes = notes; r.body = body
         r.createdAt = createdAt; r.updatedAt = updatedAt
         try c.save()
     }

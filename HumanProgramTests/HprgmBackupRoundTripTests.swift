@@ -185,7 +185,10 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         let routines = try dst.fetch(FetchDescriptor<Routine>())
         XCTAssertEqual(routines.count, 1, "Routines must be restored (were silently dropped before)")
         XCTAssertEqual(routines.first?.emoji, "🧴")
-        XCTAssertEqual(routines.first?.items.first?.text, "Cleanser")
+        // The source routine is itemized (pre-markdown); on import its items fold into
+        // the markdown body so nothing is lost. [option B back-compat]
+        XCTAssertEqual(routines.first?.body, "- Cleanser")
+        XCTAssertTrue(routines.first?.items.isEmpty == true, "items are no longer recreated on import")
 
         let states = try dst.fetch(FetchDescriptor<CalendarEventLocalState>())
         XCTAssertEqual(states.count, 1, "calendar local state must be restored")

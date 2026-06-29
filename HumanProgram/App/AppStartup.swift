@@ -37,6 +37,9 @@ public struct AppStartup {
         // 2. Ensure every weekday has an exercise routine (creates missing ones)
         try exerciseRepo.ensureSevenWeekdayRoutines()
 
+        // 2b. Fold any old itemized routines into their markdown body (one-time).
+        try RoutineRepository(context: context).migrateItemsToBodyIfNeeded()
+
         // 3. Fetch template inputs
         let inputs = try TemplateInputs.fetchAll(context: context)
 

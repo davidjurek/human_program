@@ -226,22 +226,22 @@ struct HprgmImportService {
             context.insert(reminder)
         }
 
-        // Routines + their steps (format v2; absent in v1 backups).
+        // Routines (format v2; absent in v1 backups). The body is markdown. Older
+        // backups predate `body` and carry an itemized list instead — fold those
+        // items into the body so nothing is lost. [option B]
         for json in bundle.routines ?? [] {
             let routine = Routine(title: json.title)
             routine.id = json.id
             routine.emoji = json.emoji
             routine.notes = json.notes
+            let savedBody = json.body ?? ""
+            routine.body = savedBody.isEmpty
+                ? json.items.sorted { $0.sortOrder < $1.sortOrder }
+                    .map { "- \($0.text)" }.joined(separator: "\n")
+                : savedBody
             routine.createdAt = json.createdAt
             routine.updatedAt = json.updatedAt
             context.insert(routine)
-            for itemJSON in json.items {
-                let item = RoutineItem(text: itemJSON.text, sortOrder: itemJSON.sortOrder)
-                item.id = itemJSON.id
-                item.notes = itemJSON.notes
-                item.routine = routine
-                context.insert(item)
-            }
         }
 
         // Calendar local state (completion / hidden / overrides per event+date).

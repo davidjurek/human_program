@@ -18,9 +18,10 @@ public final class RoutineRepository {
         return routine
     }
 
-    public func update(_ routine: Routine, title: String? = nil, emoji: String? = nil) throws {
+    public func update(_ routine: Routine, title: String? = nil, emoji: String? = nil, body: String? = nil) throws {
         if let title { routine.title = title }
         if let emoji { routine.emoji = emoji }
+        if let body { routine.body = body }
         routine.updatedAt = Date()
         try context.save()
     }
@@ -30,32 +31,22 @@ public final class RoutineRepository {
         try context.save()
     }
 
-    @discardableResult
-    public func addItem(to routine: Routine, text: String) throws -> RoutineItem {
-        let item = RoutineItem(text: text, sortOrder: nextSortOrder(in: routine.items) { $0.sortOrder })
-        item.routine = routine
-        routine.items.append(item)
-        routine.updatedAt = Date()
-        context.insert(item)
-        try context.save()
-        return item
-    }
-
-    public func deleteItem(_ item: RoutineItem, from routine: Routine) throws {
-        routine.items.removeAll { $0.id == item.id }
-        context.delete(item)
-        routine.updatedAt = Date()
-        try context.save()
-    }
-
-    public func reorderItems(_ items: [RoutineItem], in routine: Routine) throws {
-        applyReorder(items, set: { $0.sortOrder = $1 }, get: { $0.sortOrder })
-        routine.updatedAt = Date()
-        try context.save()
-    }
-
-    public func updateItem(_ item: RoutineItem, text: String) throws {
-        item.text = text
-        try context.save()
+    /// One-time migration from the old itemized model: fold each routine's
+    /// RoutineItem rows into its markdown `body` (one "- step" per line, in sort
+    /// order), then delete the items. Idempotent and self-limiting — a routine
+    /// whose body is already set (or that has no items) is skipped, so after the
+    /// first launch this is a no-op. [option B]
+    public func migrateItemsToBodyIfNeeded() throws {
+        let routines = try context.fetch(FetchDescriptor<Routine>())
+        var changed = false
+        for r in routines where r.body.isEmpty && !r.items.isEmpty {
+            r.body = r.items.sorted { $0.sortOrder < $1.sortOrder }
+                .map { "- \($0.text)" }.joined(separator: "\n")
+            for item in r.items { context.delete(item) }
+            r.items.removeAll()
+            r.updatedAt = Date()
+            changed = true
+        }
+        if changed { try context.save() }
     }
 }

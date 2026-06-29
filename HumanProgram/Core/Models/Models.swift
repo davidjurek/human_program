@@ -397,8 +397,14 @@ public enum NotificationSoundMode: String, Codable {
     public var title: String
     public var emoji: String = ""        // single emoji shown on the menu square
     public var notes: String
+    // The routine's content as one markdown text block (replaces the old itemized
+    // RoutineItem list). Existing routines migrate their items into this on launch
+    // (RoutineRepository.migrateItemsToBodyIfNeeded). [option B]
+    public var body: String = ""
     public var createdAt: Date
     public var updatedAt: Date
+    // Legacy: kept only so old stores/backups decode and can be folded into `body`.
+    // The Routines UI no longer reads or writes items.
     @Relationship(deleteRule: .cascade, inverse: \RoutineItem.routine)
     public var items: [RoutineItem]
 
@@ -407,6 +413,7 @@ public enum NotificationSoundMode: String, Codable {
         self.title = title
         self.emoji = ""
         self.notes = ""
+        self.body = ""
         self.createdAt = Date()
         self.updatedAt = Date()
         self.items = []

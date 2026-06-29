@@ -117,6 +117,7 @@ struct RoutineJSON: Codable {
     let title: String
     let emoji: String
     let notes: String
+    let body: String?            // optional so pre-markdown (itemized) backups still decode
     let createdAt: Date
     let updatedAt: Date
     let items: [RoutineItemJSON]
@@ -253,6 +254,7 @@ struct HprgmExportService {
                 title: routine.title,
                 emoji: routine.emoji,
                 notes: routine.notes,
+                body: routine.body,
                 createdAt: routine.createdAt,
                 updatedAt: routine.updatedAt,
                 items: items
