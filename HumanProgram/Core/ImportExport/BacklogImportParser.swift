@@ -22,20 +22,28 @@ public enum BacklogImportParser {
             .map { ParsedBacklogRow(title: $0, project: nil, date: nil, notes: "") }
     }
 
-    // MARK: - CSV (title, project, date, notes — headerless)
+    // MARK: - CSV (title, project, date, notes — optional header)
 
     public enum CSVResult: Equatable {
         case rejected(String)                       // whole file rejected
         case parsed([ParsedBacklogRow], skippedNoTitle: Int)
     }
 
-    /// Headerless CSV: exactly 4 columns (title, project, assigned date YYYY-MM-DD,
-    /// notes). Rows with no title are skipped (counted). The WHOLE file is rejected
-    /// if any row has the wrong column count or a present date not in YYYY-MM-DD.
+    /// CSV: exactly 4 columns (title, project, assigned date YYYY-MM-DD, notes). A
+    /// leading header row ("title,project,date,notes") is OPTIONAL — if present it's
+    /// ignored, so the file works whether or not the header is included. Rows with no
+    /// title are skipped (counted). The WHOLE file is rejected if any data row has the
+    /// wrong column count or a present date not in YYYY-MM-DD.
     public static func parseCSV(_ csv: String) -> CSVResult {
-        let lines = csv.split(whereSeparator: \.isNewline)
+        var lines = csv.split(whereSeparator: \.isNewline)
             .map { String($0) }
             .filter { !isBlank($0) }
+
+        // Drop an optional leading header row — the import is positional, so a first
+        // line of the column names is metadata, not data. [#header]
+        if let first = lines.first, isHeaderRow(parseCSVLine(first)) {
+            lines.removeFirst()
+        }
 
         var rows: [ParsedBacklogRow] = []
         var skipped = 0
@@ -68,8 +76,8 @@ public enum BacklogImportParser {
         return .parsed(rows, skippedNoTitle: skipped)
     }
 
-    /// The downloadable template (header + one example row). The imported file must
-    /// be HEADERLESS — the header is for reference only.
+    /// The downloadable template (header + one example row). The header is OPTIONAL on
+    /// import — it's accepted and ignored, so the template imports as-is.
     public static let csvTemplate =
         "title,project,date,notes\n" +
         "Buy groceries,Errands,2026-06-15,Milk and eggs\n"
@@ -80,6 +88,18 @@ public enum BacklogImportParser {
     /// stripped — the single blank-line rule shared by the text and CSV parsers. [#80]
     static func isBlank(_ line: String) -> Bool {
         line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// True if a parsed line is the optional column-header row — the four expected column
+    /// names in order, ignoring case and surrounding whitespace. The import is positional,
+    /// so only this exact header (not arbitrary first lines) is treated as a header. A real
+    /// data row would never match (its date column couldn't literally be "date").
+    static func isHeaderRow(_ cols: [String]) -> Bool {
+        let expected = ["title", "project", "date", "notes"]
+        guard cols.count == expected.count else { return false }
+        return zip(cols, expected).allSatisfy {
+            $0.0.trimmingCharacters(in: .whitespaces).lowercased() == $0.1
+        }
     }
 
     /// Minimal CSV line parser supporting double-quoted fields (with commas / escaped "").
