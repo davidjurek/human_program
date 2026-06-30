@@ -170,6 +170,10 @@ public final class DailyPageRepository {
 
     /// Delete a task from a page.
     public func deleteTask(_ task: DailyPageTask, from page: DailyPage) throws {
+        if task.sourceType == .recurring,
+           let sourceId = task.sourceId {
+            page.hideRecurringTask(id: sourceId)
+        }
         page.tasks.removeAll { $0.id == task.id }
         context.delete(task)
         page.updatedAt = Date()

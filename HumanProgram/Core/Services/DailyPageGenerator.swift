@@ -284,6 +284,7 @@ public struct DailyPageGenerator: Sendable {
         calendar: Calendar = .current
     ) -> (tasksToAdd: [GeneratedTask], taskIdsToRemove: [String], newScheduleBlocks: [DailyPageScheduleBlock]) {
         let date = existing.date
+        let hiddenRecurringSourceIds = Set(existing.hiddenRecurringTaskIds ?? [])
 
         // Compute the full desired task set for this date.
         let desiredPage = generate(
@@ -299,7 +300,7 @@ public struct DailyPageGenerator: Sendable {
             desiredPage.tasks
                 .filter { $0.sourceType == .recurring }
                 .compactMap { $0.sourceId }
-        )
+        ).subtracting(hiddenRecurringSourceIds)
         let desiredBacklogSourceIds = Set(
             desiredPage.tasks
                 .filter { $0.sourceType == .backlog }
@@ -370,6 +371,7 @@ public struct DailyPageGenerator: Sendable {
                 .filter { $0.sourceType == sourceType }
                 .filter { task in
                     guard let sid = task.sourceId else { return false }
+                    if sourceType == .recurring && hiddenRecurringSourceIds.contains(sid) { return false }
                     return !alreadyPresent.contains(sid)
                 }
                 .sorted { $0.title.localizedCompare($1.title) == .orderedAscending }

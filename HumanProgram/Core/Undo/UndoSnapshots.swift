@@ -116,6 +116,9 @@ struct TaskSnapshot: UndoSnapshot {
         task.completed = completed; task.completedAt = completedAt; task.sortOrder = sortOrder
         if let pid = pageId, let page = fetchPage(pid, c) {
             if task.page?.id != page.id { task.page = page }   // inverse keeps page.tasks in sync
+            if sourceType == .recurring, let sourceId {
+                page.unhideRecurringTask(id: sourceId)
+            }
             _ = CompletionService().recalculate(page: page)
             page.updatedAt = Date()
         }
@@ -125,6 +128,11 @@ struct TaskSnapshot: UndoSnapshot {
     @MainActor static func remove(id: String, in c: ModelContext) throws {
         guard let task = fetchTask(id, c) else { return }
         let page = task.page
+        if task.sourceType == .recurring,
+           let sourceId = task.sourceId,
+           let page {
+            page.hideRecurringTask(id: sourceId)
+        }
         page?.tasks.removeAll { $0.id == id }
         c.delete(task)
         if let page { _ = CompletionService().recalculate(page: page); page.updatedAt = Date() }

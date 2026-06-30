@@ -315,6 +315,42 @@ final class PastPageSnapshotTests: XCTestCase {
         XCTAssertNotNil(refreshedTask.completedAt, "completedAt timestamp must be preserved after refresh.")
     }
 
+    func testDeletedRecurringTaskStaysHiddenAfterRefresh() throws {
+        let container = try makeTestModelContainer()
+        let context = ModelContext(container)
+        let repo = DailyPageRepository(context: context)
+
+        let tId = UUID().uuidString
+        let t1 = makeRecurring(id: tId, title: "Whitening strips", rule: RecurrenceRule.daily())
+
+        let page = try repo.getOrCreate(
+            date: today,
+            today: today,
+            recurringTemplates: [t1],
+            backlogItems: [],
+            scheduleTemplates: [],
+            calendar: localCalendar
+        )
+
+        let task = try XCTUnwrap(page.tasks.first { $0.sourceId == tId })
+        try repo.deleteTask(task, from: page)
+
+        XCTAssertTrue((page.hiddenRecurringTaskIds ?? []).contains(tId), "Deleting a recurring page task should hide that template for this day.")
+        XCTAssertFalse(page.tasks.contains { $0.sourceId == tId })
+
+        try repo.refreshTodayAndFuture(
+            today: today,
+            recurringTemplates: [t1],
+            backlogItems: [],
+            scheduleTemplates: [],
+            calendar: localCalendar
+        )
+
+        let refreshed = try XCTUnwrap(try repo.fetch(date: today, calendar: localCalendar))
+        XCTAssertFalse(refreshed.tasks.contains { $0.sourceId == tId }, "A manually deleted recurring task must not be regenerated on refresh.")
+        XCTAssertTrue((refreshed.hiddenRecurringTaskIds ?? []).contains(tId), "The per-day recurring hide marker must survive refresh.")
+    }
+
     // MARK: - Test 6: A FUTURE page gets new template tasks and stays unlocked [#178]
 
     /// Directly pins that a future page (a) is created unlocked and (b) gains a

@@ -182,6 +182,7 @@ struct HprgmImportService {
             page.id = json.id
             page.dayComplete = json.dayComplete
             page.isPastLocked = json.isPastLocked
+            page.hiddenRecurringTaskIds = json.hiddenRecurringTaskIds ?? []
             page.scheduleBlocks = json.scheduleBlocks
             page.createdAt = json.createdAt
             page.updatedAt = json.updatedAt
