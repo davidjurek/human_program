@@ -281,6 +281,7 @@ public enum NotificationSoundMode: String, Codable {
     public var dayComplete: Bool
     public var isPastLocked: Bool                // true = historical snapshot, protected from edits
     public var hiddenRecurringTaskIds: [String]? // recurring template ids hidden on this page only
+    public var hiddenBacklogTaskIds: [String]?   // backlog item ids hidden on this page only
     public var scheduleBlocks: [DailyPageScheduleBlock]   // Codable array snapshot
     public var createdAt: Date
     public var updatedAt: Date
@@ -294,6 +295,7 @@ public enum NotificationSoundMode: String, Codable {
         self.dayComplete = false
         self.isPastLocked = false
         self.hiddenRecurringTaskIds = []
+        self.hiddenBacklogTaskIds = []
         self.scheduleBlocks = []
         self.createdAt = Date()
         self.updatedAt = Date()
@@ -321,6 +323,17 @@ public enum NotificationSoundMode: String, Codable {
 
     public func unhideRecurringTask(id: String) {
         hiddenRecurringTaskIds = (hiddenRecurringTaskIds ?? []).filter { $0 != id }
+    }
+
+    public func hideBacklogTask(id: String) {
+        var ids = hiddenBacklogTaskIds ?? []
+        guard !ids.contains(id) else { return }
+        ids.append(id)
+        hiddenBacklogTaskIds = ids
+    }
+
+    public func unhideBacklogTask(id: String) {
+        hiddenBacklogTaskIds = (hiddenBacklogTaskIds ?? []).filter { $0 != id }
     }
 }
 

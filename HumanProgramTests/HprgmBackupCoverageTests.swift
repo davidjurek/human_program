@@ -50,7 +50,7 @@ final class HprgmBackupCoverageTests: XCTestCase {
 
         assertBackedUp(DailyPage(date: Date(), createdAutomatically: false),
                        json: DailyPageJSON(id: "", date: Date(), createdAutomatically: false, dayComplete: false,
-                                           isPastLocked: false, hiddenRecurringTaskIds: nil, scheduleBlocks: [], createdAt: Date(),
+                                           isPastLocked: false, hiddenRecurringTaskIds: nil, hiddenBacklogTaskIds: nil, scheduleBlocks: [], createdAt: Date(),
                                            updatedAt: Date(), tasks: []))
 
         assertBackedUp(NotificationReminder(title: "", message: ""),

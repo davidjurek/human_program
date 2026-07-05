@@ -34,6 +34,10 @@ struct TodayView: View {
     // row opens its detail; a vertical drag scrolls the page. Wired in `body`.
     @State private var rows = RowGestureCoordinator<String>(rowHeight: 52)
     @State private var navTask: DailyPageTask?
+    // Today/future "differences" report: calendar events hidden from this day (the
+    // recurring/backlog half comes from the view model). [today-diffs]
+    @State private var calendarDiffs: [CalendarEventDifference] = []
+    @State private var showDifferences = false
 
     // Live "now" line moves while the page stays open.
     private let ticker = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
@@ -105,21 +109,30 @@ struct TodayView: View {
                                projectName: vm.projectName(for: task),
                                onSave: { title, notes in Task { await vm.updateTask(task, title: title, notes: notes) } })
             }
+            .navigationDestination(isPresented: $showDifferences) {
+                TodayDifferencesView(date: vm.viewingDate)
+            }
             // Past-day lock/unlock pill: fixed top-right, just under the top bar (it
             // does NOT scroll with the content and never affects layout). [#16]
             .overlay(alignment: .topTrailing) {
-                if !vm.isToday && isPast {
-                    PastLockButton(locked: vm.isPastLocked) {
-                        Task {
-                            if vm.isPastLocked { await vm.unlockPastDay() } else { await vm.relockPastDay() }
+                // Past days: the red/green lock padlock. Today & future: the differences
+                // status capsule (same slot, same footprint). [#16][today-diffs]
+                Group {
+                    if !vm.isToday && isPast {
+                        PastLockButton(locked: vm.isPastLocked) {
+                            Task {
+                                if vm.isPastLocked { await vm.unlockPastDay() } else { await vm.relockPastDay() }
+                            }
                         }
+                    } else {
+                        DiffCountButton(count: differenceCount) { showDifferences = true }
                     }
-                    // Right edge lined up with the calendar button's true frame edge
-                    // (= outer bar pad + inner group pad, derived). Top lifts it just
-                    // under the bar, out of the date row below. [#116]
-                    .padding(.trailing, lockPillTrailing)
-                    .padding(.top, -8)
                 }
+                // Right edge lined up with the calendar button's true frame edge
+                // (= outer bar pad + inner group pad, derived). Top lifts it just
+                // under the bar, out of the date row below. [#116]
+                .padding(.trailing, lockPillTrailing)
+                .padding(.top, -8)
             }
         }
         .safeAreaInset(edge: .top) { topBar }
@@ -129,6 +142,11 @@ struct TodayView: View {
         .task { await vm.loadPage(); await loadCalendarItems() }
         .onReceive(ticker) { now = $0 }
         .onChange(of: vm.viewingDate) { _, _ in Task { await loadCalendarItems() } }
+        // Returning from the differences page: reload so restored items reappear and the
+        // count updates (a push keeps this view alive, so `.task` won't re-run). [today-diffs]
+        .onChange(of: showDifferences) { _, shown in
+            if !shown { Task { await vm.loadPage(); await loadCalendarItems() } }
+        }
         .onDisappear { vm.relockOnLeave() }
         .sheet(isPresented: $showDatePicker) {
             TodayDatePicker(date: vm.viewingDate, minDate: vm.minNavigableDate) { vm.jumpTo(date: $0) }
@@ -164,6 +182,18 @@ struct TodayView: View {
         // reconciliation page lists them and can restore them. [calendar sync]
         let hidden = vm.hiddenCalendarIds(for: start)
         let visible = events.filter { ev in !(ev.eventIdentifier.map { hidden.contains($0) } ?? false) }
+
+        // Calendar half of the differences report — events hidden from THIS day. Only
+        // today/future have a report (past days are frozen snapshots). [today-diffs]
+        if start >= Calendar.current.startOfDay(for: Date()) {
+            calendarDiffs = events.compactMap { ev in
+                guard let eid = ev.eventIdentifier, hidden.contains(eid) else { return nil }
+                return CalendarEventDifference(id: "calendar|\(eid)", eventId: eid,
+                                               title: ev.title ?? "(no title)", date: start)
+            }
+        } else {
+            calendarDiffs = []
+        }
 
         // All-day events get no timeline block or label — they have no real time
         // span on the schedule. They still flow into the Tasks list below.
@@ -281,6 +311,12 @@ struct TodayView: View {
 
     private var isPast: Bool {
         vm.viewingDate < Calendar.current.startOfDay(for: Date())
+    }
+
+    /// Total Today↔templates differences for the viewed day: deleted recurring + backlog
+    /// (from the view model) plus this day's hidden calendar events. [today-diffs]
+    private var differenceCount: Int {
+        vm.taskDifferences.count + calendarDiffs.count
     }
 
     private var longDate: String {
@@ -442,6 +478,7 @@ struct PastLockButton: View {
         }
         .scaleEffect(pressing ? 1.15 : 1)   // expand on press-and-hold [#17]
         .animation(.easeOut(duration: 0.15), value: pressing)
+        .animation(.easeInOut(duration: 0.2), value: locked)   // smooth lock/unlock color
         .contentShape(Capsule())
         .onLongPressGesture(minimumDuration: 0.6, pressing: { p in
             pressing = p

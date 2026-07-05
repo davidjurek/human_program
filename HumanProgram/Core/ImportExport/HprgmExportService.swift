@@ -81,6 +81,7 @@ struct DailyPageJSON: Codable {
     let dayComplete: Bool
     let isPastLocked: Bool
     let hiddenRecurringTaskIds: [String]?
+    let hiddenBacklogTaskIds: [String]?
     let scheduleBlocks: [DailyPageScheduleBlock]
     let createdAt: Date
     let updatedAt: Date
@@ -419,6 +420,7 @@ struct HprgmExportService {
                 dayComplete: page.dayComplete,
                 isPastLocked: page.isPastLocked,
                 hiddenRecurringTaskIds: page.hiddenRecurringTaskIds,
+                hiddenBacklogTaskIds: page.hiddenBacklogTaskIds,
                 scheduleBlocks: page.scheduleBlocks,
                 createdAt: page.createdAt,
                 updatedAt: page.updatedAt,

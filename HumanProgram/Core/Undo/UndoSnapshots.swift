@@ -119,6 +119,9 @@ struct TaskSnapshot: UndoSnapshot {
             if sourceType == .recurring, let sourceId {
                 page.unhideRecurringTask(id: sourceId)
             }
+            if sourceType == .backlog, let sourceId {
+                page.unhideBacklogTask(id: sourceId)
+            }
             _ = CompletionService().recalculate(page: page)
             page.updatedAt = Date()
         }
@@ -132,6 +135,11 @@ struct TaskSnapshot: UndoSnapshot {
            let sourceId = task.sourceId,
            let page {
             page.hideRecurringTask(id: sourceId)
+        }
+        if task.sourceType == .backlog,
+           let sourceId = task.sourceId,
+           let page {
+            page.hideBacklogTask(id: sourceId)
         }
         page?.tasks.removeAll { $0.id == id }
         c.delete(task)

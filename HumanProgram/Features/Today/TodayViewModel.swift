@@ -68,11 +68,32 @@ public final class TodayViewModel {
     }
 
     public var isPastLocked: Bool {
-        page?.isPastLocked ?? false
+        // Only trust the loaded page when it's actually the day being viewed. Page loads
+        // are async, so right after a prev/next tap `page` can still be the PREVIOUS
+        // day's — coloring the padlock from it caused a green→red flash. Until the
+        // matching page lands, fall back to the correct default: past days open locked,
+        // today/future unlocked. [today-lock-flash]
+        if let p = page, Calendar.current.isDate(p.date, inSameDayAs: viewingDate) {
+            return p.isPastLocked
+        }
+        return viewingDate < Calendar.current.startOfDay(for: Date())
     }
 
     public var isComplete: Bool {
         page?.dayComplete ?? false
+    }
+
+    /// Recurring/backlog items the templates say belong on the viewed day but that were
+    /// deleted (hidden) from it — the task half of the Today "differences" report. Empty
+    /// for past days (their differences are irrelevant — frozen snapshots). Calendar
+    /// differences are added by the view (it already has the day's events). [today-diffs]
+    var taskDifferences: [PageTaskDifference] {
+        guard let p = page else { return [] }
+        let today = Calendar.current.startOfDay(for: Date())
+        guard p.date >= today else { return [] }
+        guard let inputs = try? TemplateInputs.fetchAll(context: context) else { return [] }
+        return TodayDifferenceEngine.taskDifferences(
+            page: p, recurring: inputs.recurring, backlog: inputs.backlog, schedule: inputs.schedule)
     }
 
     // Flat display order: purely by sortOrder. Generation SEEDS this order
@@ -121,6 +142,13 @@ public final class TodayViewModel {
                 backlogItems: inputs.backlog,
                 scheduleTemplates: inputs.schedule
             )
+            // Always ARRIVE at a past day locked. Unlocking is a transient in-session
+            // action that auto-re-locks on leaving; if that re-lock ever misses, a past
+            // page could stay unlocked and open editable. Re-locking on load guarantees
+            // every past day opens locked (and removes the stale-unlocked case). [today-lock-flash]
+            if let p = page, p.date < today, !p.isPastLocked {
+                try? pageRepo.lockPastPage(p)
+            }
             exerciseRoutine = try exerciseRepo.fetchRoutine(for: viewingDate)
             WidgetSync.refresh(context: context)
         } catch {

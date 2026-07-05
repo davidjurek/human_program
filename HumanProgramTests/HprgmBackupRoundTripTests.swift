@@ -78,6 +78,7 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         page.isPastLocked = true
         page.dayComplete = true
         page.hiddenRecurringTaskIds = [recurring.id]
+        page.hiddenBacklogTaskIds = ["backlog-1"]
         page.scheduleBlocks = [DailyPageScheduleBlock(title: "Work", startMinuteOfDay: 540, endMinuteOfDay: 1020, sortOrder: 0, colorHex: "4F9DF7")]
         src.insert(page)
         let task = DailyPageTask(title: "Snapshot task", sourceType: .manual, sortOrder: 0)
@@ -127,6 +128,7 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         XCTAssertEqual(bundle.dailyPages.count, 1)
         XCTAssertTrue(bundle.dailyPages.first?.isPastLocked == true)
         XCTAssertEqual(bundle.dailyPages.first?.hiddenRecurringTaskIds, [recurring.id])
+        XCTAssertEqual(bundle.dailyPages.first?.hiddenBacklogTaskIds, ["backlog-1"])
         XCTAssertEqual(bundle.settings?.fontChoice, "libertinus")
         XCTAssertEqual(bundle.settings?.selectedCalendarIds, ["cal-A", "cal-B"])
 
@@ -173,6 +175,7 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         XCTAssertEqual(pages.count, 1, "junk page wiped, backup page restored")
         XCTAssertTrue(pages.first?.isPastLocked == true, "locked snapshot restored as locked")
         XCTAssertEqual(pages.first?.hiddenRecurringTaskIds, [recurring.id], "per-day recurring delete overrides must survive backup")
+        XCTAssertEqual(pages.first?.hiddenBacklogTaskIds, ["backlog-1"], "per-day backlog delete overrides must survive backup")
         XCTAssertEqual(pages.first?.tasks.count, 2, "both the manual and calendar tasks must restore")
         let restoredTasks = try XCTUnwrap(pages.first?.tasks)
         let manualTask = try XCTUnwrap(restoredTasks.first { $0.sourceType == .manual })

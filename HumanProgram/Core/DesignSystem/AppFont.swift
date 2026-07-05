@@ -299,6 +299,20 @@ let calendarCircleGreen = Color(UIColor { tc in
         : UIColor(red: 150.0/255, green: 222.0/255, blue: 180.0/255, alpha: 1) // #96DEB4
 })
 
+/// Today "differences" status capsule: light green when the day matches its templates
+/// (0 differences) and light amber/yellow when items are missing (N). Adaptive so the
+/// outline + number stay legible on the light Settings gradient and in dark mode. [today-diffs]
+let appDiffZeroGreen = Color(UIColor { tc in
+    tc.userInterfaceStyle == .dark
+        ? UIColor(red: 0.48, green: 0.84, blue: 0.60, alpha: 1)
+        : UIColor(red: 0.22, green: 0.60, blue: 0.38, alpha: 1)
+})
+let appDiffYellow = Color(UIColor { tc in
+    tc.userInterfaceStyle == .dark
+        ? UIColor(red: 0.95, green: 0.83, blue: 0.38, alpha: 1)
+        : UIColor(red: 0.76, green: 0.56, blue: 0.05, alpha: 1)
+})
+
 /// Fixed light blue for the calendar (right) lane on the Today/timeline gutter. [#31]
 let appCalendarLaneBlue = Color(red: 0.46, green: 0.67, blue: 0.96)
 

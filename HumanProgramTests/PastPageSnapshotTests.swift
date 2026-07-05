@@ -351,6 +351,39 @@ final class PastPageSnapshotTests: XCTestCase {
         XCTAssertTrue((refreshed.hiddenRecurringTaskIds ?? []).contains(tId), "The per-day recurring hide marker must survive refresh.")
     }
 
+    /// The backlog counterpart of the recurring test: deleting an assigned backlog task on
+    /// today/future must STICK across a refresh (the old bug re-added it every load). [today-diffs]
+    func testDeletedBacklogTaskStaysHiddenAfterRefresh() throws {
+        let container = try makeTestModelContainer()
+        let context = ModelContext(container)
+        let repo = DailyPageRepository(context: context)
+
+        let bId = UUID().uuidString
+        let backlog = BacklogTaskInput(id: bId, title: "Pay rent", assignedDate: today, status: .backlog)
+
+        let page = try repo.getOrCreate(
+            date: today, today: today,
+            recurringTemplates: [], backlogItems: [backlog], scheduleTemplates: [],
+            calendar: localCalendar
+        )
+
+        let task = try XCTUnwrap(page.tasks.first { $0.sourceId == bId })
+        try repo.deleteTask(task, from: page)
+
+        XCTAssertTrue((page.hiddenBacklogTaskIds ?? []).contains(bId), "Deleting an assigned backlog task should hide it for this day.")
+        XCTAssertFalse(page.tasks.contains { $0.sourceId == bId })
+
+        try repo.refreshTodayAndFuture(
+            today: today,
+            recurringTemplates: [], backlogItems: [backlog], scheduleTemplates: [],
+            calendar: localCalendar
+        )
+
+        let refreshed = try XCTUnwrap(try repo.fetch(date: today, calendar: localCalendar))
+        XCTAssertFalse(refreshed.tasks.contains { $0.sourceId == bId }, "A deleted backlog task must not be regenerated on refresh.")
+        XCTAssertTrue((refreshed.hiddenBacklogTaskIds ?? []).contains(bId), "The per-day backlog hide marker must survive refresh.")
+    }
+
     // MARK: - Test 6: A FUTURE page gets new template tasks and stays unlocked [#178]
 
     /// Directly pins that a future page (a) is created unlocked and (b) gains a

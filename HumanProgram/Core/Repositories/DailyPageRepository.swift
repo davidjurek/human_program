@@ -174,6 +174,14 @@ public final class DailyPageRepository {
            let sourceId = task.sourceId {
             page.hideRecurringTask(id: sourceId)
         }
+        // Backlog deletes are suppressed the same way, so a refresh doesn't re-add the
+        // task from the still-assigned backlog item. The backlog item itself is untouched
+        // (it keeps its date on the Backlog screen); only this day's task is hidden, and
+        // the Today differences report can restore it. [today-diffs]
+        if task.sourceType == .backlog,
+           let sourceId = task.sourceId {
+            page.hideBacklogTask(id: sourceId)
+        }
         page.tasks.removeAll { $0.id == task.id }
         context.delete(task)
         page.updatedAt = Date()
