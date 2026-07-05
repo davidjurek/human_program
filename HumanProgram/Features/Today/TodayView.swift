@@ -69,7 +69,10 @@ struct TodayView: View {
         }
         rows.deleteRow = { id in
             if let task = vm.sortedTasks.first(where: { $0.id == id }) {
-                Task { await vm.deleteTask(task) }
+                // Reload after the delete so the differences count updates right away
+                // (calendar deletes recompute the calendar half; a full reload also
+                // reassigns the page so the number never lags). [today-diffs]
+                Task { await vm.deleteTask(task); await vm.loadPage(); await loadCalendarItems() }
             }
         }
         rows.canInteract = { !vm.isPastLocked }
@@ -93,6 +96,24 @@ struct TodayView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 28)                             // [#41] top inset
+                // Top-right status capsule — past days: the red/green lock padlock;
+                // today & future: the differences count. It lives INSIDE the scroll
+                // content (same top-right spot, trailing edge derived like before) so it
+                // SCROLLS WITH THE PAGE rather than floating fixed. [#16][today-diffs]
+                .overlay(alignment: .topTrailing) {
+                    Group {
+                        if !vm.isToday && isPast {
+                            PastLockButton(locked: vm.isPastLocked) {
+                                Task {
+                                    if vm.isPastLocked { await vm.unlockPastDay() } else { await vm.relockPastDay() }
+                                }
+                            }
+                        } else {
+                            DiffCountButton(count: differenceCount) { showDifferences = true }
+                        }
+                    }
+                    .padding(.trailing, lockPillTrailing)
+                }
                 .background(KeyboardScrollNudge())             // 20pt gap above keyboard
             }
             .ignoresSafeArea(.keyboard, edges: .bottom)        // disable SwiftUI auto-avoidance
@@ -112,28 +133,6 @@ struct TodayView: View {
             .navigationDestination(isPresented: $showDifferences) {
                 TodayDifferencesView(date: vm.viewingDate)
             }
-            // Past-day lock/unlock pill: fixed top-right, just under the top bar (it
-            // does NOT scroll with the content and never affects layout). [#16]
-            .overlay(alignment: .topTrailing) {
-                // Past days: the red/green lock padlock. Today & future: the differences
-                // status capsule (same slot, same footprint). [#16][today-diffs]
-                Group {
-                    if !vm.isToday && isPast {
-                        PastLockButton(locked: vm.isPastLocked) {
-                            Task {
-                                if vm.isPastLocked { await vm.unlockPastDay() } else { await vm.relockPastDay() }
-                            }
-                        }
-                    } else {
-                        DiffCountButton(count: differenceCount) { showDifferences = true }
-                    }
-                }
-                // Right edge lined up with the calendar button's true frame edge
-                // (= outer bar pad + inner group pad, derived). Top lifts it just
-                // under the bar, out of the date row below. [#116]
-                .padding(.trailing, lockPillTrailing)
-                .padding(.top, -8)
-            }
         }
         .safeAreaInset(edge: .top) { topBar }
         .navigationBarBackButtonHidden(true)
@@ -146,6 +145,12 @@ struct TodayView: View {
         // count updates (a push keeps this view alive, so `.task` won't re-run). [today-diffs]
         .onChange(of: showDifferences) { _, shown in
             if !shown { Task { await vm.loadPage(); await loadCalendarItems() } }
+        }
+        // An app-wide undo/redo (shake popup) mutates the store directly; this screen
+        // drives its data imperatively, so reload when one is applied — otherwise a
+        // restored/re-deleted task only shows after navigating away and back. [today-undo-refresh]
+        .onChange(of: UndoStore.shared.revision) { _, _ in
+            Task { await vm.loadPage(); await loadCalendarItems() }
         }
         .onDisappear { vm.relockOnLeave() }
         .sheet(isPresented: $showDatePicker) {

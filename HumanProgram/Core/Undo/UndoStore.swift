@@ -65,6 +65,13 @@ final class UndoStore {
     private(set) var undoStack: [UndoTransaction] = []
     private(set) var redoStack: [UndoTransaction] = []
 
+    /// Bumped every time an undo/redo is APPLIED. Screens that drive their own data
+    /// imperatively (the Today screen loads a page via a view model rather than an
+    /// auto-updating @Query) can observe this to reload after an undo/redo mutates the
+    /// store out from under them — otherwise the change only shows after a manual
+    /// reload (navigate away and back). [today-undo-refresh]
+    private(set) var revision = 0
+
     /// Cap so a long session can't grow the stacks without bound.
     private let maxDepth = 50
 
@@ -111,6 +118,7 @@ final class UndoStore {
         apply(t.undoOps, context)
         t.post.run(context)
         redoStack.append(t)
+        revision &+= 1
     }
 
     func redo(context: ModelContext) {
@@ -118,6 +126,7 @@ final class UndoStore {
         apply(t.redoOps, context)
         t.post.run(context)
         undoStack.append(t)
+        revision &+= 1
     }
 
     /// Drop the whole history (e.g. a full restore replaced all data, so the old
