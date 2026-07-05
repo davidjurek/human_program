@@ -183,7 +183,7 @@ struct CSVBacklogImportView: View {
                     showPicker = true
                 }
             }
-            DSText("Requirements:\n•  Date must be formatted YYYY-MM-DD with padded zeroes\n•  Each row must have the title")
+            DSText("Requirements:\n•  Each row needs a title (project, date, notes optional)\n•  Dates: YYYY-MM-DD or M/D/YYYY")
                 .dsTextStyle(.subheadline)
             if let error { DSText(error).dsTextStyle(.subheadline, Color.red) }
         }

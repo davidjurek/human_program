@@ -29,11 +29,13 @@ public enum BacklogImportParser {
         case parsed([ParsedBacklogRow], skippedNoTitle: Int)
     }
 
-    /// CSV: exactly 4 columns (title, project, assigned date YYYY-MM-DD, notes). A
-    /// leading header row ("title,project,date,notes") is OPTIONAL — if present it's
-    /// ignored, so the file works whether or not the header is included. Rows with no
-    /// title are skipped (counted). The WHOLE file is rejected if any data row has the
-    /// wrong column count or a present date not in YYYY-MM-DD.
+    /// CSV columns in order: title, project, assigned date, notes. Only the title column
+    /// is required — project, date, and notes are OPTIONAL trailing columns, so a row may
+    /// have 1 to 4 columns and any missing trailing column is treated as blank. Dates
+    /// accept YYYY-MM-DD, M/D/YYYY, or M-D-YYYY (see `parseYMD`). A leading header row
+    /// ("title,project,date,notes") is also optional — if present it's ignored. Rows with
+    /// no title are skipped (counted). The WHOLE file is rejected only if a row has MORE
+    /// than 4 columns or a present date in none of the accepted formats.
     public static func parseCSV(_ csv: String) -> CSVResult {
         var lines = csv.split(whereSeparator: \.isNewline)
             .map { String($0) }
@@ -50,13 +52,15 @@ public enum BacklogImportParser {
 
         for line in lines {
             let cols = parseCSVLine(line)
-            guard cols.count == 4 else {
-                return .rejected("Wrong number of columns — each row needs exactly 4 (title, project, date, notes).")
+            guard cols.count <= 4 else {
+                return .rejected("Too many columns — each row has at most 4 (title, project, date, notes).")
             }
-            let title = cols[0].trimmingCharacters(in: .whitespaces)
-            let projectRaw = cols[1].trimmingCharacters(in: .whitespaces)
-            let dateRaw = cols[2].trimmingCharacters(in: .whitespaces)
-            let notes = cols[3]
+            // Pad missing trailing columns: project/date/notes are optional.
+            let padded = cols + Array(repeating: "", count: 4 - cols.count)
+            let title = padded[0].trimmingCharacters(in: .whitespaces)
+            let projectRaw = padded[1].trimmingCharacters(in: .whitespaces)
+            let dateRaw = padded[2].trimmingCharacters(in: .whitespaces)
+            let notes = padded[3]
 
             // A titleless row is skipped uniformly — check it BEFORE validating the
             // date so a blank row with a bad date doesn't reject the whole file. [#78]
@@ -65,7 +69,7 @@ public enum BacklogImportParser {
             var date: Date? = nil
             if !dateRaw.isEmpty {
                 guard let d = parseYMD(dateRaw) else {
-                    return .rejected("Date “\(dateRaw)” is not in YYYY-MM-DD format.")
+                    return .rejected("Date “\(dateRaw)” isn’t a recognized date (use YYYY-MM-DD or M/D/YYYY).")
                 }
                 date = d
             }
@@ -129,17 +133,24 @@ public enum BacklogImportParser {
         return fields
     }
 
-    /// One cached YYYY-MM-DD formatter — avoids rebuilding it per dated import row. [#161]
-    private static let ymdFormatter: DateFormatter = {
+    /// The accepted date formats, tried in order. Non-lenient parsing makes each one
+    /// reject a string meant for another (e.g. "M/d/yyyy" can't parse "2026-07-05" because
+    /// month 2026 is out of range), so trying them in sequence is unambiguous. Slash/dash
+    /// dates are month-first (US) — "7/5/2026" is July 5. Cached: rebuilt formatters are
+    /// expensive per row. [#161]
+    private static let dateFormatters: [DateFormatter] = ["yyyy-MM-dd", "M/d/yyyy", "M-d-yyyy"].map { fmt in
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone.current
-        f.dateFormat = "yyyy-MM-dd"
+        f.dateFormat = fmt
         f.isLenient = false
         return f
-    }()
+    }
 
     static func parseYMD(_ s: String) -> Date? {
-        ymdFormatter.date(from: s)
+        for f in dateFormatters {
+            if let d = f.date(from: s) { return d }
+        }
+        return nil
     }
 }
