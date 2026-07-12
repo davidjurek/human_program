@@ -106,6 +106,8 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         let calState = CalendarEventLocalState(date: pastDate, eventId: "evt-123")
         calState.completed = true
         calState.titleOverride = "Renamed event"
+        calState.notesOverride = "Renamed note"
+        calState.hidden = true
         src.insert(calState)
 
         try src.save()
@@ -199,6 +201,8 @@ final class HprgmBackupRoundTripTests: XCTestCase {
         let states = try dst.fetch(FetchDescriptor<CalendarEventLocalState>())
         XCTAssertEqual(states.count, 1, "calendar local state must be restored")
         XCTAssertEqual(states.first?.titleOverride, "Renamed event")
+        XCTAssertEqual(states.first?.notesOverride, "Renamed note", "calendar note override must survive backup")
+        XCTAssertTrue(states.first?.hidden == true, "calendar hidden (deleted) state must survive backup")
         XCTAssertTrue(states.first?.completed == true)
 
         // Settings restored from the backup, overwriting the changed values.
