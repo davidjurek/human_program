@@ -25,11 +25,17 @@ struct PageTaskDifference: Identifiable, Equatable {
     let sourceId: String       // recurring template id / backlog item id
 }
 
-/// A calendar event hidden from the Today page on a given day.
+/// A calendar-event difference for a given day: either the event was hidden (deleted
+/// from Today) or its title was locally renamed. Both show in the top-right capsule
+/// count and can be reversed from the differences page. (Note overrides and completion
+/// toggles are undoable but are NOT differences.) [calendar-diffs]
 struct CalendarEventDifference: Identifiable, Equatable {
+    enum Kind { case hidden, renamed }
     let id: String
+    let kind: Kind
     let eventId: String
-    let title: String
+    let title: String            // hidden: the event's title; renamed: the current (overridden) title
+    let originalTitle: String    // the real EKEvent title (what a rename reverts to)
     let date: Date
 }
 
@@ -113,10 +119,32 @@ struct TodayDifferencesView: View {
         UserDefaults.standard.stringArray(forKey: DefaultsKey.selectedCalendarIds) ?? []
     }
 
+    /// A single row on the differences list. `nature` is the leading label describing
+    /// the KIND of mismatch ("Deletion" / "Name change"); `source` is the smaller
+    /// second line (only for deletions); `rename` renders "old → new" for a title
+    /// change instead of a plain title. [calendar-diffs]
+    private struct DiffRow: Identifiable {
+        let id: String
+        let nature: String
+        let source: String
+        let title: String
+        var rename: (old: String, new: String)? = nil
+    }
+
     /// One flat, ordered list of every difference row (recurring, backlog, then calendar).
-    private var rows: [(id: String, title: String, subtitle: String)] {
-        taskDiffs.map { ($0.id, $0.title, $0.kind == .recurring ? "Recurring" : "Backlog") }
-            + calDiffs.map { ($0.id, $0.title, "Calendar") }
+    private var rows: [DiffRow] {
+        taskDiffs.map { DiffRow(id: $0.id, nature: "Deletion",
+                                source: $0.kind == .recurring ? "Recurring" : "Backlog",
+                                title: $0.title) }
+            + calDiffs.map { d in
+                switch d.kind {
+                case .hidden:
+                    return DiffRow(id: d.id, nature: "Deletion", source: "Calendar", title: d.title)
+                case .renamed:
+                    return DiffRow(id: d.id, nature: "Name change", source: "", title: d.title,
+                                   rename: (d.originalTitle, d.title))
+                }
+            }
     }
 
     var body: some View {
@@ -128,13 +156,16 @@ struct TodayDifferencesView: View {
                     .padding(.top, 60)
             } else {
                 SettingsGroup {
-                    ForEach(rows, id: \.id) { r in
-                        row(id: r.id, title: r.title, subtitle: r.subtitle)
+                    ForEach(rows) { r in
+                        row(r)
                     }
                 }
             }
         }
         .onAppear(perform: reload)
+        // A shake-undo/redo can fire while this page is open (e.g. undoing a restore
+        // done here) — reload so the list reflects the change. [calendar-undo]
+        .onChange(of: UndoStore.shared.revision) { _, _ in reload() }
     }
 
     // MARK: - Toolbar (select-all toggle + Restore)
@@ -183,17 +214,35 @@ struct TodayDifferencesView: View {
 
     // MARK: - Row
 
-    private func row(id: String, title: String, subtitle: String) -> some View {
+    private func row(_ r: DiffRow) -> some View {
         HStack(spacing: 12) {
-            Button { toggle(id) } label: {
-                SelectionCircle(isOn: selected.contains(id))
+            Button { toggle(r.id) } label: {
+                SelectionCircle(isOn: selected.contains(r.id))
             }
             .buttonStyle(.plain)
             .a11yTapBorder(Circle())
 
+            // Leading label naming the nature of the change ("Deletion" / "Name change").
+            // Fixed (font-scaled) width so every row's item content lines up. [calendar-diffs]
+            Text(r.nature)
+                .font(appFont(appScaledSize(15), bold: true))
+                .foregroundStyle(.primary)
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .frame(width: appScaledSize(104), alignment: .leading)
+
             VStack(alignment: .leading, spacing: 2) {
-                DSText(title).dsTextStyle(.body).longTitle(lineLimit: 2)
-                DSText(subtitle).dsTextStyle(.subheadline)
+                if let rename = r.rename {
+                    // A calendar rename: old name → new name.
+                    (Text(rename.old) + Text("  →  ").foregroundColor(.secondary) + Text(rename.new))
+                        .font(appFont(appScaledSize(17)))
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    DSText(r.title).dsTextStyle(.body).longTitle(lineLimit: 2)
+                }
+                if !r.source.isEmpty {
+                    DSText(r.source).dsTextStyle(.subheadline)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -223,11 +272,22 @@ struct TodayDifferencesView: View {
         guard start >= cal.startOfDay(for: Date()), !selectedCalendarIds.isEmpty else { return [] }
         let end = cal.date(byAdding: .day, value: 1, to: start) ?? start
         let events = calendarService.fetchEvents(from: start, to: end, calendarIds: selectedCalendarIds)
-        let hidden = (try? stateRepo.hiddenEventIds(for: start)) ?? []
-        return events.compactMap { ev in
-            guard let eid = ev.eventIdentifier, hidden.contains(eid) else { return nil }
-            return CalendarEventDifference(id: "calendar|\(eid)", eventId: eid,
-                                           title: ev.title ?? "(no title)", date: start)
+        let states = (try? stateRepo.fetchStates(for: start)) ?? []
+        let hidden = Set(states.filter { $0.hidden }.map { $0.eventId })
+        let overrides = Dictionary(states.compactMap { s in s.titleOverride.map { (s.eventId, $0) } },
+                                   uniquingKeysWith: { first, _ in first })
+        return events.compactMap { ev -> CalendarEventDifference? in
+            guard let eid = ev.eventIdentifier else { return nil }
+            let real = ev.title ?? "(no title)"
+            if hidden.contains(eid) {
+                return CalendarEventDifference(id: "calendar|\(eid)", kind: .hidden, eventId: eid,
+                                               title: real, originalTitle: real, date: start)
+            }
+            if let ov = overrides[eid], ov != (ev.title ?? "") {
+                return CalendarEventDifference(id: "caltitle|\(eid)", kind: .renamed, eventId: eid,
+                                               title: ov, originalTitle: real, date: start)
+            }
+            return nil
         }
     }
 
@@ -235,21 +295,53 @@ struct TodayDifferencesView: View {
         if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
     }
 
+    /// Snapshot an event's per-day local state (or a clean default if none exists).
+    private func stateSnapshot(eventId: String, date: Date) -> CalendarStateSnapshot {
+        if let s = try? stateRepo.existingState(eventId: eventId, date: date) {
+            return CalendarStateSnapshot(s)
+        }
+        return CalendarStateSnapshot(defaultFor: eventId, date: date)
+    }
+
     private func restoreSelected() {
         let ids = selected
         let page = try? pageRepo.fetch(date: date)
 
-        // Un-hide each selected item on its source.
+        // Un-hide each selected recurring/backlog item on its source. (These template
+        // restores are not undoable — unchanged behavior.)
         for d in taskDiffs where ids.contains(d.id) {
             switch d.kind {
             case .recurring: page?.unhideRecurringTask(id: d.sourceId)
             case .backlog:   page?.unhideBacklogTask(id: d.sourceId)
             }
         }
+
+        // Reverse each selected calendar change — un-hide a deleted event, or clear a
+        // rename. These reversals ARE undoable: snapshot the local state before + after
+        // and record one transaction for the whole tap. The page-task reconciles when
+        // Today reloads (its sync applies the un-hidden / no-longer-overridden state).
+        // [calendar-undo]
+        var undoOps: [UndoOp] = []
+        var redoOps: [UndoOp] = []
+        var reversedTitles: [String] = []
         for d in calDiffs where ids.contains(d.id) {
-            try? stateRepo.setHidden(false, eventId: d.eventId, date: d.date)
+            let before = stateSnapshot(eventId: d.eventId, date: d.date)
+            switch d.kind {
+            case .hidden:  try? stateRepo.setHidden(false, eventId: d.eventId, date: d.date)
+            case .renamed: try? stateRepo.setTitleOverride(nil, eventId: d.eventId, date: d.date)
+            }
+            undoOps.append(.upsert(before))
+            redoOps.append(.upsert(stateSnapshot(eventId: d.eventId, date: d.date)))
+            reversedTitles.append(d.kind == .hidden ? d.title : d.originalTitle)
         }
         try? context.save()
+
+        if !undoOps.isEmpty {
+            let desc = reversedTitles.count == 1
+                ? "Restore " + undoTitle(reversedTitles[0])
+                : "Restore \(reversedTitles.count) calendar changes"
+            Undo.record(desc, undoOps: undoOps, redoOps: redoOps)
+        }
 
         // Re-add the un-hidden recurring/backlog tasks by refreshing the page from
         // templates. (Restored calendar events flow back when Today reloads.)

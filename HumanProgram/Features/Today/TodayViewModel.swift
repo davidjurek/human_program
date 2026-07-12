@@ -63,6 +63,24 @@ public final class TodayViewModel {
         (try? calendarStateRepo.hiddenEventIds(for: date)) ?? []
     }
 
+    /// Per-day calendar title overrides (eventId → overridden title) for `date`. The
+    /// view uses these to show the renamed title in the timeline and to flag a renamed
+    /// event as a difference in the top-right capsule. [calendar-override]
+    public func calendarTitleOverrides(for date: Date) -> [String: String] {
+        let states = (try? calendarStateRepo.fetchStates(for: date)) ?? []
+        return Dictionary(states.compactMap { s in s.titleOverride.map { (s.eventId, $0) } },
+                          uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Snapshot an event's per-day local state (hidden / overrides), or a clean default
+    /// if no row exists yet — captured before a calendar mutation so undo can restore it.
+    private func calendarStateSnapshot(eventId: String, date: Date) -> CalendarStateSnapshot {
+        if let s = try? calendarStateRepo.existingState(eventId: eventId, date: date) {
+            return CalendarStateSnapshot(s)
+        }
+        return CalendarStateSnapshot(defaultFor: eventId, date: date)
+    }
+
     public var isToday: Bool {
         Calendar.current.isDateInToday(viewingDate)
     }
@@ -213,16 +231,16 @@ public final class TodayViewModel {
 
     public func toggleTask(_ task: DailyPageTask) async {
         guard let p = page else { return }
-        // Calendar-sourced tasks are out of undo scope (calendar stays untouched).
-        let record = task.sourceType != .calendar
-        let before = record ? TaskSnapshot(task) : nil
+        // Completion lives on the page-task for every source (including calendar), and
+        // survives calendar re-sync, so a toggle is a plain task edit — no local-state
+        // op needed. Calendar completion toggles ARE undoable, but do NOT count as a
+        // difference in the capsule. [calendar-undo]
+        let before = TaskSnapshot(task)
         do {
             page = try pageRepo.toggleTask(task, on: p)
-            if let before {
-                let after = TaskSnapshot(task)
-                Undo.edited((after.completed ? "Complete task " : "Uncomplete task ") + undoTitle(after.title),
-                            before: before, after: after)
-            }
+            let after = TaskSnapshot(task)
+            Undo.edited((after.completed ? "Complete task " : "Uncomplete task ") + undoTitle(after.title),
+                        before: before, after: after)
             WidgetSync.refresh(context: context)
         } catch {
             logError("toggleTask", error)
@@ -249,18 +267,29 @@ public final class TodayViewModel {
 
     public func deleteTask(_ task: DailyPageTask) async {
         guard let p = page else { return }
+        let taskBefore = TaskSnapshot(task)
+        let today = Calendar.current.startOfDay(for: Date())
         // Deleting a calendar-sourced task on today/future records the event as hidden
-        // so the next sync doesn't re-add it; the Calendar reconciliation page can
-        // restore it later. (Past pages are frozen snapshots — leave them alone.)
-        if task.sourceType == .calendar, let eventId = task.sourceId,
-           p.date >= Calendar.current.startOfDay(for: Date()) {
+        // so the next sync doesn't re-add it. Capture the local state before + after the
+        // hide so undo can un-hide it (and re-add the task). (Past pages are frozen
+        // snapshots — leave them alone.) [calendar-undo]
+        var calStateBefore: CalendarStateSnapshot?
+        var calStateAfter: CalendarStateSnapshot?
+        if task.sourceType == .calendar, let eventId = task.sourceId, p.date >= today {
+            calStateBefore = calendarStateSnapshot(eventId: eventId, date: p.date)
             try? calendarStateRepo.setHidden(true, eventId: eventId, date: p.date)
+            calStateAfter = calendarStateSnapshot(eventId: eventId, date: p.date)
         }
-        // Calendar-sourced deletes touch calendar-local state (hidden) — out of scope.
-        let before = task.sourceType != .calendar ? TaskSnapshot(task) : nil
         do {
             try pageRepo.deleteTask(task, from: p)
-            if let before { Undo.deleted("Delete task " + undoTitle(before.title), before) }
+            if let sb = calStateBefore, let sa = calStateAfter {
+                // undo: un-hide the event + re-add the task; redo: re-hide + remove it.
+                Undo.record("Delete task " + undoTitle(taskBefore.title),
+                            undoOps: [.upsert(sb), .upsert(taskBefore)],
+                            redoOps: [.upsert(sa), .remove(TaskSnapshot.self, taskBefore.id)])
+            } else {
+                Undo.deleted("Delete task " + undoTitle(taskBefore.title), taskBefore)
+            }
             WidgetSync.refresh(context: context)
         } catch {
             logError("deleteTask", error)
@@ -287,12 +316,30 @@ public final class TodayViewModel {
 
     public func updateTask(_ task: DailyPageTask, title: String?, notes: String?) async {
         guard let p = page else { return }
-        let before = task.sourceType != .calendar ? TaskSnapshot(task) : nil
+        let isCalendar = task.sourceType == .calendar
+        let today = Calendar.current.startOfDay(for: Date())
+        let editsCalendarState = isCalendar && task.sourceId != nil && p.date >= today
+        let taskBefore = TaskSnapshot(task)
+        let calStateBefore = editsCalendarState ? calendarStateSnapshot(eventId: task.sourceId!, date: p.date) : nil
         do {
+            // Write the visible copy on the page-task…
             try pageRepo.updateTask(task, title: title, notes: notes, on: p)
-            if let before {
-                Undo.edited(Self.taskEditDescription(before: before, after: TaskSnapshot(task)),
-                            before: before, after: TaskSnapshot(task))
+            // …and, for a calendar task, persist the edit as a per-day local override so
+            // the next calendar re-sync doesn't overwrite it. The real EKEvent is never
+            // touched. [calendar-override]
+            if editsCalendarState, let eventId = task.sourceId {
+                if let title { try? calendarStateRepo.setTitleOverride(title, eventId: eventId, date: p.date) }
+                if let notes { try? calendarStateRepo.setNotesOverride(notes, eventId: eventId, date: p.date) }
+            }
+            let taskAfter = TaskSnapshot(task)
+            let description = Self.taskEditDescription(before: taskBefore, after: taskAfter)
+            if editsCalendarState, let eventId = task.sourceId, let sb = calStateBefore {
+                let sa = calendarStateSnapshot(eventId: eventId, date: p.date)
+                Undo.record(description,
+                            undoOps: [.upsert(sb), .upsert(taskBefore)],
+                            redoOps: [.upsert(sa), .upsert(taskAfter)])
+            } else {
+                Undo.edited(description, before: taskBefore, after: taskAfter)
             }
             await loadPage()
         } catch {

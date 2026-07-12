@@ -488,9 +488,10 @@ struct StatsView: View {
         let clickable = d >= navFloor && d < today
         let complete = pageIndex[d]?.dayComplete ?? true   // empty past day counts as done → green
         let isToday = d == today
-        // Number is black only for past days that have a saved page; today, empty past
-        // days, and the future are grey.
-        let black = d < today && pageIndex[d] != nil
+        // Number is black on a filled circle: past days with a saved page, and a
+        // completed today (which now also fills green). Empty past days, an incomplete
+        // today, and the future stay grey.
+        let black = (d < today && pageIndex[d] != nil) || (isToday && complete)
         return Button {
             if clickable { confirmDay = d }   // today is never clickable (not a past day)
         } label: {
@@ -499,7 +500,13 @@ struct StatsView: View {
                     Circle().fill(complete ? calendarCircleGreen : calendarCircleBlue)
                         .frame(width: 36, height: 36)
                 } else if isToday {
-                    // Hollow grey ring marks today (not filled, not tappable).
+                    // Today: fill green when the day is complete, and ALWAYS draw the
+                    // hollow grey ring on top to mark it as today (not tappable). So a
+                    // completed today reads as green + the today ring together. [today-ring]
+                    if complete {
+                        Circle().fill(calendarCircleGreen)
+                            .frame(width: 36, height: 36)
+                    }
                     Circle().strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1.5)
                         .frame(width: 36, height: 36)
                 }

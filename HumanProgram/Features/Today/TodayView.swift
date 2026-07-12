@@ -188,14 +188,30 @@ struct TodayView: View {
         let hidden = vm.hiddenCalendarIds(for: start)
         let visible = events.filter { ev in !(ev.eventIdentifier.map { hidden.contains($0) } ?? false) }
 
-        // Calendar half of the differences report — events hidden from THIS day. Only
-        // today/future have a report (past days are frozen snapshots). [today-diffs]
+        // Per-day local title overrides (a rename done on Today). They win over the
+        // event's own title everywhere it's shown, and a rename counts as a difference.
+        let overrides = vm.calendarTitleOverrides(for: start)
+        func displayTitle(_ ev: EKEvent) -> String {
+            (ev.eventIdentifier.flatMap { overrides[$0] }) ?? ev.title ?? "(no title)"
+        }
+
+        // Calendar half of the differences report — events HIDDEN or RENAMED on THIS
+        // day. Both add to the top-right capsule count. Only today/future have a report
+        // (past days are frozen snapshots). [today-diffs][calendar-diffs]
         if start >= Calendar.current.startOfDay(for: Date()) {
-            calendarDiffs = events.compactMap { ev in
+            let hiddenDiffs: [CalendarEventDifference] = events.compactMap { ev in
                 guard let eid = ev.eventIdentifier, hidden.contains(eid) else { return nil }
-                return CalendarEventDifference(id: "calendar|\(eid)", eventId: eid,
-                                               title: ev.title ?? "(no title)", date: start)
+                return CalendarEventDifference(id: "calendar|\(eid)", kind: .hidden, eventId: eid,
+                                               title: ev.title ?? "(no title)",
+                                               originalTitle: ev.title ?? "(no title)", date: start)
             }
+            let renamedDiffs: [CalendarEventDifference] = visible.compactMap { ev in
+                guard let eid = ev.eventIdentifier, let ov = overrides[eid],
+                      ov != (ev.title ?? "") else { return nil }
+                return CalendarEventDifference(id: "caltitle|\(eid)", kind: .renamed, eventId: eid,
+                                               title: ov, originalTitle: ev.title ?? "(no title)", date: start)
+            }
+            calendarDiffs = hiddenDiffs + renamedDiffs
         } else {
             calendarDiffs = []
         }
@@ -207,7 +223,7 @@ struct TodayView: View {
             let id = ev.eventIdentifier ?? UUID().uuidString
             eventMap[id] = ev
             return TimelineItem(id: id,
-                                title: ev.title ?? "(no title)",
+                                title: displayTitle(ev),
                                 startMin: minutesOfDay(ev.startDate, dayStart: start),
                                 endMin: minutesOfDay(ev.endDate, dayStart: start),
                                 isCalendar: true)
@@ -216,11 +232,14 @@ struct TodayView: View {
 
         // Flow chosen-calendar events into the Tasks list (only events with a stable
         // identifier; sorted into the calendar group by start time). An empty
-        // selection syncs an empty list, which clears any prior calendar tasks.
+        // selection syncs an empty list, which clears any prior calendar tasks. The
+        // event's own title/notes are the BASE — syncCalendarTasks layers any local
+        // override on top. [calendar-override]
         let taskInputs: [CalendarTaskInput] = visible.compactMap { ev in
             guard let id = ev.eventIdentifier else { return nil }
             return CalendarTaskInput(eventId: id,
                                      title: ev.title ?? "(no title)",
+                                     notes: ev.notes ?? "",
                                      startMinuteOfDay: minutesOfDay(ev.startDate, dayStart: start))
         }
         await vm.syncCalendarTasks(taskInputs)
@@ -417,7 +436,14 @@ struct TodayView: View {
 
     private func taskRowContent(_ task: DailyPageTask) -> some View {
         HStack(spacing: 12) {
-            Button { if dismissAddIfOpen() { return }; Task { await vm.toggleTask(task) } } label: {
+            // A locked past day is a read-only snapshot: the checkbox shows completion
+            // but doesn't toggle, and tapping the title doesn't open the editor. Unlock
+            // (the padlock) to edit. Add / reorder / swipe are already lock-gated. [past-lock]
+            Button {
+                if dismissAddIfOpen() { return }
+                if vm.isPastLocked { return }
+                Task { await vm.toggleTask(task) }
+            } label: {
                 SelectionCircle(isOn: task.completed)
             }
             .buttonStyle(.plain)
@@ -442,6 +468,7 @@ struct TodayView: View {
     private func tapTask(_ task: DailyPageTask) {
         if dismissAddIfOpen() { return }
         guard rows.consumeTap() else { return }
+        if vm.isPastLocked { return }   // locked past day is read-only — unlock to edit [past-lock]
         navTask = task
     }
 

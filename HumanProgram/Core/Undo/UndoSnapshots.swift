@@ -17,8 +17,11 @@ import SwiftData
 // `remove` to redo. Parent+children deletes (a routine and its items, a project and
 // its tasks) are just an ORDERED LIST of these ops (see the call sites).
 //
-// Calendar is deliberately out of scope: CalendarEventLocalState and calendar-sourced
-// DailyPageTasks are never snapshotted here.
+// Calendar IS in scope (owner-approved 2026-07-12): a calendar-sourced DailyPageTask
+// is snapshotted with `TaskSnapshot` (its `.calendar` branch skips the recurring/
+// backlog hide bookkeeping), and its per-day local state (hidden / title / note
+// overrides) is snapshotted with `CalendarStateSnapshot`. A calendar title/note edit
+// or delete records BOTH, so undo restores the override AND the page-task together.
 
 // MARK: - UndoSnapshot protocol
 
@@ -80,6 +83,12 @@ struct UndoOp {
 }
 @MainActor private func fetchRoutineItem(_ id: String, _ c: ModelContext) -> RoutineItem? {
     fetchOne(FetchDescriptor<RoutineItem>(predicate: #Predicate { $0.id == id }), c)
+}
+@MainActor private func fetchCalendarState(_ eventId: String, _ date: Date, _ c: ModelContext) -> CalendarEventLocalState? {
+    // CalendarEventLocalState has no single id — its identity is (eventId, date).
+    let day = Calendar.current.startOfDay(for: date)
+    return fetchOne(FetchDescriptor<CalendarEventLocalState>(
+        predicate: #Predicate { $0.eventId == eventId && $0.date == day }), c)
 }
 
 // MARK: - DailyPageTask
@@ -466,5 +475,59 @@ struct RoutineItemSnapshot: UndoSnapshot {
         c.delete(item)
         routine?.updatedAt = Date()
         try c.save()
+    }
+}
+
+// MARK: - CalendarEventLocalState
+
+/// The per-day local state for a calendar event: whether it's hidden from Today, and
+/// its optional title / note overrides (a rename or re-note done on Today, kept local —
+/// the real EKEvent is never touched). Snapshotted so a calendar edit/delete is
+/// undoable. Identity is composite (eventId, date), so `remove` re-parses `id`.
+struct CalendarStateSnapshot: UndoSnapshot {
+    let eventId: String
+    let date: Date
+    let completed: Bool
+    let hidden: Bool
+    let titleOverride: String?
+    let notesOverride: String?
+    let sortOrder: Int
+
+    /// Composite key (used only as a stack id); upsert/remove resolve by (eventId, date).
+    var id: String { "\(eventId)\n\(date.timeIntervalSinceReferenceDate)" }
+
+    @MainActor init(_ s: CalendarEventLocalState) {
+        eventId = s.eventId; date = Calendar.current.startOfDay(for: s.date)
+        completed = s.completed; hidden = s.hidden
+        titleOverride = s.titleOverride; notesOverride = s.notesOverride
+        sortOrder = s.sortOrder
+    }
+
+    /// A clean, no-override snapshot for an event+day that has no state row yet — so an
+    /// undo that predates the row restores the "nothing overridden, not hidden" state.
+    init(defaultFor eventId: String, date: Date) {
+        self.eventId = eventId; self.date = Calendar.current.startOfDay(for: date)
+        completed = false; hidden = false; titleOverride = nil; notesOverride = nil
+        sortOrder = 0
+    }
+
+    @MainActor func upsert(in c: ModelContext) throws {
+        let state: CalendarEventLocalState
+        if let existing = fetchCalendarState(eventId, date, c) { state = existing }
+        else { state = CalendarEventLocalState(date: date, eventId: eventId); c.insert(state) }
+        state.completed = completed; state.hidden = hidden
+        state.titleOverride = titleOverride; state.notesOverride = notesOverride
+        state.sortOrder = sortOrder; state.updatedAt = Date()
+        try c.save()
+    }
+
+    @MainActor static func remove(id: String, in c: ModelContext) throws {
+        // id = "eventId\n<epoch>"; event ids contain no newline, so split on the last one.
+        guard let nl = id.lastIndex(of: "\n"),
+              let epoch = Double(String(id[id.index(after: nl)...])) else { return }
+        let eventId = String(id[..<nl])
+        let date = Date(timeIntervalSinceReferenceDate: epoch)
+        guard let state = fetchCalendarState(eventId, date, c) else { return }
+        c.delete(state); try c.save()
     }
 }

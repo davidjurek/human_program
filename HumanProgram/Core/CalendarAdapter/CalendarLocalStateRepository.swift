@@ -59,6 +59,12 @@ public final class CalendarLocalStateRepository {
 
     // MARK: - Queries
 
+    /// The stored local state for an event+day, or nil if none exists yet. Read-only —
+    /// used to capture an undo snapshot before an override/hide mutation.
+    public func existingState(eventId: String, date: Date) throws -> CalendarEventLocalState? {
+        try fetchState(eventId: eventId, date: date)
+    }
+
     /// All local state rows for the given date.
     public func fetchStates(for date: Date) throws -> [CalendarEventLocalState] {
         let normalized = Calendar.current.startOfDay(for: date)

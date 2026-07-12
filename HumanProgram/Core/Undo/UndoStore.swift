@@ -5,9 +5,12 @@ import Observation
 // App-wide undo/redo, triggered by a phone shake. ONE global stack across every
 // in-scope screen (Today, Backlog, Recurring, Reminders, Schedule, Exercise,
 // Routines). In-memory only — it starts empty on every cold launch and is never
-// persisted. Calendar, app-lock, and every Settings category (customization,
-// format, accessibility, security, calendar settings, import/export/reset/restore)
-// are deliberately OUT of scope and never recorded.
+// persisted. Calendar-sourced Today tasks ARE in scope (owner-approved 2026-07-12):
+// a rename, note edit, completion toggle, or delete of a calendar task on Today is
+// recorded, as is reverting one from the differences page. App-lock and every
+// Settings category (customization, format, accessibility, security, calendar
+// SOURCE selection, import/export/reset/restore) remain OUT of scope. EventKit
+// events themselves are never mutated by undo — only the app's local overrides.
 //
 // Granularity matches the user's intent: an edit committed with one Save is ONE
 // action; a delete is ONE action; a create is ONE action. Multi-select delete /

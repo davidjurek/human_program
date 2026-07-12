@@ -206,6 +206,18 @@ public final class DailyPageRepository {
         let incomingById = Dictionary(events.map { ($0.eventId, $0) }, uniquingKeysWith: { first, _ in first })
         let incomingIds = Set(incomingById.keys)
 
+        // Per-day local overrides: a rename / re-note done on Today is stored on the
+        // event's CalendarEventLocalState, so it must win over the event's own title/
+        // notes here — otherwise this re-sync would overwrite the user's edit. The real
+        // EKEvent is never touched. [calendar-override]
+        let states = (try? CalendarLocalStateRepository(context: context).fetchStates(for: page.date)) ?? []
+        let titleOverride = Dictionary(states.compactMap { s in s.titleOverride.map { (s.eventId, $0) } },
+                                       uniquingKeysWith: { first, _ in first })
+        let notesOverride = Dictionary(states.compactMap { s in s.notesOverride.map { (s.eventId, $0) } },
+                                       uniquingKeysWith: { first, _ in first })
+        func resolvedTitle(_ ev: CalendarTaskInput) -> String { titleOverride[ev.eventId] ?? ev.title }
+        func resolvedNotes(_ ev: CalendarTaskInput) -> String { notesOverride[ev.eventId] ?? ev.notes }
+
         // Remove calendar tasks whose event is no longer present. Collect first, then
         // delete — never mutate page.tasks while iterating it. [#65]
         let staleCalendarTasks = page.tasks.filter { task in
@@ -218,14 +230,18 @@ public final class DailyPageRepository {
             changed = true
         }
 
-        // Update titles of calendar tasks still present. Do NOT touch sortOrder here:
-        // start time only SEEDS the order at creation; after that the user may have
-        // hold-dragged tasks into a custom order, which must survive re-syncs.
+        // Update titles/notes of calendar tasks still present (a local override wins
+        // over the event's own value). Do NOT touch sortOrder here: start time only
+        // SEEDS the order at creation; after that the user may have hold-dragged tasks
+        // into a custom order, which must survive re-syncs.
         var existingIds = Set<String>()
         for task in page.tasks where task.sourceType == .calendar {
             guard let sid = task.sourceId, let ev = incomingById[sid] else { continue }
             existingIds.insert(sid)
-            if task.title != ev.title { task.title = ev.title; changed = true }
+            let title = resolvedTitle(ev)
+            if task.title != title { task.title = title; changed = true }
+            let notes = resolvedNotes(ev)
+            if task.notes != notes { task.notes = notes; changed = true }
         }
 
         // Insert tasks for newly-appeared events. Seed sortOrder in the "calendar
@@ -233,11 +249,12 @@ public final class DailyPageRepository {
         // page reads recurring → calendar(earliest→latest) → manual.
         for ev in events where !existingIds.contains(ev.eventId) {
             let task = DailyPageTask(
-                title: ev.title,
+                title: resolvedTitle(ev),
                 sourceType: .calendar,
                 sourceId: ev.eventId,
                 sortOrder: Self.calendarSortOrder(startMinuteOfDay: ev.startMinuteOfDay)
             )
+            task.notes = resolvedNotes(ev)
             task.page = page
             page.tasks.append(task)
             context.insert(task)

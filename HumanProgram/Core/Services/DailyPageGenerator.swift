@@ -75,11 +75,13 @@ public struct BacklogTaskInput: Sendable {
 public struct CalendarTaskInput: Sendable {
     public let eventId: String
     public let title: String
+    public let notes: String
     public let startMinuteOfDay: Int
 
-    public init(eventId: String, title: String, startMinuteOfDay: Int) {
+    public init(eventId: String, title: String, notes: String = "", startMinuteOfDay: Int) {
         self.eventId = eventId
         self.title = title
+        self.notes = notes
         self.startMinuteOfDay = startMinuteOfDay
     }
 }
