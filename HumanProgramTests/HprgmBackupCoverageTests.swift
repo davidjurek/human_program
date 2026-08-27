@@ -49,7 +49,7 @@ final class HprgmBackupCoverageTests: XCTestCase {
                        except: ["page"])
 
         assertBackedUp(DailyPage(date: Date(), createdAutomatically: false),
-                       json: DailyPageJSON(id: "", date: Date(), createdAutomatically: false, dayComplete: false,
+                       json: DailyPageJSON(id: "", date: Date(), dayKey: nil, createdAutomatically: false, dayComplete: false,
                                            isPastLocked: false, hiddenRecurringTaskIds: nil, hiddenBacklogTaskIds: nil, scheduleBlocks: [], createdAt: Date(),
                                            updatedAt: Date(), tasks: []))
 
@@ -69,7 +69,7 @@ final class HprgmBackupCoverageTests: XCTestCase {
                                          updatedAt: Date(), items: []))
 
         assertBackedUp(CalendarEventLocalState(date: Date(), eventId: ""),
-                       json: CalendarEventLocalStateJSON(date: Date(), eventId: "", completed: false, hidden: false,
+                       json: CalendarEventLocalStateJSON(date: Date(), dayKey: nil, eventId: "", completed: false, hidden: false,
                                                          titleOverride: nil, notesOverride: nil, sortOrder: 0,
                                                          updatedAt: Date()))
     }

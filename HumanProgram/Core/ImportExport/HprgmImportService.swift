@@ -175,10 +175,14 @@ struct HprgmImportService {
         // Daily pages — ALL of them, locked snapshots included, exactly as backed up.
         for json in bundle.dailyPages {
             let page = DailyPage(date: json.date, createdAutomatically: json.createdAutomatically)
-            // The init re-rounds the date via Calendar.current.startOfDay, which can shift
-            // the day across a timezone change. Set it straight from the backup value so a
-            // restored page always lands on exactly the backed-up date. [#4]
-            page.date = json.date
+            // Restore the page onto the DAY it was backed up under, not the instant.
+            // A backup taken in one timezone and restored in another used to land on a
+            // date the app could no longer look up — so the restored page was invisible
+            // and a duplicate got generated over it. The key is timezone-independent;
+            // `date` is re-anchored to local midnight of that key. [tz-daykey][#4]
+            let key = json.dayKey ?? DayKey.fromStoredInstant(json.date)
+            page.dayKey = key
+            page.date = DayKey.startOfDay(key)
             page.id = json.id
             page.dayComplete = json.dayComplete
             page.isPastLocked = json.isPastLocked
@@ -249,7 +253,9 @@ struct HprgmImportService {
         // Calendar local state (completion / hidden / overrides per event+date).
         for json in bundle.calendarEventStates ?? [] {
             let state = CalendarEventLocalState(date: json.date, eventId: json.eventId)
-            state.date = json.date   // preserve the backed-up day exactly (see [#4] above)
+            let stateKey = json.dayKey ?? DayKey.fromStoredInstant(json.date)
+            state.dayKey = stateKey
+            state.date = DayKey.startOfDay(stateKey)   // the backed-up day (see [tz-daykey] above)
             state.completed = json.completed
             state.hidden = json.hidden
             state.titleOverride = json.titleOverride

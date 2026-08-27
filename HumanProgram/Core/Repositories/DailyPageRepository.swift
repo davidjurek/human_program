@@ -40,12 +40,20 @@ public final class DailyPageRepository {
     ) throws -> DailyPage {
         let normalizedDate = calendar.dayStart(date)
         let normalizedToday = calendar.dayStart(today)
-        let isPast = normalizedDate < normalizedToday
+        // Compare DAYS, not instants: two dates that belong to different calendar days
+        // can be less than 24h apart, and after a timezone change a stored midnight is
+        // no longer the same instant as today's midnight. [tz-daykey]
+        let isPast = DayKey.make(normalizedDate, calendar: calendar) < DayKey.make(normalizedToday, calendar: calendar)
 
         // Attempt to fetch existing page.
         if let existing = try fetch(date: normalizedDate, calendar: calendar) {
-            // Past pages: never refresh from templates, just return as-is.
+            // Past pages: never refresh from templates. The one thing that IS brought up
+            // to date is the derived completion flag — see `recalculatePastCompletion`
+            // — so opening a stale day fixes it on the spot. [empty-day-complete]
             if isPast {
+                if syncPastCompletion(existing, today: normalizedToday, calendar: calendar) {
+                    try context.save()
+                }
                 return existing
             }
             // Today/future: refresh from current templates (unless past-locked by caller).
@@ -70,6 +78,7 @@ public final class DailyPageRepository {
         // difference — generation itself is identical, so it runs once. A past page
         // is just the same generated content, locked as a snapshot. [#66]
         let page = DailyPage(date: normalizedDate, createdAutomatically: true)
+        page.dayKey = DayKey.make(normalizedDate, calendar: calendar)
         page.isPastLocked = isPast
         context.insert(page)
 
@@ -106,9 +115,16 @@ public final class DailyPageRepository {
         )
         let pages = try context.fetch(descriptor)
 
+        let todayKey = DayKey.make(normalizedToday, calendar: calendar)
         for page in pages {
             // Skip past-locked pages (a future page should never be, but guard anyway).
             guard !page.isPastLocked else { continue }
+            // Second, independent guard on the day key. The fetch predicate above
+            // compares stored instants, which is exactly what a timezone change (or a
+            // wrong device clock) corrupts — and a past page that slipped through here
+            // would be regenerated from templates AND marked incomplete, wiping real
+            // history. History is only ever refreshed if BOTH checks agree. [tz-daykey]
+            guard DayKey.resolve(storedKey: page.dayKey, storedDate: page.date) >= todayKey else { continue }
 
             try applyRefresh(
                 to: page,
@@ -269,6 +285,47 @@ public final class DailyPageRepository {
         return page
     }
 
+    // MARK: - recalculatePastCompletion
+
+    /// Re-derive `dayComplete` on every PAST page, and return how many changed.
+    ///
+    /// This is a deliberate, NARROW exception to "past pages are never modified
+    /// automatically": it writes only the derived completion flag — never a task, note,
+    /// order, schedule block or lock state. It exists because `dayComplete` is a cached
+    /// answer to a rule, and the cache goes stale for any day that passed without the
+    /// app opening it. The visible case is an EMPTY day: the rule counts it complete
+    /// ("nothing to do = done"), but the flag was last written while that day was still
+    /// in the FUTURE, where the rule says never complete — so the day stayed grey
+    /// forever and silently broke the streak. Re-deriving can only ever bring the flag
+    /// into line with the tasks actually on the page. [empty-day-complete]
+    @discardableResult
+    public func recalculatePastCompletion(today: Date, calendar: Calendar = .current) throws -> Int {
+        let normalizedToday = calendar.dayStart(today)
+        let todayKey = DayKey.make(normalizedToday, calendar: calendar)
+        let pages = try context.fetch(
+            FetchDescriptor<DailyPage>(predicate: #Predicate { $0.date < normalizedToday })
+        )
+        var changed = 0
+        for page in pages
+        where DayKey.resolve(storedKey: page.dayKey, storedDate: page.date) < todayKey {
+            if syncPastCompletion(page, today: normalizedToday, calendar: calendar) { changed += 1 }
+        }
+        if changed > 0 { try context.save() }
+        return changed
+    }
+
+    /// Bring one past page's `dayComplete` in line with its tasks. Returns true if the
+    /// flag actually changed (so callers only save when there's something to save).
+    /// No `updatedAt` stamp: the page's CONTENT didn't change, only a derived cache.
+    @discardableResult
+    private func syncPastCompletion(_ page: DailyPage, today: Date, calendar: Calendar) -> Bool {
+        let derived = completionService.isComplete(
+            tasks: page.tasks, date: page.date, today: today, calendar: calendar)
+        guard page.dayComplete != derived else { return false }
+        page.dayComplete = derived
+        return true
+    }
+
     // MARK: - severPastTasks
 
     /// Sever past page-tasks from their backlog/calendar sources. Once a day is in
@@ -283,8 +340,9 @@ public final class DailyPageRepository {
         let pages = try context.fetch(
             FetchDescriptor<DailyPage>(predicate: #Predicate { $0.date < normalizedToday })
         )
+        let todayKey = DayKey.make(normalizedToday, calendar: calendar)
         var changed = false
-        for page in pages {
+        for page in pages where DayKey.resolve(storedKey: page.dayKey, storedDate: page.date) < todayKey {
             for task in page.tasks where task.sourceType != .manual || task.sourceId != nil {
                 task.sourceType = .manual
                 task.sourceId = nil
@@ -381,14 +439,42 @@ public final class DailyPageRepository {
     // MARK: - fetch
 
     /// Fetch a page by date (nil if not found yet).
+    ///
+    /// Looks up by the timezone-independent `dayKey`, NEVER by matching the stored
+    /// `date` instant: the old exact-instant match silently missed every page after a
+    /// timezone change, and a miss here means the caller generates a fresh empty page
+    /// on top of a day that already had one. Do not "simplify" this back. [tz-daykey]
     public func fetch(date: Date, calendar: Calendar = .current) throws -> DailyPage? {
-        let normalizedDate = calendar.dayStart(date)
+        let key: Int? = DayKey.make(date, calendar: calendar)
         var descriptor = FetchDescriptor<DailyPage>(
-            predicate: #Predicate { $0.date == normalizedDate }
+            predicate: #Predicate { $0.dayKey == key }
         )
         descriptor.fetchLimit = 1
-        let results = try context.fetch(descriptor)
-        return results.first
+        if let hit = try context.fetch(descriptor).first { return hit }
+        return try fetchLegacy(key: DayKey.make(date, calendar: calendar), calendar: calendar)
+    }
+
+    /// Slow path for pages written before `dayKey` existed (or not yet repaired):
+    /// match on the day the stored instant was FILED under, so a page written in
+    /// another timezone is still found. The match adopts the key, so a given day
+    /// takes this path at most once. `DayKeyRepairService` normally does this for
+    /// the whole store at launch; this is the safety net for anything that reads a
+    /// page before it runs.
+    private func fetchLegacy(key: Int, calendar: Calendar) throws -> DailyPage? {
+        // A day's midnight can sit up to 26h either side of the current timezone's
+        // midnight for the same day; 27h is that with room to spare.
+        let anchor = DayKey.startOfDay(key, calendar: calendar)
+        let lower = anchor.addingTimeInterval(-27 * 3600)
+        let upper = anchor.addingTimeInterval(27 * 3600)
+        let nearby = try context.fetch(FetchDescriptor<DailyPage>(
+            predicate: #Predicate { $0.date >= lower && $0.date < upper }
+        ))
+        guard let match = nearby.first(where: {
+            $0.dayKey == nil && DayKey.fromStoredInstant($0.date) == key
+        }) else { return nil }
+        match.dayKey = key
+        try context.save()
+        return match
     }
 
     // MARK: - fetchAll

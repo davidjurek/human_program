@@ -152,7 +152,14 @@ struct TodayView: View {
         .onChange(of: UndoStore.shared.revision) { _, _ in
             Task { await vm.loadPage(); await loadCalendarItems() }
         }
-        .onDisappear { vm.relockOnLeave() }
+        // Leaving the Today screen re-locks an unlocked past day — but a PUSH from this
+        // screen (task detail, differences page) also fires onDisappear, and stepping
+        // into a task on that same day is not leaving the day. Only a real exit relocks.
+        // [past-unlock]
+        .onDisappear {
+            guard navTask == nil, !showDifferences else { return }
+            vm.relockOnLeave()
+        }
         .sheet(isPresented: $showDatePicker) {
             TodayDatePicker(date: vm.viewingDate, minDate: vm.minNavigableDate) { vm.jumpTo(date: $0) }
         }

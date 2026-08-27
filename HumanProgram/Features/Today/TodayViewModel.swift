@@ -30,9 +30,17 @@ public final class TodayViewModel {
         print("[TodayViewModel] \(op) error: \(error)")
     }
 
+    /// The past day the user has deliberately unlocked for this visit, if any. While
+    /// it is set, a page RELOAD must not re-lock that day: every edit (delete, add,
+    /// rename, undo) reloads the page, so re-locking on load slammed the padlock shut
+    /// after a single change. An unlock ends only two ways — navigating away from the
+    /// day, or holding the padlock again. [past-unlock]
+    private var unlockedPastDayKey: Int?
+
     /// Re-lock the currently-loaded page if it's an unlocked past day. Used when
     /// navigating to another day or leaving the Today screen.
     private func relockCurrentIfPast() {
+        unlockedPastDayKey = nil
         guard let p = page, !p.isPastLocked else { return }
         let today = Calendar.current.startOfDay(for: Date())
         if p.date < today { try? pageRepo.lockPastPage(p) }
@@ -163,8 +171,12 @@ public final class TodayViewModel {
             // Always ARRIVE at a past day locked. Unlocking is a transient in-session
             // action that auto-re-locks on leaving; if that re-lock ever misses, a past
             // page could stay unlocked and open editable. Re-locking on load guarantees
-            // every past day opens locked (and removes the stale-unlocked case). [today-lock-flash]
-            if let p = page, p.date < today, !p.isPastLocked {
+            // every past day opens locked (and removes the stale-unlocked case).
+            // EXCEPT while the user has this very day unlocked — loads happen after every
+            // edit, and re-locking there would end the unlock after one change.
+            // [today-lock-flash][past-unlock]
+            if let p = page, p.date < today, !p.isPastLocked,
+               DayKey.make(p.date) != unlockedPastDayKey {
                 try? pageRepo.lockPastPage(p)
             }
             exerciseRoutine = try exerciseRepo.fetchRoutine(for: viewingDate)
@@ -300,6 +312,9 @@ public final class TodayViewModel {
         guard let p = page else { return }
         do {
             try pageRepo.unlockPastPage(p)
+            // Opens an unlock session for this day: edits (and the reloads they trigger)
+            // leave it unlocked until the user navigates away or holds the padlock.
+            unlockedPastDayKey = DayKey.make(p.date)
         } catch {
             logError("unlockPastDay", error)
         }
@@ -309,6 +324,7 @@ public final class TodayViewModel {
         guard let p = page else { return }
         do {
             try pageRepo.lockPastPage(p)
+            unlockedPastDayKey = nil
         } catch {
             logError("relockPastDay", error)
         }

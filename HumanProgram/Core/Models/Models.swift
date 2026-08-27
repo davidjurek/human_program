@@ -277,6 +277,11 @@ public enum NotificationSoundMode: String, Codable {
 @Model public final class DailyPage {
     @Attribute(.unique) public var id: String
     public var date: Date                        // normalized to start-of-day
+    /// Timezone-independent `yyyymmdd` day key — the ONLY thing a page should be
+    /// looked up by. `date` is local midnight, which changes instant when the device
+    /// changes timezone; this doesn't. Optional purely so an existing store migrates
+    /// without a rebuild — `DayKeyRepairService` backfills it at launch. [tz-daykey]
+    public var dayKey: Int?
     public var createdAutomatically: Bool
     public var dayComplete: Bool
     public var isPastLocked: Bool                // true = historical snapshot, protected from edits
@@ -291,6 +296,7 @@ public enum NotificationSoundMode: String, Codable {
     public init(date: Date, createdAutomatically: Bool = true) {
         self.id = UUID().uuidString
         self.date = Calendar.current.startOfDay(for: date)
+        self.dayKey = DayKey.make(date)
         self.createdAutomatically = createdAutomatically
         self.dayComplete = false
         self.isPastLocked = false
@@ -339,8 +345,12 @@ public enum NotificationSoundMode: String, Codable {
 
 // ── CalendarEventLocalState ───────────────────────────────────────
 @Model public final class CalendarEventLocalState {
-    // composite identity: date + eventId
+    // composite identity: dayKey + eventId
     public var date: Date
+    /// Timezone-independent `yyyymmdd` day key — see `DailyPage.dayKey`. Per-day
+    /// calendar overrides (rename, note, hidden) were lost the same way page edits
+    /// were when the device changed timezone. [tz-daykey]
+    public var dayKey: Int?
     public var eventId: String
     public var completed: Bool
     public var hidden: Bool
@@ -351,6 +361,7 @@ public enum NotificationSoundMode: String, Codable {
 
     public init(date: Date, eventId: String) {
         self.date = Calendar.current.startOfDay(for: date)
+        self.dayKey = DayKey.make(date)
         self.eventId = eventId
         self.completed = false
         self.hidden = false

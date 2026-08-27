@@ -10,9 +10,8 @@ import WidgetKit
 enum WidgetSync {
     static func refresh(context: ModelContext) {
         let today = Calendar.current.startOfDay(for: Date())
-        var descriptor = FetchDescriptor<DailyPage>(predicate: #Predicate { $0.date == today })
-        descriptor.fetchLimit = 1
-        let page = try? context.fetch(descriptor).first
+        // By day key, not by the stored instant — see DayKey. [tz-daykey]
+        let page = (try? DailyPageRepository(context: context).fetch(date: today)) ?? nil
         let tasks = (page?.tasks ?? []).sorted { $0.sortOrder < $1.sortOrder }
         let completed = tasks.filter { $0.completed }.count
         // Same rule as the app: empty today counts as complete.

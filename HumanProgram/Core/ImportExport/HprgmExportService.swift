@@ -77,6 +77,9 @@ struct DailyPageTaskJSON: Codable {
 struct DailyPageJSON: Codable {
     let id: String
     let date: Date
+    /// Timezone-independent day key. Optional so backups written before it existed
+    /// still decode — the import derives it from `date` in that case. [tz-daykey]
+    let dayKey: Int?
     let createdAutomatically: Bool
     let dayComplete: Bool
     let isPastLocked: Bool
@@ -127,6 +130,7 @@ struct RoutineJSON: Codable {
 
 struct CalendarEventLocalStateJSON: Codable {
     let date: Date
+    let dayKey: Int?           // see DailyPageJSON.dayKey [tz-daykey]
     let eventId: String
     let completed: Bool
     let hidden: Bool
@@ -270,6 +274,7 @@ struct HprgmExportService {
         return states.map { s in
             CalendarEventLocalStateJSON(
                 date: s.date,
+                dayKey: DayKey.resolve(storedKey: s.dayKey, storedDate: s.date),
                 eventId: s.eventId,
                 completed: s.completed,
                 hidden: s.hidden,
@@ -416,6 +421,7 @@ struct HprgmExportService {
             return DailyPageJSON(
                 id: page.id,
                 date: page.date,
+                dayKey: DayKey.resolve(storedKey: page.dayKey, storedDate: page.date),
                 createdAutomatically: page.createdAutomatically,
                 dayComplete: page.dayComplete,
                 isPastLocked: page.isPastLocked,

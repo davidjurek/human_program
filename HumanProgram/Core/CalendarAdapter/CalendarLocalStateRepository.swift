@@ -21,6 +21,7 @@ public final class CalendarLocalStateRepository {
             return existing
         }
         let state = CalendarEventLocalState(date: normalized, eventId: eventId)
+        state.dayKey = DayKey.make(normalized)
         context.insert(state)
         try context.save()
         return state
@@ -65,13 +66,34 @@ public final class CalendarLocalStateRepository {
         try fetchState(eventId: eventId, date: date)
     }
 
-    /// All local state rows for the given date.
+    /// All local state rows for the given date. Keyed by the timezone-independent
+    /// day key — matching the stored `date` instant loses every override the moment
+    /// the device changes timezone. [tz-daykey]
     public func fetchStates(for date: Date) throws -> [CalendarEventLocalState] {
-        let normalized = Calendar.current.startOfDay(for: date)
+        let key: Int? = DayKey.make(date)
         let descriptor = FetchDescriptor<CalendarEventLocalState>(
-            predicate: #Predicate { $0.date == normalized }
+            predicate: #Predicate { $0.dayKey == key }
         )
-        return try context.fetch(descriptor)
+        let hits = try context.fetch(descriptor)
+        if !hits.isEmpty { return hits }
+        return try adoptLegacyStates(key: DayKey.make(date))
+    }
+
+    /// Rows written before `dayKey` existed: match them by the day their stored instant
+    /// was filed under (so another timezone's rows are still found) and adopt the key.
+    /// `DayKeyRepairService` does this store-wide at launch; this is the safety net.
+    private func adoptLegacyStates(key: Int) throws -> [CalendarEventLocalState] {
+        let anchor = DayKey.startOfDay(key)
+        let lower = anchor.addingTimeInterval(-27 * 3600)
+        let upper = anchor.addingTimeInterval(27 * 3600)
+        let nearby = try context.fetch(FetchDescriptor<CalendarEventLocalState>(
+            predicate: #Predicate { $0.date >= lower && $0.date < upper }
+        ))
+        let matches = nearby.filter { $0.dayKey == nil && DayKey.fromStoredInstant($0.date) == key }
+        guard !matches.isEmpty else { return [] }
+        for state in matches { state.dayKey = key }
+        try context.save()
+        return matches
     }
 
     /// Event ids the user has hidden/removed from Today on the given date — so the
@@ -93,12 +115,17 @@ public final class CalendarLocalStateRepository {
     // MARK: - Private
 
     private func fetchState(eventId: String, date: Date) throws -> CalendarEventLocalState? {
-        let normalized = Calendar.current.startOfDay(for: date)
+        let key: Int? = DayKey.make(date)
         let descriptor = FetchDescriptor<CalendarEventLocalState>(
-            predicate: #Predicate { $0.eventId == eventId && $0.date == normalized },
+            predicate: #Predicate { $0.eventId == eventId && $0.dayKey == key },
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-        let matches = try context.fetch(descriptor)
+        var matches = try context.fetch(descriptor)
+        if matches.isEmpty {
+            matches = try adoptLegacyStates(key: DayKey.make(date))
+                .filter { $0.eventId == eventId }
+                .sorted { $0.updatedAt > $1.updatedAt }
+        }
         guard let canonical = matches.first else { return nil }
         // The model has no store-level unique constraint on (date, eventId): #Unique is
         // unavailable at the iOS 17.6 deployment target and adding a unique attribute
